@@ -31,5 +31,5 @@ export default defineEventHandler((event) => {
         });
     }
 
-    return { status: 'logged_in' };
+    return { status: 'logged_in', storageDriver: process.env.REDIS_URL ? 'redis' : 'fs' };
 });

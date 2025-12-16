@@ -11,12 +11,14 @@ export default defineNuxtConfig({
   nitro: {
     storage: {
       mocks: {
-        driver: 'fs',
-        base: './mocks'
+        driver: process.env.VERCEL || process.env.REDIS_URL ? 'redis' : 'fs',
+        base: 'mocks',
+        url: process.env.REDIS_URL
       },
       settings: {
-        driver: 'fs',
-        base: './settings'
+        driver: process.env.VERCEL || process.env.REDIS_URL ? 'redis' : 'fs',
+        base: 'settings',
+        url: process.env.REDIS_URL
       }
     }
   },
