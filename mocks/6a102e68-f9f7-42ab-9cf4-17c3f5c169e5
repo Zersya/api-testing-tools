@@ -1,0 +1,1 @@
+{"id":"6a102e68-f9f7-42ab-9cf4-17c3f5c169e5","path":"/api/users/:id","method":"PUT","status":200,"response":{"id":1,"name":"Updated users","updatedAt":"2025-12-16T04:36:39.169Z"},"delay":0,"createdAt":"2025-12-16T04:36:39.169Z","secure":true,"updatedAt":"2025-12-16T04:41:53.414Z"}

@@ -1,0 +1,1 @@
+{"id":"55684536-eef6-4f96-9076-38f2429554a2","path":"/api/locations","method":"GET","status":200,"response":[{"id":1,"name":"locations 1"},{"id":2,"name":"locations 2"}],"delay":0,"createdAt":"2025-12-16T04:36:48.379Z","secure":false,"updatedAt":"2025-12-16T04:53:56.876Z"}
