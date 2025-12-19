@@ -25,6 +25,16 @@ const validateJson = () => {
   }
 };
 
+const formatJson = () => {
+  try {
+    const parsed = JSON.parse(form.value.response);
+    form.value.response = JSON.stringify(parsed, null, 2);
+    jsonError.value = '';
+  } catch (e: any) {
+    jsonError.value = 'Invalid JSON';
+  }
+};
+
 const save = async () => {
   if (!validateJson()) {
     return;
@@ -115,15 +125,24 @@ const goBack = () => {
         <!-- Body Tab -->
         <div v-show="activeTab === 'body'" class="panel">
           <div class="panel-header">
-            <span class="panel-title">Response JSON</span>
-            <span v-if="jsonError" class="json-error">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="12" y1="8" x2="12" y2="12"></line>
-                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            <div class="panel-header-left">
+              <span class="panel-title">Response JSON</span>
+              <span v-if="jsonError" class="json-error">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="8" x2="12" y2="12"></line>
+                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+                {{ jsonError }}
+              </span>
+            </div>
+            <button class="btn-xs btn-secondary" @click="formatJson" title="Auto-format JSON">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;">
+                <polyline points="16 18 22 12 16 6"></polyline>
+                <polyline points="8 6 2 12 8 18"></polyline>
               </svg>
-              {{ jsonError }}
-            </span>
+              Format
+            </button>
           </div>
           <textarea 
             v-model="form.response" 
@@ -337,12 +356,40 @@ const goBack = () => {
   overflow: hidden;
 }
 
+/* Panel Header */
 .panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--border-color);
+  background-color: var(--bg-secondary);
+}
+
+.panel-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-xs {
+  display: flex;
+  align-items: center;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-tertiary);
+  color: var(--text-secondary);
+  transition: all 150ms ease;
+}
+
+.btn-xs:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-color-hover, var(--border-color));
 }
 
 .panel-title {
