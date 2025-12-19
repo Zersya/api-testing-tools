@@ -60,7 +60,7 @@ export default defineEventHandler(async (event) => {
     });
 
     // 5. DELETE /api/resource/:id (Delete)
-    await createMock('DELETE', `${basePath}/:id`, 204, {});
+    await createMock('DELETE', `${basePath}/:id`, 200, {});
 
     return {
         success: true,
