@@ -32,6 +32,7 @@ const showPreviewModal = ref(false);
 const showDeleteConfirm = ref(false);
 const showCollectionModal = ref(false);
 const showDeleteCollectionConfirm = ref(false);
+const showDeleteGroupConfirm = ref(false);
 
 // State
 const previewContent = ref('');
@@ -46,7 +47,8 @@ const selectedCollectionForNewMock = ref<string | null>(null);
 
 const resourceForm = ref({
   name: '',
-  basePath: '/api/'
+  basePath: '/api/',
+  collection: 'root'
 });
 
 const settingsForm = ref({
@@ -62,6 +64,7 @@ const collectionForm = ref({
   color: '#6366f1'
 });
 const collectionToDelete = ref<Collection | null>(null);
+const groupToDelete = ref<{ collectionId: string, name: string, mocks: Mock[] } | null>(null);
 
 const collectionColors = [
   '#6366f1', // Indigo
@@ -97,6 +100,12 @@ const buildFullUrl = (mock: Mock) => {
     } else {
         return `${origin}/c/${collectionName}${mock.path}`;
     }
+};
+
+const getCollectionColor = (collectionId: string) => {
+    if (collectionId === 'root') return '#64748b';
+    const collection = collections.value?.find(c => c.id === collectionId);
+    return collection?.color || '#6366f1';
 };
 
 // Code Snippets Generator
@@ -234,16 +243,19 @@ const handleSelectMock = (mock: any) => {
 };
 
 const createResource = async () => {
+    if (!resourceForm.value.name) return;
     try {
         await $fetch('/api/admin/resource', {
             method: 'POST',
             body: {
                 resourceName: resourceForm.value.name,
-                basePath: resourceForm.value.basePath + resourceForm.value.name
+                basePath: resourceForm.value.basePath + resourceForm.value.name,
+                collection: resourceForm.value.collection
             }
         });
         showResourceModal.value = false;
         resourceForm.value.name = '';
+        resourceForm.value.collection = 'root';
         refresh();
     } catch (e: any) {
         alert('Error creating resource: ' + e.message);
@@ -410,6 +422,29 @@ const deleteCollection = async () => {
         alert('Error deleting collection: ' + (e.data?.message || e.message));
     }
 };
+
+const confirmDeleteGroup = (collectionId: string, name: string, mocks: Mock[]) => {
+    groupToDelete.value = { collectionId, name, mocks };
+    showDeleteGroupConfirm.value = true;
+};
+
+const deleteGroup = async () => {
+    if (!groupToDelete.value) return;
+    
+    try {
+        // Delete all mocks in the group sequentially (can be improved with bulk delete API)
+        await Promise.all(groupToDelete.value.mocks.map(mock => 
+            $fetch(`/api/admin/mocks?id=${mock.id}`, { method: 'DELETE' })
+        ));
+        
+        showDeleteGroupConfirm.value = false;
+        groupToDelete.value = null;
+        selectedMock.value = null; // Clear selection if it was in the group
+        refresh();
+    } catch (e: any) {
+        alert('Error deleting folder: ' + e.message);
+    }
+};
 </script>
 
 <template>
@@ -429,9 +464,11 @@ const deleteCollection = async () => {
         :selected-mock-id="selectedMock?.id"
         @select-mock="handleSelectMock"
         @create-mock="goToCreate"
+        @create-resource="showResourceModal = true"
         @create-collection="openCreateCollection"
         @edit-collection="openEditCollection"
         @delete-collection="confirmDeleteCollection"
+        @delete-group="confirmDeleteGroup"
       />
 
       <!-- Main Content -->
@@ -697,15 +734,36 @@ const deleteCollection = async () => {
         />
       </div>
       <div class="mb-4">
+        <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide mb-1.5">Collection</label>
+        <div class="relative">
+          <div 
+             class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded pointer-events-none"
+             :style="{ backgroundColor: getCollectionColor(resourceForm.collection) }"
+           ></div>
+          <select 
+            v-model="resourceForm.collection" 
+            class="w-full py-2.5 px-3 pl-9 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(0,122,255,0.2)] appearance-none cursor-pointer bg-[url('data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20width%3D%2712%27%20height%3D%2712%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27%239ca3af%27%20stroke-width%3D%272%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpolyline%20points%3D%276%209%2012%2015%2018%209%27%3E%3C/polyline%3E%3C/svg%3E')] bg-no-repeat bg-[right_12px_center]"
+          >
+            <option value="root">Root (No Collection)</option>
+            <option v-for="col in collections" :key="col.id" :value="col.id">
+              {{ col.name }}
+            </option>
+          </select>
+        </div>
+      </div>
+      <div class="mb-4">
         <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide mb-1.5">Base Path Prefix</label>
         <input 
           v-model="resourceForm.basePath" 
           class="w-full py-2.5 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(0,122,255,0.2)]"
         />
+        <p class="text-xs text-text-muted mt-2 font-mono">
+          Will generate: {{ resourceForm.basePath }}{{ resourceForm.name || '{resource}' }}...
+        </p>
       </div>
       <template #footer>
         <button class="btn btn-secondary" @click="showResourceModal = false">Cancel</button>
-        <button class="btn btn-success" @click="createResource">Create Resource</button>
+        <button class="btn btn-success" @click="createResource" :disabled="!resourceForm.name">Create Resource</button>
       </template>
     </Modal>
 
@@ -787,6 +845,21 @@ const deleteCollection = async () => {
       <template #footer>
         <button class="btn btn-secondary" @click="showDeleteCollectionConfirm = false">Cancel</button>
         <button class="btn btn-danger" @click="deleteCollection">Delete Collection</button>
+      </template>
+    </Modal>
+
+    <!-- Delete Group Confirmation Modal -->
+    <Modal :show="showDeleteGroupConfirm" title="Delete Folder" @close="showDeleteGroupConfirm = false">
+      <p class="text-text-secondary leading-relaxed">
+        Are you sure you want to delete this folder?
+        <br />
+        <code class="inline-block mt-2 py-1.5 px-2.5 bg-bg-tertiary rounded text-accent-orange font-mono">{{ groupToDelete?.name }}</code>
+        <br /><br />
+        <strong class="text-accent-red">Warning:</strong> This will permanently delete <strong>{{ groupToDelete?.mocks.length }}</strong> mocks inside this folder.
+      </p>
+      <template #footer>
+        <button class="btn btn-secondary" @click="showDeleteGroupConfirm = false">Cancel</button>
+        <button class="btn btn-danger" @click="deleteGroup">Delete Folder & Items</button>
       </template>
     </Modal>
   </div>

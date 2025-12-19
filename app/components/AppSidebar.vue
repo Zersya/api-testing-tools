@@ -45,8 +45,10 @@ const emit = defineEmits<{
   selectCollection: [collection: Collection];
   createMock: [collectionId?: string];
   createCollection: [];
+  createResource: [];
   editCollection: [collection: Collection];
   deleteCollection: [collection: Collection];
+  deleteGroup: [collectionId: string, groupName: string, mocks: Mock[]];
 }>();
 
 const expandedCollections = ref<Set<string>>(new Set());
@@ -163,6 +165,17 @@ const getCollectionColor = (color: string) => {
         </button>
         <button 
           class="flex items-center justify-center w-7 h-7 bg-transparent border-none rounded text-text-secondary cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-orange" 
+          @click="emit('createResource')" 
+          title="New Resource (CRUD)"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+            <path d="M3 5v14c0 1.66 4 3 9 3s 9-1.34 9-3V5"></path>
+          </svg>
+        </button>
+        <button 
+          class="flex items-center justify-center w-7 h-7 bg-transparent border-none rounded text-text-secondary cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-orange" 
           @click="emit('createCollection')" 
           title="New Collection"
         >
@@ -268,7 +281,7 @@ const getCollectionColor = (color: string) => {
             <div v-for="group in collection.groups" :key="`${collection.id}:${group.name}`" class="mb-0.5">
               <!-- Group Header (Folder) -->
               <div 
-                class="flex items-center gap-1.5 py-1.5 px-3 text-text-primary text-xs font-medium cursor-pointer transition-colors duration-fast hover:bg-bg-hover"
+                class="flex items-center gap-1.5 py-1.5 px-3 text-text-primary text-xs font-medium cursor-pointer transition-colors duration-fast hover:bg-bg-hover group/groupitem"
                 @click="toggleGroup(collection.id, group.name)"
               >
                 <!-- Chevron -->
@@ -288,9 +301,21 @@ const getCollectionColor = (color: string) => {
                 <span class="flex-1">{{ group.name }}</span>
 
                 <!-- Count -->
-                <span class="text-[10px] text-text-muted bg-bg-tertiary py-px px-1.5 rounded-lg">
+                <span class="text-[10px] text-text-muted bg-bg-tertiary py-px px-1.5 rounded-lg mr-1.5">
                   {{ group.items.length }}
                 </span>
+
+                <!-- Delete Group -->
+                 <button 
+                  class="flex items-center justify-center w-[18px] h-[18px] bg-transparent border-none rounded text-text-secondary cursor-pointer opacity-0 group-hover/groupitem:opacity-100 transition-all duration-fast hover:bg-accent-red/15 hover:text-accent-red"
+                  @click.stop="emit('deleteGroup', collection.id, group.name, group.items)"
+                  title="Delete Folder"
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  </svg>
+                </button>
               </div>
 
               <!-- Group Items (Endpoints) -->
