@@ -10,11 +10,26 @@ export default defineEventHandler(async (event) => {
         });
     }
 
+    const normalizedMethod = body.method.toUpperCase();
+    const storage = useStorage('mocks');
+
+    // Check for duplicates
+    const keys = await storage.getKeys();
+    for (const key of keys) {
+        const mock: any = await storage.getItem(key);
+        if (mock && mock.path === body.path && mock.method === normalizedMethod) {
+            throw createError({
+                statusCode: 409,
+                statusMessage: `Mock with method ${normalizedMethod} and path ${body.path} already exists`
+            });
+        }
+    }
+
     const id = uuidv4();
     const newMock = {
         id,
         path: body.path,
-        method: body.method.toUpperCase(),
+        method: normalizedMethod,
         status: body.status,
         response: body.response || {},
         delay: body.delay || 0,
@@ -22,7 +37,7 @@ export default defineEventHandler(async (event) => {
         createdAt: new Date().toISOString()
     };
 
-    await useStorage('mocks').setItem(id, newMock);
+    await storage.setItem(id, newMock);
 
     return newMock;
 });
