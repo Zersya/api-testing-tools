@@ -1,11 +1,29 @@
 export default defineEventHandler(async (event) => {
-    const storage = useStorage('mocks');
-    const keys = await storage.getKeys();
+    const mocksStorage = useStorage('mocks');
+    const collectionsStorage = useStorage('collections');
+
+    const mockKeys = await mocksStorage.getKeys();
+    const collectionKeys = await collectionsStorage.getKeys();
+
+    // Build collections map for tags
+    const collectionsMap: Record<string, any> = {};
+    for (const key of collectionKeys) {
+        const collection = await collectionsStorage.getItem(key) as any;
+        if (collection) {
+            collectionsMap[collection.id] = collection;
+        }
+    }
+
+    // Ensure root collection exists in map
+    if (!collectionsMap['root']) {
+        collectionsMap['root'] = { id: 'root', name: 'root', description: 'Default collection' };
+    }
 
     const paths: Record<string, any> = {};
+    const usedTags = new Set<string>();
 
-    for (const key of keys) {
-        const mock = await storage.getItem(key) as any;
+    for (const key of mockKeys) {
+        const mock = await mocksStorage.getItem(key) as any;
         if (!mock) continue;
 
         // Convert path params :id to {id}
@@ -16,9 +34,12 @@ export default defineEventHandler(async (event) => {
         }
 
         const method = mock.method.toLowerCase();
+        const collectionId = mock.collection || 'root';
+        const collectionName = collectionsMap[collectionId]?.name || 'root';
+        usedTags.add(collectionName);
 
         // Extract parameters from path
-        const parameters = [];
+        const parameters: { name: string; in: string; required: boolean; schema: { type: string } }[] = [];
         const paramMatches = mock.path.match(/:([a-zA-Z0-9_]+)/g);
         if (paramMatches) {
             paramMatches.forEach((param: string) => {
@@ -43,6 +64,7 @@ export default defineEventHandler(async (event) => {
 
         paths[openApiPath][method] = {
             summary: `${mock.method} ${mock.path}`,
+            tags: [collectionName],
             parameters,
             responses: {
                 [mock.status]: {
@@ -54,12 +76,22 @@ export default defineEventHandler(async (event) => {
         };
     }
 
+    // Build tags array from used collections
+    const tags = Array.from(usedTags).map(tagName => {
+        const collection = Object.values(collectionsMap).find((c: any) => c.name === tagName);
+        return {
+            name: tagName,
+            description: collection?.description || `Endpoints in ${tagName} collection`
+        };
+    });
+
     const spec = {
         openapi: "3.0.0",
         info: {
             title: "Mock Service API",
             version: "1.0.0"
         },
+        tags,
         components: {
             securitySchemes: {
                 bearerAuth: {

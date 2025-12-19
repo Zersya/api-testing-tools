@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 export default defineEventHandler(async (event) => {
     const body = await readBody(event);
-    const { resourceName, basePath } = body;
+    const { resourceName, basePath, collection } = body;
 
     if (!resourceName || !basePath) {
         throw createError({
@@ -12,18 +12,20 @@ export default defineEventHandler(async (event) => {
     }
 
     const storage = useStorage('mocks');
-    const createdMocks = [];
+    const createdMocks: any[] = [];
 
     // Helper to create mock
     const createMock = async (method: string, path: string, status: number, response: any) => {
         const id = uuidv4();
         const mock = {
             id,
+            collection: collection || 'root',
             path,
             method,
             status,
             response,
             delay: 0,
+            secure: false,
             createdAt: new Date().toISOString()
         };
         await storage.setItem(id, mock);

@@ -30,6 +30,11 @@ export default defineNuxtConfig({
         base: 'mocks',
         url: process.env.REDIS_URL
       },
+      collections: {
+        driver: process.env.VERCEL || process.env.REDIS_URL ? 'redis' : 'fs',
+        base: 'collections',
+        url: process.env.REDIS_URL
+      },
       settings: {
         driver: process.env.VERCEL || process.env.REDIS_URL ? 'redis' : 'fs',
         base: 'settings',

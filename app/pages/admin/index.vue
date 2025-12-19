@@ -1,5 +1,25 @@
 <script setup lang="ts">
-const { data: mocks, refresh, error } = await useFetch('/api/admin/mocks');
+interface Collection {
+  id: string;
+  name: string;
+  description?: string;
+  color: string;
+  order: number;
+}
+
+interface Mock {
+  id: string;
+  collection: string;
+  path: string;
+  method: string;
+  status: number;
+  response: any;
+  delay: number;
+  secure: boolean;
+}
+
+const { data: mocks, refresh: refreshMocks, error } = await useFetch<Mock[]>('/api/admin/mocks');
+const { data: collections, refresh: refreshCollections } = await useFetch<Collection[]>('/api/admin/collections');
 
 if (error.value && error.value.statusCode === 401) {
     await navigateTo('/login');
@@ -10,6 +30,8 @@ const showResourceModal = ref(false);
 const showSettingsModal = ref(false);
 const showPreviewModal = ref(false);
 const showDeleteConfirm = ref(false);
+const showCollectionModal = ref(false);
+const showDeleteCollectionConfirm = ref(false);
 
 // State
 const previewContent = ref('');
@@ -20,6 +42,7 @@ const tryItLoading = ref(false);
 const tryItResponse = ref<any>(null);
 const tryItError = ref('');
 const tryItTime = ref(0);
+const selectedCollectionForNewMock = ref<string | null>(null);
 
 const resourceForm = ref({
   name: '',
@@ -30,33 +53,34 @@ const settingsForm = ref({
     bearerToken: ''
 });
 
-// Grouped mocks for sidebar
-const groupedMocks = computed(() => {
-    if (!mocks.value) return [];
-    
-    const groups: Record<string, any[]> = {};
-    
-    mocks.value.forEach((mock: any) => {
-        const parts = mock.path.split('/').filter(Boolean);
-        let key = 'General';
-        
-        if (parts.length > 0) {
-            if (parts[0] === 'api' && parts.length > 1) {
-                key = parts[1];
-            } else {
-                key = parts[0];
-            }
-        }
-        
-        if (!groups[key]) groups[key] = [];
-        groups[key].push(mock);
-    });
-
-    return Object.entries(groups).map(([name, items]) => ({
-        name,
-        items: items.sort((a, b) => a.path.localeCompare(b.path))
-    })).sort((a, b) => a.name.localeCompare(b.name));
+// Collection modal state
+const collectionModalMode = ref<'create' | 'edit'>('create');
+const collectionForm = ref({
+  id: '',
+  name: '',
+  description: '',
+  color: '#6366f1'
 });
+const collectionToDelete = ref<Collection | null>(null);
+
+const collectionColors = [
+  '#6366f1', // Indigo
+  '#ec4899', // Pink
+  '#f97316', // Orange
+  '#22c55e', // Green
+  '#3b82f6', // Blue
+  '#a855f7', // Purple
+  '#ef4444', // Red
+  '#14b8a6', // Teal
+  '#eab308', // Yellow
+  '#64748b', // Slate
+];
+
+// Refresh all data
+const refresh = () => {
+  refreshMocks();
+  refreshCollections();
+};
 
 // Code Snippets Generator
 const codeSnippets = computed(() => {
@@ -281,12 +305,85 @@ const duplicateMock = async (mock: any) => {
     }
 };
 
-const goToCreate = () => {
-    navigateTo('/admin/create');
+const goToCreate = (collectionId?: string) => {
+    if (collectionId) {
+        navigateTo(`/admin/create?collection=${collectionId}`);
+    } else {
+        navigateTo('/admin/create');
+    }
 };
 
 const goToEdit = (id: string) => {
     navigateTo(`/admin/${id}`);
+};
+
+// Collection Management
+const openCreateCollection = () => {
+    collectionModalMode.value = 'create';
+    collectionForm.value = {
+        id: '',
+        name: '',
+        description: '',
+        color: '#6366f1'
+    };
+    showCollectionModal.value = true;
+};
+
+const openEditCollection = (collection: Collection) => {
+    collectionModalMode.value = 'edit';
+    collectionForm.value = {
+        id: collection.id,
+        name: collection.name,
+        description: collection.description || '',
+        color: collection.color
+    };
+    showCollectionModal.value = true;
+};
+
+const saveCollection = async () => {
+    try {
+        if (collectionModalMode.value === 'create') {
+            await $fetch('/api/admin/collections', {
+                method: 'POST',
+                body: {
+                    name: collectionForm.value.name,
+                    description: collectionForm.value.description,
+                    color: collectionForm.value.color
+                }
+            });
+        } else {
+            await $fetch('/api/admin/collections', {
+                method: 'PUT',
+                body: {
+                    id: collectionForm.value.id,
+                    name: collectionForm.value.name,
+                    description: collectionForm.value.description,
+                    color: collectionForm.value.color
+                }
+            });
+        }
+        showCollectionModal.value = false;
+        refresh();
+    } catch (e: any) {
+        alert('Error saving collection: ' + (e.data?.message || e.message));
+    }
+};
+
+const confirmDeleteCollection = (collection: Collection) => {
+    collectionToDelete.value = collection;
+    showDeleteCollectionConfirm.value = true;
+};
+
+const deleteCollection = async () => {
+    if (!collectionToDelete.value) return;
+    try {
+        await $fetch(`/api/admin/collections?id=${collectionToDelete.value.id}`, { method: 'DELETE' });
+        showDeleteCollectionConfirm.value = false;
+        collectionToDelete.value = null;
+        refresh();
+    } catch (e: any) {
+        alert('Error deleting collection: ' + (e.data?.message || e.message));
+    }
 };
 </script>
 
@@ -302,11 +399,14 @@ const goToEdit = (id: string) => {
     <div class="app-body">
       <!-- Sidebar -->
       <AppSidebar 
-        :groups="groupedMocks"
+        :collections="collections || []"
+        :mocks="mocks || []"
         :selected-mock-id="selectedMock?.id"
         @select-mock="handleSelectMock"
         @create-mock="goToCreate"
-        @create-resource="showResourceModal = true"
+        @create-collection="openCreateCollection"
+        @edit-collection="openEditCollection"
+        @delete-collection="confirmDeleteCollection"
       />
 
       <!-- Main Content -->
@@ -320,7 +420,7 @@ const goToEdit = (id: string) => {
           </div>
           <h2 class="empty-title">Select an endpoint</h2>
           <p class="empty-text">Choose an endpoint from the sidebar to view details, test it, and generate code snippets</p>
-          <button class="btn btn-primary" @click="goToCreate">
+          <button class="btn btn-primary" @click="goToCreate()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="12" y1="5" x2="12" y2="19"></line>
               <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -564,6 +664,60 @@ const goToEdit = (id: string) => {
       <template #footer>
         <button class="btn btn-secondary" @click="showDeleteConfirm = false">Cancel</button>
         <button class="btn btn-danger" @click="deleteMock">Delete</button>
+      </template>
+    </Modal>
+
+    <!-- Collection Modal -->
+    <Modal 
+      :show="showCollectionModal" 
+      :title="collectionModalMode === 'create' ? 'Create Collection' : 'Edit Collection'" 
+      @close="showCollectionModal = false"
+    >
+      <div class="form-group">
+        <label>Collection Name</label>
+        <input 
+          v-model="collectionForm.name" 
+          placeholder="My Project" 
+          class="form-input" 
+          :disabled="collectionModalMode === 'edit' && collectionForm.name === 'root'"
+        />
+      </div>
+      <div class="form-group">
+        <label>Description (optional)</label>
+        <input v-model="collectionForm.description" placeholder="API endpoints for..." class="form-input" />
+      </div>
+      <div class="form-group">
+        <label>Color</label>
+        <div class="color-picker">
+          <button 
+            v-for="color in collectionColors" 
+            :key="color"
+            :class="['color-option', { 'active': collectionForm.color === color }]"
+            :style="{ backgroundColor: color }"
+            @click="collectionForm.color = color"
+          ></button>
+        </div>
+      </div>
+      <template #footer>
+        <button class="btn btn-secondary" @click="showCollectionModal = false">Cancel</button>
+        <button class="btn btn-primary" @click="saveCollection">
+          {{ collectionModalMode === 'create' ? 'Create Collection' : 'Save Changes' }}
+        </button>
+      </template>
+    </Modal>
+
+    <!-- Delete Collection Confirmation Modal -->
+    <Modal :show="showDeleteCollectionConfirm" title="Delete Collection" @close="showDeleteCollectionConfirm = false">
+      <p class="confirm-text">
+        Are you sure you want to delete this collection?
+        <br />
+        <code class="font-mono">{{ collectionToDelete?.name }}</code>
+        <br /><br />
+        <strong>Note:</strong> All mocks in this collection will be moved to the "root" collection.
+      </p>
+      <template #footer>
+        <button class="btn btn-secondary" @click="showDeleteCollectionConfirm = false">Cancel</button>
+        <button class="btn btn-danger" @click="deleteCollection">Delete Collection</button>
       </template>
     </Modal>
   </div>
@@ -859,12 +1013,6 @@ const goToEdit = (id: string) => {
   padding: 16px;
 }
 
-/* Mock Actions */
-.mock-actions {
-  display: flex;
-  justify-content: flex-start;
-}
-
 /* Snippets Panel */
 .snippets-panel {
   display: flex;
@@ -1086,6 +1234,11 @@ const goToEdit = (id: string) => {
   box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
 }
 
+.form-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .form-hint {
   font-size: 12px;
   color: var(--text-muted);
@@ -1104,6 +1257,31 @@ const goToEdit = (id: string) => {
   background-color: var(--bg-tertiary);
   border-radius: 4px;
   color: var(--accent-orange);
+}
+
+/* Color Picker */
+.color-picker {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.color-option {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.color-option:hover {
+  transform: scale(1.1);
+}
+
+.color-option.active {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--text-muted);
 }
 
 /* Responsive */

@@ -1,5 +1,21 @@
 <script setup lang="ts">
+interface Collection {
+  id: string;
+  name: string;
+  description?: string;
+  color: string;
+  order: number;
+}
+
+const route = useRoute();
+
+// Get collection from query params if provided
+const initialCollection = route.query.collection as string || 'root';
+
+const { data: collections } = await useFetch<Collection[]>('/api/admin/collections');
+
 const form = ref({
+  collection: initialCollection,
   path: '',
   method: 'GET',
   status: 200,
@@ -60,6 +76,11 @@ const save = async () => {
 
 const goBack = () => {
   navigateTo('/admin');
+};
+
+const getCollectionColor = (collectionId: string) => {
+  const collection = collections.value?.find(c => c.id === collectionId);
+  return collection?.color || '#6366f1';
 };
 </script>
 
@@ -155,6 +176,23 @@ const goBack = () => {
         <!-- Settings Tab -->
         <div v-show="activeTab === 'settings'" class="panel settings-panel">
           <div class="settings-grid">
+            <!-- Collection Selector -->
+            <div class="setting-item">
+              <label>Collection</label>
+              <div class="collection-select-wrapper">
+                <div 
+                  class="collection-indicator" 
+                  :style="{ backgroundColor: getCollectionColor(form.collection) }"
+                ></div>
+                <select v-model="form.collection" class="setting-select">
+                  <option v-for="collection in collections" :key="collection.id" :value="collection.id">
+                    {{ collection.name }}
+                  </option>
+                </select>
+              </div>
+              <span class="setting-hint">Group this mock into a collection for better organization</span>
+            </div>
+            
             <div class="setting-item">
               <label>Status Code</label>
               <input v-model.number="form.status" type="number" min="100" max="599" class="setting-input" />
@@ -458,6 +496,43 @@ const goBack = () => {
   outline: none;
   border-color: var(--accent-blue);
   box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
+}
+
+.setting-select {
+  width: 100%;
+  padding: 10px 12px;
+  padding-left: 36px;
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 14px;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+
+.setting-select:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
+}
+
+.collection-select-wrapper {
+  position: relative;
+}
+
+.collection-indicator {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  pointer-events: none;
 }
 
 .setting-hint {

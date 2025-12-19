@@ -28,6 +28,7 @@ export default defineEventHandler(async (event) => {
     const id = uuidv4();
     const newMock = {
         id,
+        collection: body.collection || 'root',
         path: body.path,
         method: normalizedMethod,
         status: body.status,

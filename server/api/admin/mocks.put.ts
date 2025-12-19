@@ -37,6 +37,7 @@ export default defineEventHandler(async (event) => {
     const updatedMock = {
         ...existing,
         ...body,
+        collection: body.collection ?? existing.collection ?? 'root',
         method: normalizedMethod, /* Ensure method is normalized if updated */
         updatedAt: new Date().toISOString()
     };
