@@ -31,10 +31,10 @@ const login = async () => {
 </script>
 
 <template>
-  <div class="login-page">
-    <div class="login-container">
+  <div class="min-h-screen flex items-center justify-center bg-bg-primary relative overflow-hidden">
+    <div class="flex flex-col items-center w-full max-w-[400px] p-6 z-10">
       <!-- Logo -->
-      <div class="login-logo">
+      <div class="mb-8">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <rect width="24" height="24" rx="6" fill="#FF6C37"/>
           <path d="M7 8.5C7 7.67 7.67 7 8.5 7H15.5C16.33 7 17 7.67 17 8.5V15.5C17 16.33 16.33 17 15.5 17H8.5C7.67 17 7 16.33 7 15.5V8.5Z" fill="white"/>
@@ -43,14 +43,18 @@ const login = async () => {
       </div>
 
       <!-- Card -->
-      <div class="login-card">
-        <div class="login-header">
-          <h1>Welcome Back</h1>
-          <p>Sign in to access Mock Services</p>
+      <div class="w-full bg-bg-secondary border border-border-default rounded-2xl p-8 shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
+        <!-- Header -->
+        <div class="text-center mb-7">
+          <h1 class="text-2xl font-semibold text-text-primary mb-2">Welcome Back</h1>
+          <p class="text-sm text-text-secondary m-0">Sign in to access Mock Services</p>
         </div>
 
         <!-- Error Message -->
-        <div v-if="errorMessage" class="error-alert">
+        <div 
+          v-if="errorMessage" 
+          class="flex items-center gap-2.5 py-3 px-4 bg-accent-red/15 border border-accent-red/30 rounded-lg mb-5 text-accent-red text-[13px]"
+        >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"></circle>
             <line x1="12" y1="8" x2="12" y2="12"></line>
@@ -59,11 +63,16 @@ const login = async () => {
           <span>{{ errorMessage }}</span>
         </div>
 
-        <form @submit.prevent="login" class="login-form">
-          <div class="form-group">
-            <label for="email">Email</label>
-            <div class="input-wrapper">
-              <svg class="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <!-- Form -->
+        <form @submit.prevent="login" class="flex flex-col gap-5">
+          <!-- Email Field -->
+          <div class="flex flex-col gap-2">
+            <label for="email" class="text-[13px] font-medium text-text-secondary normal-case tracking-normal">Email</label>
+            <div class="relative">
+              <svg 
+                class="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" 
+                width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+              >
                 <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
                 <polyline points="22,6 12,13 2,6"></polyline>
               </svg>
@@ -74,14 +83,19 @@ const login = async () => {
                 placeholder="admin@mock.com"
                 required 
                 autocomplete="email"
+                class="w-full py-3.5 px-3.5 pl-[46px] bg-bg-input border border-border-default rounded-[10px] text-text-primary text-sm transition-all duration-fast focus:outline-none focus:border-accent-orange focus:shadow-[0_0_0_3px_rgba(255,108,55,0.15)] placeholder:text-text-muted"
               />
             </div>
           </div>
 
-          <div class="form-group">
-            <label for="password">Password</label>
-            <div class="input-wrapper">
-              <svg class="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <!-- Password Field -->
+          <div class="flex flex-col gap-2">
+            <label for="password" class="text-[13px] font-medium text-text-secondary normal-case tracking-normal">Password</label>
+            <div class="relative">
+              <svg 
+                class="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" 
+                width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+              >
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                 <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
               </svg>
@@ -92,12 +106,18 @@ const login = async () => {
                 placeholder="••••••••"
                 required 
                 autocomplete="current-password"
+                class="w-full py-3.5 px-3.5 pl-[46px] bg-bg-input border border-border-default rounded-[10px] text-text-primary text-sm transition-all duration-fast focus:outline-none focus:border-accent-orange focus:shadow-[0_0_0_3px_rgba(255,108,55,0.15)] placeholder:text-text-muted"
               />
             </div>
           </div>
 
-          <button type="submit" class="login-btn" :disabled="isLoading">
-            <svg v-if="isLoading" class="spinner" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <!-- Submit Button -->
+          <button 
+            type="submit" 
+            class="flex items-center justify-center gap-2.5 w-full py-3.5 bg-gradient-to-br from-accent-orange to-[#FF8C5A] border-none rounded-[10px] text-white text-[15px] font-semibold cursor-pointer transition-all duration-normal mt-2 hover:not-disabled:-translate-y-px hover:not-disabled:shadow-[0_6px_20px_rgba(255,108,55,0.35)] active:not-disabled:translate-y-0 disabled:opacity-70 disabled:cursor-not-allowed"
+            :disabled="isLoading"
+          >
+            <svg v-if="isLoading" class="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
             </svg>
             <span v-if="isLoading">Signing in...</span>
@@ -107,210 +127,19 @@ const login = async () => {
       </div>
 
       <!-- Footer -->
-      <p class="login-footer">
+      <p class="mt-6 text-[13px] text-text-muted">
         Mock Services Admin Panel
       </p>
     </div>
 
     <!-- Background decoration -->
-    <div class="bg-decoration">
-      <div class="bg-circle bg-circle-1"></div>
-      <div class="bg-circle bg-circle-2"></div>
+    <div class="absolute inset-0 overflow-hidden pointer-events-none">
+      <div class="absolute w-[600px] h-[600px] -top-[200px] -right-[200px] rounded-full bg-gradient-to-br from-accent-orange to-transparent opacity-5"></div>
+      <div class="absolute w-[400px] h-[400px] -bottom-[100px] -left-[100px] rounded-full bg-gradient-to-br from-accent-blue to-transparent opacity-5"></div>
     </div>
   </div>
 </template>
 
-<style scoped>
-.login-page {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: var(--bg-primary);
-  position: relative;
-  overflow: hidden;
-}
-
-.login-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 100%;
-  max-width: 400px;
-  padding: 24px;
-  z-index: 1;
-}
-
-.login-logo {
-  margin-bottom: 32px;
-}
-
-.login-card {
-  width: 100%;
-  background-color: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 16px;
-  padding: 32px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-}
-
-.login-header {
-  text-align: center;
-  margin-bottom: 28px;
-}
-
-.login-header h1 {
-  font-size: 24px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 8px 0;
-}
-
-.login-header p {
-  font-size: 14px;
-  color: var(--text-secondary);
-  margin: 0;
-}
-
-.error-alert {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  background-color: rgba(239, 83, 80, 0.15);
-  border: 1px solid rgba(239, 83, 80, 0.3);
-  border-radius: 8px;
-  margin-bottom: 20px;
-  color: var(--accent-red);
-  font-size: 13px;
-}
-
-.login-form {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.form-group label {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-secondary);
-}
-
-.input-wrapper {
-  position: relative;
-}
-
-.input-icon {
-  position: absolute;
-  left: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--text-muted);
-  pointer-events: none;
-}
-
-.input-wrapper input {
-  width: 100%;
-  padding: 14px 14px 14px 46px;
-  background-color: var(--bg-input);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  color: var(--text-primary);
-  font-size: 14px;
-  transition: all 150ms ease;
-}
-
-.input-wrapper input:focus {
-  outline: none;
-  border-color: var(--accent-orange);
-  box-shadow: 0 0 0 3px rgba(255, 108, 55, 0.15);
-}
-
-.input-wrapper input::placeholder {
-  color: var(--text-muted);
-}
-
-.login-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  width: 100%;
-  padding: 14px;
-  background: linear-gradient(135deg, #FF6C37 0%, #FF8C5A 100%);
-  border: none;
-  border-radius: 10px;
-  color: white;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 200ms ease;
-  margin-top: 8px;
-}
-
-.login-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(255, 108, 55, 0.35);
-}
-
-.login-btn:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-.login-btn:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-}
-
-.spinner {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.login-footer {
-  margin-top: 24px;
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-/* Background decoration */
-.bg-decoration {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.bg-circle {
-  position: absolute;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent-orange) 0%, transparent 70%);
-  opacity: 0.05;
-}
-
-.bg-circle-1 {
-  width: 600px;
-  height: 600px;
-  top: -200px;
-  right: -200px;
-}
-
-.bg-circle-2 {
-  width: 400px;
-  height: 400px;
-  bottom: -100px;
-  left: -100px;
-  background: linear-gradient(135deg, var(--accent-blue) 0%, transparent 70%);
-}
+<style>
+/* Animation spin for loading spinner - using tailwind animate-spin */
 </style>

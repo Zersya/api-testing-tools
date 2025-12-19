@@ -1,12 +1,5 @@
 <template>
-  <div class="empty-layout">
+  <div class="min-h-screen bg-bg-primary">
     <slot />
   </div>
 </template>
-
-<style scoped>
-.empty-layout {
-  min-height: 100vh;
-  background-color: var(--bg-primary);
-}
-</style>

@@ -117,10 +117,10 @@ const codeSnippets = computed(() => {
 
 const generateCurl = (mock: any, url: string, authHeader: string) => {
     let cmd = `curl -X ${mock.method} "${url}"`;
-    if (authHeader) cmd += `\n  -H "${authHeader}"`;
+    if (authHeader) cmd += ` \\\n  -H "${authHeader}"`;
     if (['POST', 'PUT', 'PATCH'].includes(mock.method)) {
-        cmd += `\n  -H "Content-Type: application/json"`;
-        cmd += `\n  -d '{}'`;
+        cmd += ` \\\n  -H "Content-Type: application/json"`;
+        cmd += ` \\\n  -d '{}'`;
     }
     return cmd;
 };
@@ -413,7 +413,7 @@ const deleteCollection = async () => {
 </script>
 
 <template>
-  <div class="app-container">
+  <div class="flex flex-col h-screen overflow-hidden">
     <!-- Header -->
     <AppHeader 
       title="Mock Services"
@@ -421,7 +421,7 @@ const deleteCollection = async () => {
       @export-open-a-p-i="exportOpenAPI"
     />
 
-    <div class="app-body">
+    <div class="flex flex-1 overflow-hidden">
       <!-- Sidebar -->
       <AppSidebar 
         :collections="collections || []"
@@ -435,16 +435,16 @@ const deleteCollection = async () => {
       />
 
       <!-- Main Content -->
-      <main class="main-content">
+      <main class="flex-1 overflow-y-auto bg-bg-primary">
         <!-- Empty State -->
-        <div v-if="!selectedMock" class="empty-state">
-          <div class="empty-illustration">
-            <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
+        <div v-if="!selectedMock" class="flex flex-col items-center justify-center h-full p-10 text-center">
+          <div class="mb-6">
+            <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round" class="opacity-30">
               <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
             </svg>
           </div>
-          <h2 class="empty-title">Select an endpoint</h2>
-          <p class="empty-text">Choose an endpoint from the sidebar to view details, test it, and generate code snippets</p>
+          <h2 class="text-xl font-semibold text-text-primary mb-2">Select an endpoint</h2>
+          <p class="text-text-secondary mb-6 max-w-[340px]">Choose an endpoint from the sidebar to view details, test it, and generate code snippets</p>
           <button class="btn btn-primary" @click="goToCreate()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -455,27 +455,40 @@ const deleteCollection = async () => {
         </div>
 
         <!-- Selected Mock Details -->
-        <div v-else class="mock-detail">
+        <div v-else class="p-5 flex flex-col gap-5 h-[calc(100vh-48px)] overflow-y-auto">
           <!-- URL Bar -->
-          <div class="url-bar">
+          <div class="flex items-center gap-3 p-3 px-4 bg-bg-secondary border border-border-default rounded-lg">
             <MethodBadge :method="selectedMock.method" size="lg" />
-            <div class="url-input">
-              <span class="url-text font-mono">{{ buildFullUrl(selectedMock) }}</span>
+            <div class="flex-1 py-2 px-3 bg-bg-input rounded overflow-hidden">
+              <span class="text-sm text-text-primary font-mono">{{ buildFullUrl(selectedMock) }}</span>
             </div>
-            <div class="url-actions">
-              <button class="action-btn" @click="copyPath(selectedMock)" title="Copy URL">
+            <div class="flex items-center gap-2">
+              <!-- Action buttons -->
+              <button 
+                class="flex items-center justify-center w-[34px] h-[34px] bg-transparent border-none rounded-md text-text-secondary cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-text-primary" 
+                @click="copyPath(selectedMock)" 
+                title="Copy URL"
+              >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
                   <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
                 </svg>
               </button>
-              <button class="action-btn" @click="duplicateMock(selectedMock)" title="Duplicate Mock">
+              <button 
+                class="flex items-center justify-center w-[34px] h-[34px] bg-transparent border-none rounded-md text-text-secondary cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-text-primary" 
+                @click="duplicateMock(selectedMock)" 
+                title="Duplicate Mock"
+              >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <rect x="3" y="3" width="14" height="14" rx="2"></rect>
                   <path d="M7 21h12a2 2 0 0 0 2-2V7"></path>
                 </svg>
               </button>
-              <button class="action-btn action-btn--danger" @click="confirmDeleteMock(selectedMock)" title="Delete Mock">
+              <button 
+                class="flex items-center justify-center w-[34px] h-[34px] bg-transparent border-none rounded-md text-text-secondary cursor-pointer transition-all duration-fast hover:bg-accent-red/15 hover:text-accent-red" 
+                @click="confirmDeleteMock(selectedMock)" 
+                title="Delete Mock"
+              >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <polyline points="3 6 5 6 21 6"></polyline>
                   <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -483,7 +496,7 @@ const deleteCollection = async () => {
                   <line x1="14" y1="11" x2="14" y2="17"></line>
                 </svg>
               </button>
-              <div class="action-divider"></div>
+              <div class="w-px h-6 bg-border-default mx-2"></div>
               <button class="btn btn-primary" @click="goToEdit(selectedMock.id)">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
@@ -494,39 +507,51 @@ const deleteCollection = async () => {
           </div>
 
           <!-- Two Column Layout -->
-          <div class="content-grid">
+          <div class="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-5 flex-1 min-h-0">
             <!-- Left Column: Info & Response -->
-            <div class="left-column">
+            <div class="flex flex-col gap-4">
               <!-- Info Cards -->
-              <div class="info-grid">
-                <div class="info-card">
-                  <div class="info-label">Status Code</div>
-                  <div :class="['info-value', selectedMock.status >= 200 && selectedMock.status < 300 ? 'text-success' : 'text-warning']">
+              <div class="grid grid-cols-3 gap-3">
+                <div class="p-3.5 bg-bg-secondary border border-border-default rounded-lg">
+                  <div class="text-[10px] font-semibold text-text-muted uppercase tracking-wide mb-1.5">Status Code</div>
+                  <div :class="['text-base font-semibold', selectedMock.status >= 200 && selectedMock.status < 300 ? 'text-accent-green' : 'text-accent-yellow']">
                     {{ selectedMock.status }}
                   </div>
                 </div>
-                <div class="info-card">
-                  <div class="info-label">Delay</div>
-                  <div class="info-value">{{ selectedMock.delay || 0 }}ms</div>
+                <div class="p-3.5 bg-bg-secondary border border-border-default rounded-lg">
+                  <div class="text-[10px] font-semibold text-text-muted uppercase tracking-wide mb-1.5">Delay</div>
+                  <div class="text-base font-semibold text-text-primary">{{ selectedMock.delay || 0 }}ms</div>
                 </div>
-                <div class="info-card">
-                  <div class="info-header">
-                    <div class="info-label">Security</div>
-                    <button class="btn-icon-sm" @click="openSettings" title="Configure Security Settings">
+                <div class="p-3.5 bg-bg-secondary border border-border-default rounded-lg">
+                  <div class="flex items-center justify-between mb-1.5">
+                    <div class="text-[10px] font-semibold text-text-muted uppercase tracking-wide">Security</div>
+                    <button 
+                      class="flex items-center justify-center w-5 h-5 p-0 border-none bg-transparent text-text-muted rounded cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-text-primary" 
+                      @click="openSettings" 
+                      title="Configure Security Settings"
+                    >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="12" cy="12" r="3"></circle>
                         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
                       </svg>
                     </button>
                   </div>
-                  <div class="info-value security-toggle">
+                  <div class="flex items-center gap-2 text-[13px]">
                     <button 
                       @click="toggleSecure(selectedMock)" 
-                      :class="['toggle-btn', { 'active': selectedMock.secure }]"
+                      :class="[
+                        'relative w-9 h-5 border-none rounded-[10px] cursor-pointer transition-colors duration-normal',
+                        selectedMock.secure ? 'bg-accent-green' : 'bg-bg-hover'
+                      ]"
                     >
-                      <span class="toggle-handle"></span>
+                      <span 
+                        :class="[
+                          'absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform duration-normal',
+                          selectedMock.secure ? 'translate-x-4' : 'translate-x-0'
+                        ]"
+                      ></span>
                     </button>
-                    <span :class="selectedMock.secure ? 'text-success' : ''">
+                    <span :class="selectedMock.secure ? 'text-accent-green' : 'text-text-primary'">
                       {{ selectedMock.secure ? 'Protected' : 'Public' }}
                     </span>
                   </div>
@@ -534,9 +559,9 @@ const deleteCollection = async () => {
               </div>
 
               <!-- Response Preview -->
-              <div class="response-section">
-                <div class="section-header">
-                  <h3>Response Body</h3>
+              <div class="flex-1 flex flex-col bg-bg-secondary border border-border-default rounded-lg min-h-[200px] overflow-hidden">
+                <div class="flex items-center justify-between py-2.5 px-3.5 border-b border-border-default flex-shrink-0">
+                  <h3 class="text-xs font-semibold text-text-primary">Response Body</h3>
                   <button class="btn btn-ghost btn-sm" @click="previewResponse(selectedMock.response)">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <path d="M15 3h6v6"></path>
@@ -546,17 +571,17 @@ const deleteCollection = async () => {
                     Expand
                   </button>
                 </div>
-                <div class="response-preview">
-                  <pre class="json-content">{{ JSON.stringify(selectedMock.response, null, 2) }}</pre>
+                <div class="flex-1 p-3.5 overflow-auto">
+                  <pre class="font-mono text-xs leading-normal text-text-primary m-0 whitespace-pre-wrap break-words">{{ JSON.stringify(selectedMock.response, null, 2) }}</pre>
                 </div>
               </div>
             </div>
 
             <!-- Right Column: Code Snippets -->
-            <div class="right-column">
-              <div class="snippets-panel">
-                <div class="snippets-header">
-                  <h3>Code Snippets</h3>
+            <div class="flex flex-col xl:order-none order-first xl:max-h-none max-h-[300px]">
+              <div class="flex flex-col bg-bg-secondary border border-border-default rounded-lg h-full overflow-hidden">
+                <div class="flex items-center justify-between py-2.5 px-3.5 border-b border-border-default">
+                  <h3 class="text-xs font-semibold text-text-primary">Code Snippets</h3>
                   <button class="btn btn-ghost btn-sm" @click="copySnippet" title="Copy to clipboard">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
@@ -565,42 +590,37 @@ const deleteCollection = async () => {
                     Copy
                   </button>
                 </div>
-                <div class="snippets-tabs">
+                <div class="flex border-b border-border-default">
                   <button 
-                    :class="['snippet-tab', { 'active': snippetLang === 'curl' }]"
-                    @click="snippetLang = 'curl'"
-                  >cURL</button>
-                  <button 
-                    :class="['snippet-tab', { 'active': snippetLang === 'javascript' }]"
-                    @click="snippetLang = 'javascript'"
-                  >JavaScript</button>
-                  <button 
-                    :class="['snippet-tab', { 'active': snippetLang === 'python' }]"
-                    @click="snippetLang = 'python'"
-                  >Python</button>
-                  <button 
-                    :class="['snippet-tab', { 'active': snippetLang === 'php' }]"
-                    @click="snippetLang = 'php'"
-                  >PHP</button>
+                    v-for="lang in ['curl', 'javascript', 'python', 'php']"
+                    :key="lang"
+                    :class="[
+                      'flex-1 py-2 px-3 bg-transparent border-none border-b-2 text-[11px] font-medium cursor-pointer -mb-px transition-all duration-fast',
+                      snippetLang === lang ? 'text-accent-orange border-b-accent-orange' : 'text-text-secondary border-b-transparent hover:text-text-primary hover:bg-bg-hover'
+                    ]"
+                    @click="snippetLang = lang"
+                  >
+                    {{ lang === 'curl' ? 'cURL' : lang === 'javascript' ? 'JavaScript' : lang === 'python' ? 'Python' : 'PHP' }}
+                  </button>
                 </div>
-                <div class="snippet-code">
-                  <pre>{{ codeSnippets[snippetLang] }}</pre>
+                <div class="flex-1 p-3.5 overflow-auto bg-bg-tertiary">
+                  <pre class="font-mono text-[11px] leading-normal text-text-primary m-0 whitespace-pre-wrap break-words">{{ codeSnippets[snippetLang] }}</pre>
                 </div>
               </div>
             </div>
           </div>
 
           <!-- Bottom Panel: Try It -->
-          <div class="tryit-panel">
-            <div class="tryit-header">
-              <h3>
+          <div class="bg-bg-secondary border border-border-default rounded-lg overflow-hidden">
+            <div class="flex items-center justify-between py-3 px-4 border-b border-border-default">
+              <h3 class="flex items-center gap-2 text-[13px] font-semibold text-text-primary">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <polygon points="5 3 19 12 5 21 5 3"></polygon>
                 </svg>
                 Try It
               </h3>
-              <div class="tryit-actions">
-                <span v-if="tryItResponse && !tryItLoading" class="tryit-time">
+              <div class="flex items-center gap-3">
+                <span v-if="tryItResponse && !tryItLoading" class="text-xs text-text-muted font-mono">
                   {{ tryItTime }}ms
                 </span>
                 <button 
@@ -608,7 +628,7 @@ const deleteCollection = async () => {
                   @click="sendTestRequest" 
                   :disabled="tryItLoading"
                 >
-                  <svg v-if="tryItLoading" class="spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <svg v-if="tryItLoading" class="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
                   </svg>
                   <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -618,23 +638,28 @@ const deleteCollection = async () => {
                 </button>
               </div>
             </div>
-            <div class="tryit-body">
-              <div v-if="!tryItResponse && !tryItError" class="tryit-empty">
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3">
+            <div class="p-4 min-h-[120px]">
+              <div v-if="!tryItResponse && !tryItError" class="flex flex-col items-center justify-center gap-3 py-6 text-text-muted text-center">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" class="opacity-30">
                   <circle cx="12" cy="12" r="10"></circle>
                   <polygon points="10 8 16 12 10 16 10 8"></polygon>
                 </svg>
-                <p>Click "Send Request" to test this mock endpoint</p>
+                <p class="text-[13px]">Click "Send Request" to test this mock endpoint</p>
               </div>
-              <div v-else class="tryit-result">
-                <div class="result-status">
-                  <span :class="['status-badge', tryItError ? 'status-error' : 'status-success']">
+              <div v-else class="flex flex-col gap-3">
+                <div class="flex items-center gap-3">
+                  <span 
+                    :class="[
+                      'py-1 px-2.5 rounded text-[11px] font-semibold uppercase',
+                      tryItError ? 'bg-accent-red/15 text-accent-red' : 'bg-accent-green/15 text-accent-green'
+                    ]"
+                  >
                     {{ tryItError ? 'Error' : 'Success' }}
                   </span>
-                  <span class="result-info">Response received in {{ tryItTime }}ms</span>
+                  <span class="text-xs text-text-muted">Response received in {{ tryItTime }}ms</span>
                 </div>
-                <div class="result-content">
-                  <pre>{{ tryItError || JSON.stringify(tryItResponse, null, 2) }}</pre>
+                <div class="bg-bg-tertiary rounded-md p-3.5 max-h-[200px] overflow-auto">
+                  <pre class="font-mono text-xs leading-normal text-text-primary m-0 whitespace-pre-wrap break-words">{{ tryItError || JSON.stringify(tryItResponse, null, 2) }}</pre>
                 </div>
               </div>
             </div>
@@ -645,10 +670,15 @@ const deleteCollection = async () => {
 
     <!-- Settings Modal -->
     <Modal :show="showSettingsModal" title="Settings" @close="showSettingsModal = false">
-      <div class="form-group">
-        <label>Global Bearer Token Secret</label>
-        <input v-model="settingsForm.bearerToken" type="text" placeholder="my-secret-token" class="form-input" />
-        <p class="form-hint">If set, secured endpoints will require this exact token.</p>
+      <div class="mb-4">
+        <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide mb-1.5">Global Bearer Token Secret</label>
+        <input 
+          v-model="settingsForm.bearerToken" 
+          type="text" 
+          placeholder="my-secret-token" 
+          class="w-full py-2.5 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(0,122,255,0.2)]"
+        />
+        <p class="text-xs text-text-muted mt-1.5">If set, secured endpoints will require this exact token.</p>
       </div>
       <template #footer>
         <button class="btn btn-secondary" @click="showSettingsModal = false">Cancel</button>
@@ -658,13 +688,20 @@ const deleteCollection = async () => {
 
     <!-- Create Resource Modal -->
     <Modal :show="showResourceModal" title="Create Full Resource" @close="showResourceModal = false">
-      <div class="form-group">
-        <label>Resource Name (plural)</label>
-        <input v-model="resourceForm.name" placeholder="users" class="form-input" />
+      <div class="mb-4">
+        <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide mb-1.5">Resource Name (plural)</label>
+        <input 
+          v-model="resourceForm.name" 
+          placeholder="users" 
+          class="w-full py-2.5 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(0,122,255,0.2)]"
+        />
       </div>
-      <div class="form-group">
-        <label>Base Path Prefix</label>
-        <input v-model="resourceForm.basePath" class="form-input" />
+      <div class="mb-4">
+        <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide mb-1.5">Base Path Prefix</label>
+        <input 
+          v-model="resourceForm.basePath" 
+          class="w-full py-2.5 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(0,122,255,0.2)]"
+        />
       </div>
       <template #footer>
         <button class="btn btn-secondary" @click="showResourceModal = false">Cancel</button>
@@ -674,17 +711,17 @@ const deleteCollection = async () => {
 
     <!-- Response Preview Modal -->
     <Modal :show="showPreviewModal" title="Response Preview" size="lg" @close="showPreviewModal = false">
-      <div class="preview-content">
-        <pre class="json-content">{{ previewContent }}</pre>
+      <div class="max-h-[60vh] overflow-auto bg-bg-tertiary rounded-md p-4">
+        <pre class="font-mono text-xs leading-normal text-text-primary m-0 whitespace-pre-wrap break-words">{{ previewContent }}</pre>
       </div>
     </Modal>
 
     <!-- Delete Confirmation Modal -->
     <Modal :show="showDeleteConfirm" title="Delete Mock" @close="showDeleteConfirm = false">
-      <p class="confirm-text">
+      <p class="text-text-secondary leading-relaxed">
         Are you sure you want to delete this mock endpoint?
         <br />
-        <code class="font-mono">{{ mockToDelete?.method }} {{ mockToDelete?.path }}</code>
+        <code class="inline-block mt-2 py-1.5 px-2.5 bg-bg-tertiary rounded text-accent-orange font-mono">{{ mockToDelete?.method }} {{ mockToDelete?.path }}</code>
       </p>
       <template #footer>
         <button class="btn btn-secondary" @click="showDeleteConfirm = false">Cancel</button>
@@ -698,26 +735,33 @@ const deleteCollection = async () => {
       :title="collectionModalMode === 'create' ? 'Create Collection' : 'Edit Collection'" 
       @close="showCollectionModal = false"
     >
-      <div class="form-group">
-        <label>Collection Name</label>
+      <div class="mb-4">
+        <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide mb-1.5">Collection Name</label>
         <input 
           v-model="collectionForm.name" 
           placeholder="My Project" 
-          class="form-input" 
+          class="w-full py-2.5 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(0,122,255,0.2)] disabled:opacity-50 disabled:cursor-not-allowed"
           :disabled="collectionModalMode === 'edit' && collectionForm.name === 'root'"
         />
       </div>
-      <div class="form-group">
-        <label>Description (optional)</label>
-        <input v-model="collectionForm.description" placeholder="API endpoints for..." class="form-input" />
+      <div class="mb-4">
+        <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide mb-1.5">Description (optional)</label>
+        <input 
+          v-model="collectionForm.description" 
+          placeholder="API endpoints for..." 
+          class="w-full py-2.5 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(0,122,255,0.2)]"
+        />
       </div>
-      <div class="form-group">
-        <label>Color</label>
-        <div class="color-picker">
+      <div class="mb-4">
+        <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide mb-1.5">Color</label>
+        <div class="flex gap-2 flex-wrap">
           <button 
             v-for="color in collectionColors" 
             :key="color"
-            :class="['color-option', { 'active': collectionForm.color === color }]"
+            :class="[
+              'w-8 h-8 rounded-md border-2 cursor-pointer transition-all duration-fast hover:scale-110',
+              collectionForm.color === color ? 'border-text-primary shadow-[0_0_0_2px_var(--bg-primary),0_0_0_4px_var(--text-muted)]' : 'border-transparent'
+            ]"
             :style="{ backgroundColor: color }"
             @click="collectionForm.color = color"
           ></button>
@@ -733,10 +777,10 @@ const deleteCollection = async () => {
 
     <!-- Delete Collection Confirmation Modal -->
     <Modal :show="showDeleteCollectionConfirm" title="Delete Collection" @close="showDeleteCollectionConfirm = false">
-      <p class="confirm-text">
+      <p class="text-text-secondary leading-relaxed">
         Are you sure you want to delete this collection?
         <br />
-        <code class="font-mono">{{ collectionToDelete?.name }}</code>
+        <code class="inline-block mt-2 py-1.5 px-2.5 bg-bg-tertiary rounded text-accent-orange font-mono">{{ collectionToDelete?.name }}</code>
         <br /><br />
         <strong>Note:</strong> All mocks in this collection will be moved to the "root" collection.
       </p>
@@ -747,580 +791,3 @@ const deleteCollection = async () => {
     </Modal>
   </div>
 </template>
-
-<style scoped>
-.app-container {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  overflow: hidden;
-}
-
-.app-body {
-  display: flex;
-  flex: 1;
-  overflow: hidden;
-}
-
-.main-content {
-  flex: 1;
-  overflow-y: auto;
-  background-color: var(--bg-primary);
-}
-
-/* Empty State */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  padding: 40px;
-  text-align: center;
-}
-
-.empty-illustration {
-  margin-bottom: 24px;
-}
-
-.empty-title {
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 8px;
-}
-
-.empty-text {
-  color: var(--text-secondary);
-  margin-bottom: 24px;
-  max-width: 340px;
-}
-
-/* Mock Detail */
-.mock-detail {
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  height: calc(100vh - 48px);
-  overflow-y: auto;
-}
-
-.url-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  background-color: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-}
-
-.url-input {
-  flex: 1;
-  padding: 8px 12px;
-  background-color: var(--bg-input);
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.url-text {
-  font-size: 14px;
-  color: var(--text-primary);
-}
-
-/* URL Actions */
-.url-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.action-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  background: none;
-  border: none;
-  border-radius: 6px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 150ms ease;
-}
-
-.action-btn:hover {
-  background-color: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.action-btn--danger:hover {
-  background-color: rgba(239, 83, 80, 0.15);
-  color: var(--accent-red);
-}
-
-.action-divider {
-  width: 1px;
-  height: 24px;
-  background-color: var(--border-color);
-  margin: 0 8px;
-}
-
-/* Content Grid - Two Columns */
-.content-grid {
-  display: grid;
-  grid-template-columns: 1fr 380px;
-  gap: 20px;
-  flex: 1;
-  min-height: 0;
-}
-
-.left-column {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.right-column {
-  display: flex;
-  flex-direction: column;
-}
-
-/* Info Grid */
-.info-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-}
-
-.info-card {
-  padding: 14px;
-  background-color: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-}
-
-.info-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 6px;
-}
-
-.info-header .info-label {
-  margin-bottom: 0;
-}
-
-.btn-icon-sm {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 150ms ease;
-}
-
-.btn-icon-sm:hover {
-  background-color: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.info-label {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 6px;
-}
-
-.info-value {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.text-success { color: var(--accent-green); }
-.text-warning { color: var(--accent-yellow); }
-
-.security-toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-}
-
-.toggle-btn {
-  position: relative;
-  width: 36px;
-  height: 20px;
-  background-color: var(--bg-hover);
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  transition: background-color 200ms ease;
-}
-
-.toggle-btn.active {
-  background-color: var(--accent-green);
-}
-
-.toggle-handle {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  background-color: white;
-  border-radius: 50%;
-  transition: transform 200ms ease;
-}
-
-.toggle-btn.active .toggle-handle {
-  transform: translateX(16px);
-}
-
-/* Response Section */
-.response-section {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  background-color: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  min-height: 200px;
-  overflow: hidden;
-}
-
-.section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border-color);
-  flex-shrink: 0;
-}
-
-.section-header h3 {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.response-preview {
-  flex: 1;
-  padding: 14px;
-  overflow: auto;
-}
-
-.json-content {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--text-primary);
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.preview-content {
-  max-height: 60vh;
-  overflow: auto;
-  background-color: var(--bg-tertiary);
-  border-radius: 6px;
-  padding: 16px;
-}
-
-/* Snippets Panel */
-.snippets-panel {
-  display: flex;
-  flex-direction: column;
-  background-color: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  height: 100%;
-  overflow: hidden;
-}
-
-.snippets-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.snippets-header h3 {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.snippets-tabs {
-  display: flex;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.snippet-tab {
-  flex: 1;
-  padding: 8px 12px;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--text-secondary);
-  font-size: 11px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 150ms ease;
-  margin-bottom: -1px;
-}
-
-.snippet-tab:hover {
-  color: var(--text-primary);
-  background-color: var(--bg-hover);
-}
-
-.snippet-tab.active {
-  color: var(--accent-orange);
-  border-bottom-color: var(--accent-orange);
-}
-
-.snippet-code {
-  flex: 1;
-  padding: 14px;
-  overflow: auto;
-  background-color: var(--bg-tertiary);
-}
-
-.snippet-code pre {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  line-height: 1.5;
-  color: var(--text-primary);
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-/* Try It Panel */
-.tryit-panel {
-  background-color: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.tryit-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.tryit-header h3 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.tryit-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.tryit-time {
-  font-size: 12px;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-}
-
-.tryit-body {
-  padding: 16px;
-  min-height: 120px;
-}
-
-.tryit-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 24px;
-  color: var(--text-muted);
-  text-align: center;
-}
-
-.tryit-empty p {
-  font-size: 13px;
-}
-
-.tryit-result {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.result-status {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.status-badge {
-  padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-.status-success {
-  background-color: rgba(115, 191, 105, 0.15);
-  color: var(--accent-green);
-}
-
-.status-error {
-  background-color: rgba(239, 83, 80, 0.15);
-  color: var(--accent-red);
-}
-
-.result-info {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.result-content {
-  background-color: var(--bg-tertiary);
-  border-radius: 6px;
-  padding: 14px;
-  max-height: 200px;
-  overflow: auto;
-}
-
-.result-content pre {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--text-primary);
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.spinner {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-/* Form Styles */
-.form-group {
-  margin-bottom: 16px;
-}
-
-.form-group label {
-  display: block;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  margin-bottom: 6px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.form-input {
-  width: 100%;
-  padding: 10px 12px;
-  background-color: var(--bg-input);
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  color: var(--text-primary);
-  font-size: 14px;
-}
-
-.form-input:focus {
-  outline: none;
-  border-color: var(--accent-blue);
-  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
-}
-
-.form-input:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.form-hint {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-top: 6px;
-}
-
-.confirm-text {
-  color: var(--text-secondary);
-  line-height: 1.6;
-}
-
-.confirm-text code {
-  display: inline-block;
-  margin-top: 8px;
-  padding: 6px 10px;
-  background-color: var(--bg-tertiary);
-  border-radius: 4px;
-  color: var(--accent-orange);
-}
-
-/* Color Picker */
-.color-picker {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.color-option {
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  border: 2px solid transparent;
-  cursor: pointer;
-  transition: all 150ms ease;
-}
-
-.color-option:hover {
-  transform: scale(1.1);
-}
-
-.color-option.active {
-  border-color: var(--text-primary);
-  box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--text-muted);
-}
-
-/* Responsive */
-@media (max-width: 1200px) {
-  .content-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .right-column {
-    order: -1;
-  }
-  
-  .snippets-panel {
-    max-height: 300px;
-  }
-}
-</style>
