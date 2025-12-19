@@ -82,13 +82,29 @@ const refresh = () => {
   refreshCollections();
 };
 
+// Helper to build full API URL with collection prefix
+const buildFullUrl = (mock: Mock) => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://your-domain.com';
+    const mockCollection = mock.collection || 'root';
+    
+    // Find collection name from ID
+    const collection = collections.value?.find(c => c.id === mockCollection);
+    const collectionName = collection?.name || 'root';
+    
+    // Root collection uses direct path, other collections use /c/{collection-name}/ prefix
+    if (collectionName === 'root') {
+        return `${origin}${mock.path}`;
+    } else {
+        return `${origin}/c/${collectionName}${mock.path}`;
+    }
+};
+
 // Code Snippets Generator
 const codeSnippets = computed(() => {
     if (!selectedMock.value) return {};
     
     const mock = selectedMock.value;
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://your-domain.com';
-    const url = `${origin}${mock.path}`;
+    const url = buildFullUrl(mock);
     const authHeader = mock.secure ? `Authorization: Bearer YOUR_TOKEN` : '';
     
     return {
@@ -183,7 +199,16 @@ const sendTestRequest = async () => {
     
     try {
         const mock = selectedMock.value;
-        const response = await $fetch(mock.path, {
+        const mockCollection = mock.collection || 'root';
+        
+        // Find collection name from ID
+        const collection = collections.value?.find(c => c.id === mockCollection);
+        const collectionName = collection?.name || 'root';
+        
+        // Build the correct path with collection prefix
+        const requestPath = collectionName === 'root' ? mock.path : `/c/${collectionName}${mock.path}`;
+        
+        const response = await $fetch(requestPath, {
             method: mock.method,
             headers: mock.secure ? { 'Authorization': `Bearer ${settingsForm.value.bearerToken || 'test-token'}` } : {}
         });
@@ -284,9 +309,9 @@ const exportOpenAPI = async () => {
    URL.revokeObjectURL(url);
 };
 
-const copyPath = (path: string) => {
-    const origin = window.location.origin;
-    navigator.clipboard.writeText(`${origin}${path}`);
+const copyPath = (mock: Mock) => {
+    const url = buildFullUrl(mock);
+    navigator.clipboard.writeText(url);
 };
 
 const duplicateMock = async (mock: any) => {
@@ -435,10 +460,10 @@ const deleteCollection = async () => {
           <div class="url-bar">
             <MethodBadge :method="selectedMock.method" size="lg" />
             <div class="url-input">
-              <span class="url-text font-mono">{{ selectedMock.path }}</span>
+              <span class="url-text font-mono">{{ buildFullUrl(selectedMock) }}</span>
             </div>
             <div class="url-actions">
-              <button class="action-btn" @click="copyPath(selectedMock.path)" title="Copy URL">
+              <button class="action-btn" @click="copyPath(selectedMock)" title="Copy URL">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
                   <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>

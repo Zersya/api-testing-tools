@@ -1,3 +1,4 @@
+
 interface Mock {
     id: string;
     collection: string;
@@ -18,11 +19,6 @@ interface Collection {
 export default defineEventHandler(async (event) => {
     const originalPath = event.path;
     const method = event.method;
-
-    // Avoid intercepting admin API and auth routes
-    if (originalPath.startsWith('/api/admin') || originalPath.startsWith('/api/auth')) {
-        return;
-    }
 
     const mocksStorage = useStorage('mocks');
     const collectionsStorage = useStorage('collections');
@@ -56,8 +52,11 @@ export default defineEventHandler(async (event) => {
             });
         }
     } else {
-        // No /c/ prefix - use root collection
-        targetCollectionId = 'root';
+        // This shouldn't happen given the route location, but fallback safely
+        throw createError({
+            statusCode: 404,
+            statusMessage: 'Invalid collection route'
+        });
     }
 
     const mockKeys = await mocksStorage.getKeys();

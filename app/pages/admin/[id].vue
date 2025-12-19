@@ -62,6 +62,21 @@ const formatJson = () => {
   }
 };
 
+const handleKeydown = (e: KeyboardEvent) => {
+  if (e.shiftKey && e.altKey && e.code === 'KeyF') {
+    e.preventDefault();
+    formatJson();
+  }
+};
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeydown);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown);
+});
+
 const save = async () => {
   if (!validateJson()) {
     return;
@@ -158,6 +173,13 @@ const getCollectionColor = (collectionId: string) => {
           <div class="panel-header">
             <div class="panel-header-left">
               <span class="panel-title">Response JSON</span>
+              <button class="btn-xs btn-secondary" @click="formatJson" title="Auto-format JSON (Shift+Alt+F)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;">
+                  <polyline points="16 18 22 12 16 6"></polyline>
+                  <polyline points="8 6 2 12 8 18"></polyline>
+                </svg>
+                Format (Shift+Alt+F)
+              </button>
               <span v-if="jsonError" class="json-error">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <circle cx="12" cy="12" r="10"></circle>
@@ -167,13 +189,6 @@ const getCollectionColor = (collectionId: string) => {
                 {{ jsonError }}
               </span>
             </div>
-            <button class="btn-xs btn-secondary" @click="formatJson" title="Auto-format JSON">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;">
-                <polyline points="16 18 22 12 16 6"></polyline>
-                <polyline points="8 6 2 12 8 18"></polyline>
-              </svg>
-              Format
-            </button>
           </div>
           <textarea 
             v-model="form.response" 

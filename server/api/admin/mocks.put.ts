@@ -20,16 +20,18 @@ export default defineEventHandler(async (event) => {
 
     const normalizedMethod = (body.method || existing.method).toUpperCase();
     const newPath = body.path || existing.path;
+    const targetCollection = body.collection ?? existing.collection ?? 'root';
 
-    // Check for duplicates (excluding current ID)
+    // Check for duplicates within the SAME collection only (excluding current ID)
     const keys = await storage.getKeys();
     for (const key of keys) {
         if (key === body.id) continue; // Skip self
         const mock: any = await storage.getItem(key);
-        if (mock && mock.path === newPath && mock.method === normalizedMethod) {
+        const mockCollection = mock?.collection || 'root';
+        if (mock && mock.path === newPath && mock.method === normalizedMethod && mockCollection === targetCollection) {
             throw createError({
                 statusCode: 409,
-                statusMessage: `Mock with method ${normalizedMethod} and path ${newPath} already exists`
+                statusMessage: `Mock with method ${normalizedMethod} and path ${newPath} already exists in collection "${targetCollection}"`
             });
         }
     }

@@ -26,17 +26,26 @@ export default defineEventHandler(async (event) => {
         const mock = await mocksStorage.getItem(key) as any;
         if (!mock) continue;
 
+        const collectionId = mock.collection || 'root';
+        const collectionName = collectionsMap[collectionId]?.name || 'root';
+        usedTags.add(collectionName);
+
+        // Build the full path with collection prefix
+        // Root collection: /api/users -> /api/users
+        // Other collections: /api/users -> /c/{collection-name}/api/users
+        let basePath = mock.path;
+        if (collectionName !== 'root') {
+            basePath = `/c/${collectionName}${mock.path}`;
+        }
+
         // Convert path params :id to {id}
-        const openApiPath = mock.path.replace(/:([a-zA-Z0-9_]+)/g, '{$1}');
+        const openApiPath = basePath.replace(/:([a-zA-Z0-9_]+)/g, '{$1}');
 
         if (!paths[openApiPath]) {
             paths[openApiPath] = {};
         }
 
         const method = mock.method.toLowerCase();
-        const collectionId = mock.collection || 'root';
-        const collectionName = collectionsMap[collectionId]?.name || 'root';
-        usedTags.add(collectionName);
 
         // Extract parameters from path
         const parameters: { name: string; in: string; required: boolean; schema: { type: string } }[] = [];
@@ -63,7 +72,7 @@ export default defineEventHandler(async (event) => {
         };
 
         paths[openApiPath][method] = {
-            summary: `${mock.method} ${mock.path}`,
+            summary: `${mock.method} ${basePath}`,
             tags: [collectionName],
             parameters,
             responses: {

@@ -1,1 +1,0 @@
-{"id":"13214708-e408-4e83-965a-3def2c530c08","path":"/api/users/:id","method":"GET","status":200,"response":{"id":1,"name":"users 1","details":"Detailed info"},"delay":0,"createdAt":"2025-12-16T04:36:39.168Z","secure":true,"updatedAt":"2025-12-16T04:41:53.410Z"}
