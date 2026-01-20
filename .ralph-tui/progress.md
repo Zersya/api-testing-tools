@@ -9,6 +9,37 @@ after each iteration and included in agent prompts for context.
 
 ---
 
+### Panel-based Sidebar Pattern
+Use `activeView` state to switch sidebar panels without page navigation:
+- `activeView` ref with type union: `'hierarchy' | 'mocks' | 'history' | 'definitions'`
+- Each panel has its own component that accepts workspaceId prop
+- Panels emit typed events for actions (viewDocs, generateMocks, etc.)
+- Parent page handles modal state and API calls
+- Conditional rendering: `<div v-if="activeView === 'definitions'"><ApiDefinitionsPanel @view-docs="..." /></div>`
+
+### API Data Derivation Pattern
+Enhance list endpoints to include derived data without storing redundant info:
+- Parse stored content on-the-fly in list endpoint
+- Include computed fields (e.g., endpointCount) in response
+- Wrap parsing in try-catch to avoid breaking entire list on one bad record
+- Example: `/api/definitions/index.get.ts` parses each spec to calculate endpoint count
+
+### Definition Actions Pattern
+Standard UI flow for managing imported definitions:
+- **View Docs**: Open modal with parsed data displayed as table, show method badges
+- **Generate Mocks**: Open modal with endpoint selection checkboxes, call `/api/definitions/[id]/generate-mocks`
+- **Re-import**: Open existing ImportModal; parent handles the logic
+- **Delete**: Show confirmation dialog, call DELETE `/api/definitions/[id]`, remove from list on success
+
+### Specification Parsing Pattern
+Parse stored spec content for derived data:
+- Detect format by checking trimmed content starts with `{` or `[` for JSON, otherwise YAML
+- Use `JSON.parse()` for JSON, `parseYAML()` for YAML
+ Pass parsed object to `parseOpenAPISpec()` to extract endpoints and metadata
+- Wrap all parsing in try-catch; log errors but don't fail entire operation
+
+---
+
 ### Unified Multi-Type Modal Pattern
 Use a single modal component to handle multiple import types (OpenAPI, Postman) by:
 - Two-level tab system: Type tabs (OpenAPI/Postman) + Method tabs (File/URL/Paste)
@@ -239,6 +270,40 @@ app/components/AppHeader.vue` (updated)\n- `app/pages/admin/index.vue` (updated)
 **Status:** Completed
 
 **Notes:**
-\n```bash\nnpm run dev\n```\n\nNavigate to `/admin`, click the **Import** button in the header, and test:\n1. Click **Postman** tab\n2. **File Tab**: Drag & drop a Postman collection JSON file\n3. **Environment Import**: Enable checkbox and upload environment file\n4. **URL Tab**: Enter collection URL (optional environment URL)\n5. **Paste Tab**: Paste collection JSON (optional environment JSON)\n\nThe backend API at `/api/definitions/import/postman` handles parsing, validation, and storage.\n\n
+\n```bash\nnpm run dev```\n\nNavigate to `/admin`, click the **Import** button in the header, and test:\n1. Click **Postman** tab\n2. **File Tab**: Drag & drop a Postman collection JSON file\n3. **Environment Import**: Enable checkbox and upload environment file\n4. **URL Tab**: Enter collection URL (optional environment URL)\n5. **Paste Tab**: Paste collection JSON (optional environment JSON)\n\nThe backend API at `/api/definitions/import/postman` handles parsing, validation, and storage.\n
+
+---
+
+## [January 21, 2026] - US-034
+### What was implemented
+- ApiDefinitionsPanel component for displaying and managing imported API definitions
+- Enhanced definitions list API (`/api/definitions/index.get.ts`) to include endpoint count by parsing specs on the fly
+- DELETE endpoint for API definitions (`/api/definitions/[id].delete.ts`)
+- Updated sidebar navigation to switch between views (Mocks, Definitions, History, Workspace) instead of using NuxtLink for Definitions
+- API Documentation Modal displaying parsed spec details as a formatted table with method badges
+- Generate Mocks Modal for selecting endpoints and configuring mock generation
+- Full CRUD-like actions: View Docs, Generate Mocks, Re-import, and Delete for each definition
+- Relative timestamps and format badges (OpenAPI/Postman icons) in the list view
+
+### Files changed
+- app/components/ApiDefinitionsPanel.vue (new)
+- app/components/AppSidebar.vue (updated - added definitions view, ApiDefinitionsPanel integration, event handlers)
+- app/pages/admin/index.vue (updated - added definition handlers, modals, MethodBadge import)
+- server/api/definitions/index.get.ts (updated - added endpoint count calculation)
+- server/api/definitions/[id].delete.ts (new - delete endpoint)
+
+### Learnings:
+- **Sidebar Panel Pattern**: Use `activeView` state to switch between different sidebar panels (Mocks, Definitions, History, Workspace) without page navigation; each panel is a component that emits events back to the parent.
+- **API Enhancement Pattern**: Enhance list endpoints to include derived data (like endpoint count) by parsing stored content on the fly; this avoids storing redundant data while providing the UI with needed information.
+- **Definition Management Flow**: View Docs uses a modal with a table display; Generate Mocks uses the existing generate-mocks API with endpoint selection; Re-import opens existing ImportModal; Delete calls new DELETE endpoint.
+- **Panel Component Pattern**: Accept workspaceId prop (consistency with other panels), fetch data on mount, emit typed events for each action (viewDocs, generateMocks, reimport, delete).
+- **Relative Time Formatting**: Reused the relative timestamp pattern from RequestHistoryPanel for consistency across list views.
+- **Event Handler Pattern**: Parent page (admin/index.vue) handles panel events and manages modal state; panel components remain focused on display and action triggering.
+
+### Patterns discovered:
+- **Panel-based Sidebar Pattern**: Use `activeView` ref (type union) to control which panel is shown; each panel conditionally rendered with `v-if`; panels emit events for actions; parent handles modal state.
+- **API Data Derivation Pattern**: When list endpoint needs computed data (e.g., endpoint count), parse stored content on the fly and include in response; catch parsing errors to avoid breaking the entire list.
+- **Definition Actions Pattern**: View Docs → modal with parsed data table; Generate Mocks → modal with endpoint selection; Re-import → reuse existing import modal; Delete → confirmation + DELETE API call.
+- **Specification Parsing Pattern**: Use existing parsers (parseOpenAPISpec, parseYAML) to extract derived data; handle JSON/YAML detection based on content structure; wrap in try-catch for robustness.
 
 ---
