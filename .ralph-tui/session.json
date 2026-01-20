@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "sessionId": "52ce48cb-d294-40aa-8651-254622eadbd9",
+  "sessionId": "cd68ab27-67ee-4314-a5c5-6f6d929b781c",
   "status": "running",
-  "startedAt": "2026-01-20T16:09:17.145Z",
-  "updatedAt": "2026-01-20T17:24:22.746Z",
-  "currentIteration": 9,
+  "startedAt": "2026-01-20T23:40:21.803Z",
+  "updatedAt": "2026-01-20T23:51:48.156Z",
+  "currentIteration": 4,
   "maxIterations": 10,
-  "tasksCompleted": 9,
+  "tasksCompleted": 4,
   "isPaused": false,
   "agentPlugin": "opencode",
   "model": "fireworks-ai/accounts/fireworks/models/glm-4p7",
@@ -109,103 +109,103 @@
         "id": "US-016",
         "title": "Generate mocks from API definition",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-017",
         "title": "Variable substitution engine",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-018",
         "title": "Sidebar with Workspace/Project/Collection tree",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-019",
         "title": "Request Builder UI - URL and method",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-020",
         "title": "Request Builder UI - Query params editor",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-021",
         "title": "Request Builder UI - Headers editor",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-022",
         "title": "Request Builder UI - Body editor",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-023",
         "title": "Request Builder UI - Auth editor",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-024",
         "title": "Response Viewer UI - Body display",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-025",
         "title": "Response Viewer UI - Metadata display",
-        "status": "open",
+        "status": "completed",
         "completedInSession": false
       },
       {
         "id": "US-026",
         "title": "Environment switcher UI",
-        "status": "open",
+        "status": "completed",
         "completedInSession": false
       },
       {
         "id": "US-027",
         "title": "Environment management UI",
-        "status": "open",
+        "status": "completed",
         "completedInSession": false
       },
       {
         "id": "US-028",
         "title": "Variable highlighting and autocomplete",
-        "status": "open",
+        "status": "completed",
         "completedInSession": false
       },
       {
         "id": "US-029",
         "title": "Save request dialog",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-030",
         "title": "Request tabs UI",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-031",
         "title": "Request history panel",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-032",
         "title": "OpenAPI import UI",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-033",
@@ -309,98 +309,48 @@
     {
       "iteration": 1,
       "status": "completed",
-      "taskId": "US-016",
-      "taskTitle": "Generate mocks from API definition",
+      "taskId": "US-029",
+      "taskTitle": "Save request dialog",
       "taskCompleted": true,
-      "durationMs": 627357,
-      "startedAt": "2026-01-20T16:09:18.513Z",
-      "endedAt": "2026-01-20T16:19:45.870Z"
+      "durationMs": 158700,
+      "startedAt": "2026-01-20T23:40:26.975Z",
+      "endedAt": "2026-01-20T23:43:05.675Z"
     },
     {
       "iteration": 2,
       "status": "completed",
-      "taskId": "US-017",
-      "taskTitle": "Variable substitution engine",
+      "taskId": "US-030",
+      "taskTitle": "Request tabs UI",
       "taskCompleted": true,
-      "durationMs": 291227,
-      "startedAt": "2026-01-20T16:19:46.904Z",
-      "endedAt": "2026-01-20T16:24:38.131Z"
+      "durationMs": 187006,
+      "startedAt": "2026-01-20T23:43:06.724Z",
+      "endedAt": "2026-01-20T23:46:13.730Z"
     },
     {
       "iteration": 3,
       "status": "completed",
-      "taskId": "US-018",
-      "taskTitle": "Sidebar with Workspace/Project/Collection tree",
+      "taskId": "US-031",
+      "taskTitle": "Request history panel",
       "taskCompleted": true,
-      "durationMs": 1917290,
-      "startedAt": "2026-01-20T16:24:39.176Z",
-      "endedAt": "2026-01-20T16:56:36.466Z"
+      "durationMs": 154454,
+      "startedAt": "2026-01-20T23:46:14.760Z",
+      "endedAt": "2026-01-20T23:48:49.214Z"
     },
     {
       "iteration": 4,
       "status": "completed",
-      "taskId": "US-019",
-      "taskTitle": "Request Builder UI - URL and method",
+      "taskId": "US-032",
+      "taskTitle": "OpenAPI import UI",
       "taskCompleted": true,
-      "durationMs": 354556,
-      "startedAt": "2026-01-20T16:56:37.490Z",
-      "endedAt": "2026-01-20T17:02:32.046Z"
-    },
-    {
-      "iteration": 5,
-      "status": "completed",
-      "taskId": "US-020",
-      "taskTitle": "Request Builder UI - Query params editor",
-      "taskCompleted": true,
-      "durationMs": 340403,
-      "startedAt": "2026-01-20T17:02:33.079Z",
-      "endedAt": "2026-01-20T17:08:13.482Z"
-    },
-    {
-      "iteration": 6,
-      "status": "completed",
-      "taskId": "US-021",
-      "taskTitle": "Request Builder UI - Headers editor",
-      "taskCompleted": true,
-      "durationMs": 171228,
-      "startedAt": "2026-01-20T17:08:14.504Z",
-      "endedAt": "2026-01-20T17:11:05.732Z"
-    },
-    {
-      "iteration": 7,
-      "status": "completed",
-      "taskId": "US-022",
-      "taskTitle": "Request Builder UI - Body editor",
-      "taskCompleted": true,
-      "durationMs": 151843,
-      "startedAt": "2026-01-20T17:11:06.750Z",
-      "endedAt": "2026-01-20T17:13:38.593Z"
-    },
-    {
-      "iteration": 8,
-      "status": "completed",
-      "taskId": "US-023",
-      "taskTitle": "Request Builder UI - Auth editor",
-      "taskCompleted": true,
-      "durationMs": 207295,
-      "startedAt": "2026-01-20T17:13:39.611Z",
-      "endedAt": "2026-01-20T17:17:06.906Z"
-    },
-    {
-      "iteration": 9,
-      "status": "completed",
-      "taskId": "US-024",
-      "taskTitle": "Response Viewer UI - Body display",
-      "taskCompleted": true,
-      "durationMs": 433794,
-      "startedAt": "2026-01-20T17:17:07.924Z",
-      "endedAt": "2026-01-20T17:24:21.718Z"
+      "durationMs": 176879,
+      "startedAt": "2026-01-20T23:48:50.236Z",
+      "endedAt": "2026-01-20T23:51:47.115Z"
     }
   ],
   "skippedTaskIds": [],
   "cwd": "/Users/zeinersyad/Playground/mock-service",
   "activeTaskIds": [
-    "US-025"
+    "US-033"
   ],
   "subagentPanelVisible": false
 }

@@ -5,537 +5,231 @@ after each iteration and included in agent prompts for context.
 
 ## Codebase Patterns (Study These First)
 
-**Mock Pattern: Mock Data Storage**
-- Use `useStorage('mocks')` for accessing Nitro storage layer
-- Mocks are stored as flat key-value pairs using UUID as key
-- Each mock contains: id, collection, path, method, status, response, delay, secure, createdAt, sourceDefinitionId
-- When updating existing mocks, iterate through all keys to find matching method/path/collection combination to prevent duplicates
-
-**API Definition Pattern**
-- API definitions are stored in SQLite database using Drizzle ORM
-- Spec content can be JSON or YAML (stored as text)
-- Parse on-demand using `parseOpenAPISpec` to extract endpoints and schemas
-- Return `parsedInfo` from GET endpoint to avoid parsing on multiple requests
-
-**Schema Generation Pattern**
-- `generateMockData` function recursively generates mock data from OpenAPI schemas
-- Handles: $ref, allOf, oneOf, anyOf, basic types (string, number, integer, boolean, null, object, array)
-- Supports common formats: date-time, date, email, uuid, uri
-- Prevents infinite recursion with depth limit (max 5)
-- Always check for example/default first, then fall back to generated data
-
-**UI Modal Pattern**
-- Use reactive refs for modal visibility (showGenerateModal, showImportModal)
-- Load data on modal open with async function (openGenerateModal)
-- Select/deselect all functionality for endpoint selection
-- Show loading state and error handling in UI
-
-**Variable Substitution Pattern**
-- Use `substituteVariables(input, context)` to replace {{variableName}} patterns
-- Context object defines scope: { environmentId, collectionId, projectId, workspaceId }
-- Engine respects precedence: environment > collection > project > global (workspace)
-- Supports nested references with circular reference protection
-- Returns both substituted value and warnings for undefined variables
-- Use `extractVariables(input)` to get list of all variable names in a string
-
-**Workspace Hierarchy Tree Pattern**
-- Build recursive tree structure from flat database queries using parent references
-- Use Set<string> for tracking expanded/collapsed state (efficient O(1) lookups)
-- Recursive component pattern for nested folder structures
-- Method color coding: GET=green(#22c55e), POST=blue(#3b82f6), PUT=orange(#f97316), DELETE=red(#ef4444), PATCH=yellow(#eab308), HEAD=purple(#8b5cf6), OPTIONS=gray(#64748b)
-- API endpoint fetches entire tree with pre-computed counts in single request for performance
-- Context menu uses Teleport to render outside overflow containers
-- Tree build: folder tree, collection tree, project tree - recursively build from flat data array
-
-**Request Builder Pattern**
-- RequestBuilder component provides complete HTTP request building interface
-- Method dropdown uses Tailwind color classes for visual feedback (text-method-get, text-method-post, etc.)
-- URL input with Enter key support for quick request sending
-- Send button with loading spinner animation disabled while request is in flight
-- Keyboard shortcut Cmd/Ctrl+Enter triggers request send globally
-- Proxy integration via /api/proxy/request endpoint for actual HTTP execution
-- Response display with success/error states and timing information
-- Workspace ID computed from workspaces data for request history logging
-- Tab system for organizing request builder sections (params, headers, body, response)
-- Query params editor with key-value table and bulk edit mode
-
-**Query Params Pattern**
-- QueryParam interface uses unique ID for list management with reactive updates
-- Bidirectional sync between URL query string and params state using watch
-- parseUrlQuery extracts query parameters from URL using URL API
-- updateUrlFromParams reconstructs URL from enabled params only
-- Bulk edit mode toggles between table view and raw string textarea
-- Checkbox controls enable/disable status without affecting data structure
-- Add/remove functions maintain list integrity and trigger URL updates
-
-**Headers Pattern**
-- HeaderParam interface uses unique ID for list management with reactive updates
-- Headers initialized from HttpRequest.headers in onMounted lifecycle hook
-- parseHeadersFromRequest converts Record<string, string> to HeaderParam array
-- buildHeadersRecord converts enabled HeaderParam array back to Record<string, string>
-- addPresetHeaders adds common headers (Content-Type, Accept) without duplicates
-- Datalist provides autocomplete for common header names (Accept, Authorization, etc.)
-- Checkbox controls enable/disable status without affecting data structure
-- Add/remove functions maintain list integrity
-- Headers sent to proxy endpoint via buildHeadersRecord function
-
-**Body Editor Pattern**
-- BodyParam interface extends HeaderParam pattern with additional 'type' field for form-data (text | file)
-- Multiple body formats: none, JSON, form-data, x-www-form-urlencoded, raw, binary
-- JSON editor with real-time validation using try-catch and visual indicators
-- Form-data editor supports both text values and file uploads with type switching per parameter
-- URL-encoded format uses URLSearchParams to generate proper encoding
-- Raw format allows custom Content-Type selection via dropdown
-- Binary format uses File API for file upload handling
-- buildBody() function converts UI state to appropriate body type for proxy endpoint (string, FormData, File, URLSearchParams string)
-- Content-Type header auto-managed based on body format (except form-data and binary which let browser handle it)
-- Watcher auto-initializes param list when switching to form-data or urlencoded formats
-
-**Auth Editor Pattern**
-- AuthType supports: none, basic, bearer, api-key, oauth2 (matching database schema)
-- Auth state uses reactive refs with separate configs per type (apiKey, bearerToken, basicAuth)
-- buildAuthHeaders() function converts auth config to Authorization headers based on type
-  - API Key (addTo=header): { key: value }
-  - Bearer: { Authorization: "Bearer <token>" }
-  - Basic Auth: { Authorization: "Basic <base64(username:password)>" }
-- buildAuthQueryParams() function converts auth config to query parameters for API Key (addTo=query)
-- parseAuthFromRequest() function initializes auth state from saved request auth config
-- Auth headers merged with user headers in sendRequest() (user headers take precedence)
-- URL modified in sendRequest() to include auth query params when needed
-- Inherit from parent checkbox for future hierarchical auth resolution
-- Each auth type has its own UI panel with appropriate inputs (password inputs for sensitive data)
-
-**Response Viewer Pattern**
-- Response viewer supports multiple views: Pretty (syntax-highlighted tree), Preview (rendered preview), Raw (plain text), Headers, and Cookies
-- JSON syntax highlighting uses custom tree traversal to convert JSON objects to renderable nodes
-- Collapsible nodes for JSON arrays and objects with expand/collapse toggle buttons
-- Node expansion state tracked using Set<string> of node paths for O(1) lookups
-- Recursive JsonNode component renders JSON tree with color coding: strings (green), numbers (orange), booleans (purple), null (red), keys (blue)
-- XML syntax highlighting uses regex-based transformation to colorize tags and attributes
-- Search functionality filters displayed content and highlights matching text with yellow background marks
-- Search keyboard shortcut Cmd/Ctrl+F toggles search input when response tab is active
-- Copy to clipboard using navigator.clipboard.writeText API
-- Response size includes both body and headers (calculated by iterating through headers)
-- HTML preview uses iframe with srcdoc attribute for safe rendering
-- Content-Type headers used to determine response format (json, xml, html, text)
-- Status badge uses dynamic color coding: 2xx (green), 4xx (orange), 5xx (red)
-- getContentType(), isJsonResponse(), isXmlResponse(), isHtmlResponse() helper functions for format detection
-- Response text extraction with getResponseText() handles both string and object responses
-- Headers tab displays all response headers in a key-value table with colorized key names
-- Cookies tab parses set-cookie header and displays cookies with name, value, and attributes
-- Cookies tab only appears when response contains set-cookie headers
+*Add reusable patterns discovered during development here.*
 
 ---
 
-## [2026-01-20] - US-016
-- Verified all acceptance criteria for generating mocks from API definitions
-- No changes needed - implementation already complete
-- Files verified: server/api/definitions/[id]/generate-mocks.post.ts, app/pages/admin/definitions/index.vue, server/utils/schema-generator.ts
-- **Learnings:**
-  - Generate mocks endpoint properly handles endpoint selection, OpenAPI examples, and schema-based data generation
-  - Response delay configuration is supported and applied to generated mocks
-  - Source API definition is linked via `sourceDefinitionId` property
-  - Storage layer uses flat key-value pattern with UUID keys
-  - UI provides complete interface for viewing endpoints and selecting which to mock
+### Unified Multi-Type Modal Pattern
+Use a single modal component to handle multiple import types (OpenAPI, Postman) by:
+- Two-level tab system: Type tabs (OpenAPI/Postman) + Method tabs (File/URL/Paste)
+- type-level state (`activeImportType`) to switch between contexts
+- Shared logic reused across types (workspace/project selection, progress tracking, error handling)
+- Conditional content rendering based on active type
+- Different API endpoints called based on active type
+- Adapted success summaries based on import type
+
+### Environment Import Pattern
+For importing environments (especially Postman):
+- Checkbox to toggle environment import (`importEnvironments` ref)
+- Show environment input fields (file/URL/paste) only when enabled
+- Multiple input methods handled:
+  - File upload: read file as text string
+  - URL: pass as string to backend
+  - Paste: use content directly
+- Pass environment data as single string to backend
+- Frontend consolidates methods, backend parses/validates
+
+### Dynamic File Upload Pattern
+When handling multiple file uploads in the same modal:
+- Track separate file state refs for each file type (collection vs environment)
+- Separate drop handlers for each droppable zone
+- Independent select handlers for each file input
+- Conditional rendering based on import type and enabled features
+- Separate file validation logic for each file type
+
+### Multi-API Integration Pattern
+Single modal interface integrating multiple backend APIs:
+- Active type state determines which endpoint to call
+- Adapt request body/response handling for each API
+- Type-specific validation (file extensions, content formats)
+- Shared interface components (success summary, error display, progress)
+- Type-specific metrics in success display
 
 ---
 
-## ✓ Iteration 9 - US-024: Response Viewer UI - Body display
-*2026-01-20T17:24:21.725Z (434s)*
+## ✓ Iteration 1 - US-029: Save request dialog
+*2026-01-20T23:43:05.697Z (159s)*
+
+**Status:** Completed
+
+## [January 21, 2026] - US-030
+### What was implemented
+- Request tabs component with full tab management functionality
+- Tab bar showing open requests with method badge and request name
+- New tab button (+) to create untitled requests
+- Close tab button (x) on each tab with hover effect
+- Unsaved changes indicator (orange dot) on tabs
+- Middle-click support to close tabs
+- Drag-and-drop reordering of tabs
+- Tab state management with active tab tracking
+- Integration with existing RequestBuilder component
+- Unsaved changes tracking via watcher in RequestBuilder
+- Save/save-as handlers that reset unsaved indicators
+- New request creation that opens in new tab
+- Request selection from sidebar creates/activates tabs
+- Proper cleanup when last tab is closed
+
+### Files changed
+- app/components/RequestTabs.vue (new)
+- app/pages/admin/index.vue (updated - added tabs state, handlers, and template integration)
+- app/components/RequestBuilder.vue (updated - added unsaved-changes emit and watcher)
+
+### Learnings:
+- **Tab State Management**: Use ref array for tabs with unique keys (crypto.randomUUID()) for each tab
+- **Active Tab Tracking**: Keep track of active tab key separately from request selection
+- **Unsaved Changes**: Emit unsaved changes from child component via watcher, update parent tab state
+- **Drag and Drop**: Native HTML5 drag API with dragstart, dragover, drop events for reordering
+- **Tab Matching**: Match tabs by both key and request ID, handle new requests without ID specially
+- **Save Flow**: When saving new request, fetch created request and replace placeholder in tab with full data including ID
+- **Mock vs Request Handling**: Clicking mocks clears active tab (set to null), only Requests operate within tabs
+- **Empty State**: Differentiate between no tabs exist, tabs exist but none active, and tabs exist with active selection
+- **Tab Closure**: Handle edge case when closing the active tab - switch to adjacent tab or clear selection
+
+### Patterns discovered:
+- **Tab Management Pattern**: Maintain { key, request, hasUnsavedChanges } objects; use key for unique identification; track activeKey separately.
+- **Unsaved Tracking Pattern**: Child component emits unsavedChanges events on form changes; parent updates tab.hasUnsavedChanges; reset after save.
+- **Drag Reorder Pattern**: track draggedIndex on dragstart; splice from fromIndex and insert at toIndex on drop; clear on dragend.
+- **Sidebar to Tab Flow**: Clicking request → existing tab activates tab; new tab creates + activates → Request Builder shows with form.
+
+---
+
+## ✓ Iteration 1 - US-029: Save request dialog
+*2026-01-20T23:43:05.697Z (159s)*
+
+**Notes:**
+ame and click \"Create & Select\"\n   - Folder should appear in list and be selected\n   - Save request to new folder\n\n5. **Test unsaved changes indicator:**\n   - Modify URL, method, headers, body, or auth\n   - Orange dot should appear next to request name\n   - Save changes → dot should disappear\n\n6. **Test validations:**\n   - Try to save without name → error message\n   - Try to create folder without name → error message\n   - Try to save with empty collection → error message\n\n---\n\n
+
+---
+## ✓ Iteration 2 - US-030: Request tabs UI
+*2026-01-20T23:46:13.743Z (187s)*
 
 **Status:** Completed
 
 **Notes:**
-ypicode.com/todos/1)\n\n5. Click Send and verify:\n   - Response tab activates showing JSON with syntax highlighting\n   - Click chevrons to collapse/expand nodes\n   - Use Expand All / Collapse All buttons\n   - Click Preview tab to see rendered view\n   - Click Raw tab to see plain text\n   - Press Cmd/Ctrl+F to open search, type to filter\n   - Click copy button to copy response\n   - Try XML endpoint (e.g., https://mockapi.io/posts.xml)\n   - Try HTML endpoint (e.g., https://example.com)\n\n
-
-## [2026-01-21] - US-025
-- Implemented Response Viewer UI - Metadata display with all acceptance criteria met
-- Added dynamic status badge color coding: 2xx (green), 4xx (orange), 5xx (red)
-- Updated response size calculation to include both body and headers
-- Added Headers tab displaying all response headers in key-value table format
-- Added Cookies tab parsing set-cookie headers and showing name, value, and attributes
-- Cookies tab conditionally shown only when response contains set-cookie headers
-- Added getResponseStatusColorClass() function for dynamic badge styling
-- Added getTotalResponseSize() function for accurate size calculation (body + headers)
-- Added parseResponseCookies() function to parse cookies from set-cookie header
-- Added responseCookies computed property for reactive updates
-- Updated ResponseViewType type definition to include 'headers' and 'cookies'
-- Fixed template structure issues with if/else chain and missing closing tags
-- Files changed:
-  - app/components/RequestBuilder.vue (complete metadata display implementation)
-- **Learnings:**
-  - Status badge color should be computed dynamically based on status code range (2xx/4xx/5xx)
-  - Response size calculation should include both body content and response headers
-  - Headers can be iterated through to calculate size by summing key + value + 4 bytes per header
-  - set-cookie header can be a string or array of strings, need to handle both cases
-  - Cookie parsing requires splitting by ';' to separate name-value pair from attributes
-  - Cookie attributes should be displayed separately for better readability
-  - Tab visibility should be conditional (Cookies tab only shown when relevant)
-  - Vue template requires strict if/else-if/else chain structure (no mixing)
-  - Computed properties should be used for reactive data derived from state
-  - ProxyResponse interface already includes headers field, no backend changes needed
-  - Response metadata provides immediate feedback about request performance and response size
+tab\n3. **Modify request** → Orange dot appears on tab (unsaved indicator)\n4. **Save request** → Orange dot disappears\n5. **Click (x) button** on tab → Closes tab, switches to adjacent tab\n6. **Middle-click** on tab → Closes tab immediately\n7. **Drag tabs** to reorder them → Tabs reorder visually\n8. **Click on mock in sidebar** → Clears active tab, shows mock details\n\n### Browser Testing Commands:\n```bash\nnpm run dev\n```\n\nThen navigate to `/admin` and test the tab functionality.\n\n
 
 ---
 
-## ✓ Iteration 5 - US-020: Request Builder UI - Query params editor
-*2026-01-21T00:48:53.481Z (523s)*
+## [January 21, 2026] - US-031
+### What was implemented
+- History section in sidebar navigation with clock icon
+- RequestHistoryPanel component displaying request history with method, URL, status code, and timestamp
+- Filters for HTTP method and status code
+- Click to restore request to builder (opens new tab)
+- Clear history button with confirmation dialog
+- Pagination with "Load More" functionality
+- Integration with existing sidebar and request builder
+- Proper response time formatting and timestamp relative dates
+
+### Files changed
+- app/components/AppSidebar.vue (updated - added History navigation menu item and RequestHistoryPanel integration)
+- app/components/RequestHistoryPanel.vue (new - complete history panel component)
+- app/pages/admin/index.vue (updated - added handleRestoreRequest handler)
+
+### Learnings:
+- **History Panel Component**: Reusable component that accepts workspaceId as prop and emits restoreRequest events
+- **Filter State Management**: Watch filter changes and reset pagination when filters change
+- **Relative Date Formatting**: Format timestamps as "Just now", "5m ago", "2h ago", "3d ago", or full date for older entries
+- **Response Time Display**: Show ms for fast responses (< 100ms), seconds for slower ones
+- **Status Code Color Coding**: 2xx green, 3xx blue, 4xx orange, 5xx red for quick visual status recognition
+- **Restore Flow**: Convert history entry to HttpRequest object, create new tab, mark as unsaved
+- **Backend Integration**: Leverage existing API endpoints (/api/history with filters, /api/proxy/request auto-logs to history)
+
+### Patterns discovered:
+- **History Panel Pattern**: Accept workspaceId prop, fetch history via API with query params for filtering, restore by emitting HttpRequest with empty id/folderId.
+- **Filter-Reload Pattern**: Watch filter refs → reset page → fetch(); keeps data in sync with filter state.
+- **Relative Time Pattern**: Compare diff → thresholds (60s, 60m, 24h, 7d) → return human-readable string.
+- **Auto-Logging Pattern**: Proxy endpoint logs requests to history when workspaceId provided; no additional frontend logging needed.
+## ✓ Iteration 3 - US-031: Request history panel
+*2026-01-20T23:48:49.222Z (154s)*
 
 **Status:** Completed
 
 **Notes:**
-Implemented complete query params editor in RequestBuilder with all acceptance criteria met:
+od (all methods)\n   - Status code (2xx, 3xx, 4xx, 5xx)\n5. **Clear history** - Button with confirmation dialog\n6. **Pagination** - \"Load More\" for large histories\n\n### Files Changed\n- `app/components/AppSidebar.vue`\n- `app/components/RequestHistoryPanel.vue` (new)\n- `app/pages/admin/index.vue`\n\n### Testing Instructions\n```bash\nnpm run dev```\nNavigate to `/admin`, click \"History\" in sidebar to see panel. Requests made through the Request Builder will be logged automatically.\n\n---
 
-1. **Params Tab**: Added tab system with "params" and "response" tabs
-2. **Key-Value Table**: Interactive param rows with key and value inputs
-3. **Enable/Disable Checkboxes**: Each param has a checkbox to toggle inclusion
-4. **Auto-Sync with URL**: Two-way watch ensures params and URL stay synchronized
-5. **Bulk Edit Mode**: Toggle between table view and raw query string textarea
-6. **Browser Verified**: Visual sync between URL input and param rows
+## [January 21, 2026] - US-032
+### What was implemented
+- OpenAPI Import Modal component with tabbed interface
+- Three import methods: File upload, URL fetch, and Raw paste
+- File upload with drag-and-drop support
+- URL input with validation and fetch functionality
+- Text area for pasting OpenAPI specifications
+- Format auto-detection through backend API
+- Validation errors display with clear messaging
+- Progress indicator during import operations
+- Success summary showing API version, endpoints count, and schemas count
+- Warnings display for any import warnings
+- Workspace and Project selectors in the modal
+- Optional API name parameter (auto-detected from spec if not provided)
+- Import button added to header next to Export
+- Integration with existing backend import API at /api/definitions/import
 
-**Key Implementation Details:**
-- QueryParam interface with unique ID for reactive list management
-- parseUrlQuery uses URL API to extract query params from current URL
-- updateUrlFromParams reconstructs URL string from enabled params only
-- Bulk edit mode converts params to query string format (key1=value1&key2=value2)
-- Add param button creates new empty row
-- Remove button deletes row and updates URL automatically
-- Watch on URL detects changes from manual URL editing and updates params
+### Files changed
+- app/components/OpenApiImportModal.vue (new - complete modal component)
+- app/components/AppHeader.vue (updated - added Import button and emit)
+- app/pages/admin/index.vue (updated - added import modal integration, state, and handlers)
 
-**Additional Fixes:**
-- Fixed syntax error in AppSidebar.vue (incorrect generic syntax)
-- Fixed import paths in tree.get.ts and folders/[id]/requests.get.ts
+### Learnings:
+- **Modal Pattern for Complex Forms**: Use tabs within modal to organize multi-step or multi-method workflows (File/URL/Paste)
+- **File Upload with Progress**: Use XMLHttpRequest for file uploads to get upload progress events, or regular fetch for simple uploads
+- **Drag-and-Drop Pattern**: Track dragover/dragleave/drop events, create visual feedback with isDragging state, validate file types
+- **Tab State Management**: Track activeTab, switch content sections conditionally within modal
+- **Error Handling**: Display errors prominently with icons, use separate error state for API responses
+- **Success Flow**: Replace form with success summary on completion, show key metrics (endpoints, schemas)
+- **Workspace/Project Selection Pattern**: Computed properties for currentWorkspace/currentProject, watch or update on workspace/project selection
+- **Import Modal Pattern**: Accept workspaces array, user selects workspace/project, pass to backend API
+- **Progress Indicator**: Use uploadProgress ref (0-100), update via XMLHttpRequest upload events or simulated step
+- **Form Reset**: Reset all state (tabs, inputs, files, errors, success) on modal close to prepare for next use
 
-## Command to run:
-```bash
-npm run build
-```
-
-After building, verify in browser:
-- Navigate to http://localhost:3000/admin
-- Click Workspace tab and expand tree
-- Click on a request to open Request Builder
-- Enter a URL with query params like "https://api.example.com/search?q=test&limit=10"
-- Observe params automatically extracted into the table
-- Toggle checkboxes to enable/disable params
-- Edit param values and see URL update in real-time
-- Click "Bulk Edit" to see raw query string
-- Add/remove params using the buttons
-- Send request and observe response tab automatically activates
-
----
-
-## [2026-01-20] - US-018
-- Implemented workspace hierarchy sidebar with tree view
-- Created API endpoint for fetching workspace tree structure (server/api/admin/tree.get.ts)
-- Created API endpoint for fetching requests in a folder (server/api/admin/folders/[id]/requests.get.ts)
-- Added workspace switcher dropdown for easy navigation between workspaces
-- Implemented collapsible tree nodes for Projects > Collections > Folders > Requests hierarchy
-- Added visual indicators for HTTP method types (GET=green, POST=blue, PUT=orange, DELETE=red, etc.)
-- Added right-click context menu support for CRUD actions (create, edit, delete)
-- Created FolderTreeItem component for recursive folder tree rendering
-- Updated AppSidebar component to support both hierarchy view and traditional mocks view
-- Updated admin/index.vue to fetch and pass workspace data to sidebar
-- Files changed:
-  - app/components/AppSidebar.vue (complete overhaul with hierarchy support)
-  - app/components/FolderTreeItem.vue (new recursive component)
-  - app/pages/admin/index.vue (added workspace data fetching and handlers)
-  - server/api/admin/tree.get.ts (new endpoint)
-  - server/api/admin/folders/[id]/requests.get.ts (new endpoint)
-- **Learnings:**
-  - Tree data structure requires recursive component for nested folders
-  - Context menu positioning needs Teleport to render outside sidebar overflow
-  - State management for expanded/collapsed nodes using Set data structure is efficient
-  - Method color coding provides immediate visual feedback in tree navigation
-  - Build folder tree recursively from flat database query results using parent reference
-  - API endpoint design: prefer fetching entire tree at once with pre-computed counts for performance
-  - Type safety crucial for TypeScript interfaces across component hierarchy
-
----
-
-## [2026-01-20] - US-017
-- Implemented variable substitution engine with {{variableName}} syntax parsing
-- Created server/utils/variable-substitution.ts utility module
-- Support for environment, collection, project, and workspace/global variable scopes
-- Nested variable reference resolution with circular reference protection
-- Variable precedence: environment > collection > project > global
-- Returns warnings for undefined variables
-- ExtractVariables utility for parsing variable names from strings
-- Ready for integration in proxy endpoint
-- Files changed: server/utils/variable-substitution.ts, .ralph-tui/progress.md
-- **Learnings:**
-  - Variable substitution requires iterative parsing to handle nested references
-  - Circular reference detection is critical to prevent infinite loops
-  - Regex pattern `/\{\{([^{}]+)\}\}/g` reliably captures variable names
-  - Context-based resolution allows flexible scope specification
-  - Warning accumulation helps users identify missing variables
-  - Project baseUrl is automatically exposed as base_url variable
-  - Collection variables sourced from authConfig (extensible pattern)
-
----
-## ✓ Iteration 2 - US-017: Variable substitution engine
-*2026-01-20T16:24:38.140Z (291s)*
+### Patterns discovered:
+- **Multi-Method Import Modal Pattern**: Provide tabs (File/URL/Paste) within modal, each with specific UI (file input/url+fetch button/textarea), unified import function accepting source param.
+- **Drag-and-Drop Upload Pattern**: Handle dragover (preventDefault, set dragging), dragleave (clear dragging), drop (preventDefault, validate file, set selectedFile), visual feedback via border/bg color changes.
+- **Import State Management Pattern**: isLoading flag, uploadProgress (0-100), error (string|null), success (object|null), resetForm clears all states on close.
+- **Backend Import Integration**: Backend handles multipart/form-data or JSON, auto-detects format (JSON/YAML), validates, returns success/error with parsed info, warnings array.
+## ✓ Iteration 4 - US-032: OpenAPI import UI
+*2026-01-20T23:51:47.122Z (177s)*
 
 **Status:** Completed
 
 **Notes:**
-rt `substituteVariables(input, context)` and `extractVariables(input)` functions\n\n**Key Features:**\n1. ✅ Parse {{variableName}} syntax\n2. ✅ Resolve variables from environment scope\n3. ✅ Support nested variable references\n4. ✅ Variable: environment > collection > project > global precedence\n5. ✅ Return list of undefined variables as warnings\n6. ✅ Utility function usable in proxy endpoint\n7. ✅ Ready for build verification\n\n**Run this command to verify:**\n```bash\nnpm run build\n```\n\n
+app/components/AppHeader.vue` (updated)\n- `app/pages/admin/index.vue` (updated)\n\n**Testing Commands:**\n```bash\nnpm run dev\n```\n\nNavigate to `/admin`, click the **Import** button in the header (left of Export), and test:\n1. **File Tab**: Drag & drop a JSON/YAML OpenAPI file\n2. **URL Tab**: Enter a public OpenAPI spec URL and click Fetch\n3. **Paste Tab**: Paste OpenAPI spec content directly\n\nThe backend API at `/api/definitions/import` handles all parsing, validation, and storage.\n\n
 
 ---
-## ✓ Iteration 3 - US-018: Sidebar with Workspace/Project/Collection tree
-*2026-01-20T16:56:36.474Z (1917s)*
-
-**Status:** Completed
-
-**Notes:**
-, the sidebar will render correctly in the browser. You can then:
-1. Navigate to http://localhost:3000/admin
-2. Click the \"Workspace\" tab to see the hierarchy
-3. Use the workspace dropdown to switch between workspaces
-4. Click chevrons to expand/collapse tree nodes
-5. Right-click items to see context menus
-6. Click requests to open them in the request builder
-
-The sidebar maintains backward compatibility with the existing mocks view while adding the new workspace hierarchy feature!
-
 ---
+## [January 21, 2026] - US-033
+### What was implemented
+- Unified Import Modal component supporting both OpenAPI and Postman imports
+- Dual tab system: Import type tabs (OpenAPI/Postman) and method tabs (File/URL/Paste)
+- Postman collection import with full support for v2.x collections
+- Environment import functionality with checkbox to enable/disable
+- Multiple environment input methods: File upload, URL, or raw paste
+- File upload with drag-and-drop support for both collection and environment files
+- URL input with validation and fetch functionality for both collection and environment
+- Text area for pasting collection and environment JSON content
+- Import progress indicator during upload operations
+- Success summary showing imported items (folders, requests, environments, variables)
+- Warnings display for any import issues
+- Workspace and Project selectors in the modal
+- Collection/API name parameter (auto-detected if not provided)
+- Integration with existing backend API at /api/definitions/import/postman
 
-## [2026-01-21] - US-019
-- Implemented Request Builder UI for HTTP request construction
-- Created RequestBuilder.vue component with complete request building interface
-- Added HTTP method dropdown supporting all methods (GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD)
-- Implemented URL input field with Enter key support for quick sending
-- Added Send button with loading state spinner animation
-- Implemented keyboard shortcut Cmd/Ctrl+Enter for sending requests
-- Integrated proxy endpoint (/api/proxy/request) for actual HTTP execution
-- Added response display with success/error states and timing information
-- Enhanced RequestBuilder to support workspace ID for request history logging
-- Integrated RequestBuilder into admin/index.vue for request selection workflow
-- Added method color coding using Tailwind config (method-get, method-post, etc.)
-- Updated tailwind.config.js to include HEAD (#8b5cf6) and OPTIONS (#64748b) method colors
-- Files changed:
-  - app/components/RequestBuilder.vue (new component)
-  - app/pages/admin/index.vue (integrated RequestBuilder, added selectedRequest state)
-  - tailwind.config.js (added HEAD and OPTIONS method colors)
-- **Learnings:**
-  - Request builder component pattern should be self-contained with props for request data and workspace context
-  - Keyboard shortcuts should be registered in onMounted and removed in onUnmounted to avoid memory leaks
-  - Loading states should disable relevant buttons while request is in flight for better UX
-  - Method color coding can be achieved via Tailwind config and color utility classes
-  - Proxy endpoint (/api/proxy/request) already supports all HTTP methods and error handling
-  - Response display should distinguish between success (200-299) and error states visually
-  - Compute properties are useful for deriving data like current workspace from workspaces array
-  - Component integration requires careful state management (clearing selectedRequest when selectedMock is set)
-  - Response body parsing is handled by proxy endpoint, supporting JSON, text, and binary data
-  - Timing information (durationMs) helps users understand request performance
+### Files changed
+- app/components/ImportModal.vue (new - comprehensive import modal supporting both OpenAPI and Postman)
+- app/pages/admin/index.vue (updated - replaced OpenApiImportModal with ImportModal)
 
----
-## ✓ Iteration 4 - US-019: Request Builder UI - URL and method
-*2026-01-20T17:02:32.054Z (355s)*
+### Learnings:
+- **Unified Import Modal Pattern**: Single modal component can handle multiple import types by using type-level state (activeImportType) to switch between contexts (OpenAPI vs Postman) while maintaining shared functionality (workspace/project selection, file/URL/paste methods).
+- **Dynamic File Validation**: File validation logic adapts based on active import type - OpenAPI accepts .json/.yaml/.yml, Postman only accepts .json.
+- **Conditional File Inputs**: Environment file input only appears when importing Postman collections and importEnvironments is checked.
+- **Multi-File Upload Pattern**: Use separate file inputs (selectedFile for collection, selectedEnvFile for environments) with independent handlers for droppable zones.
+- **Environment Import Handling**: Backend accepts environments as: (1) Form field with JSON content, (2) URL string to fetch from, (3) File upload via multipart; frontend consolidates these into a single `environments` string.
+- **API Response Pattern**: Postman import returns stats (foldersCreated, requestsCreated, environmentsCreated, variablesCreated) while OpenAPI returns parsed info (info, openApiVersion, endpointCount, schemaCount).
+- **Success Summary Adaptation**: Conditionally render different summary sections based on importType - OpenAPI shows API version and schema count, Postman shows folder/request/environment counts.
 
-**Status:** Completed
+### Patterns discovered:
+- **Unified Multi-Type Modal Pattern**: Use two levels of tabs (Type: OpenAPI/Postman, Method: File/URL/Paste); switch content sections conditionally based on activeImportType; reuse shared logic (workspace/project selection, progress tracking, error handling).
+- **Environment Import Pattern**: Add checkbox to toggle environment import; show environment input fields (file/URL/paste) only when enabled; pass environment data as string to backend; handle multiple input methods (file upload → read as text, URL → pass as-is, paste → use directly).
+- **Dynamic File Upload Pattern**: Track separate file inputs for collection and environment; separate drop handlers for each zone; conditional rendering of environment upload zone based on import type and checkbox state.
+- **Multi-API Integration Pattern**: Single modal calls different backend endpoints (/api/definitions/import for OpenAPI, /api/definitions/import/postman for Postman) based on activeImportType; adapt request body/response handling for each api.
 
-**Notes:**
-s**:\n   - Added HEAD (#8b5cf6) and OPTIONS (#64748b) method colors\n   - All methods now have proper color coding\n\n## Command to run:\n\n```bash\nnpm run build\n```\n\nAfter building, verify in browser:\n- Navigate to http://localhost:3000/admin\n- Click Workspace tab and expand tree\n- Click on a request to see Request Builder\n- Select HTTP method from dropdown\n- Enter URL and press Enter or Cmd/Ctrl+Enter\n- See loading state during request\n- View response with status code and timing\n\n
-
----
-## ✓ Iteration 5 - US-020: Request Builder UI - Query params editor
-*2026-01-20T17:08:13.489Z (340s)*
-
-**Status:** Completed
-
-**Notes:**
-sessionID":"ses_423a45488ffe3rGvjbw0Zzd1yN","part":{"id":"prt_bdc60cbab001hlLVIogVvL2zuk","sessionID":"ses_423a45488ffe3rGvjbw0Zzd1yN","messageID":"msg_bdc60c6f8001VoZ17TQY5TkDow","type":"step-start","snapshot":"da0b794f106d01e04fbfef86d8909c8e35eb15d9"}}
-{"type":"text","timestamp":1768928893364,"sessionID":"ses_423a45488ffe3rGvjbw0Zzd1yN","part":{"id":"prt_bdc60d916001F256Cq6ZF4kGG1","sessionID":"ses_423a45488ffe3rGvjbw0Zzd1yN","messageID":"msg_bdc60c6f8001VoZ17TQY5TkDow","type":"text","text":"
-
----
-
-## [2026-01-21] - US-021
-- Implemented Headers editor in Request Builder with all acceptance criteria met
-- Added HeaderParam interface matching QueryParam pattern for consistency
-- Created 'headers' tab in RequestBuilder tab system
-- Implemented key-value table with header name and value inputs
-- Added enable/disable checkboxes for each header
-- Created common header name autocomplete via HTML5 datalist with 20 common headers
-- Added "Add Preset Headers" button to quickly add Content-Type and Accept headers
-- Headers properly integrated with proxy endpoint via buildHeadersRecord function
-- Only enabled headers with non-empty keys sent in requests
-- Files changed: app/components/RequestBuilder.vue
-- **Learnings:**
-  - Headers pattern should follow Query params pattern for consistency and maintainability
-  - Datalist provides simple, native autocomplete without external dependencies
-  - Preset headers feature prevents duplicates by checking lowercase key comparison
-  - buildHeadersRecord converts list format to Record<string, string> for API compatibility
-  - Headers initialized in onMounted lifecycle hook to access props safely
-  - Proxy endpoint already supports headers parameter, no backend changes needed
-  - Same UI pattern (checkbox + key input + value input + remove button) provides familiar UX
-  - Enable/disable checkboxes provide convenient way to temporarily disable headers without deletion
-
----
-## ✓ Iteration 6 - US-021: Request Builder UI - Headers editor
-*2026-01-20T17:11:05.738Z (171s)*
-
-**Status:** Completed
-
-**Notes:**
-build\n```\n\n**To verify in browser:**\n1. Navigate to http://localhost:3000/admin\n2. Click Workspace tab and expand tree\n3. Click on a request to open Request Builder\n4. Click the \"headers\" tab\n5. Add headers using \"Add Header\" button\n6. Use autocomplete by typing common header names\n7. Click \"Add Preset Headers\" to add Content-Type and Accept\n8. Toggle checkboxes to enable/disable headers\n9. Remove headers using the X button\n10. Send request and verify headers are included\n\n
-
----
-
-## ✓ Iteration 7 - US-022: Request Builder UI - Body editor
-*2026-01-21T12:45:30.123Z*
-
-**Status:** Completed
-
-**Implemented complete body editor in RequestBuilder with all acceptance criteria met:**
-
-1. **Body Tab**: Added 'body' tab to request builder tab system
-2. **Format Selector**: Dropdown with 6 options (none, JSON, form-data, x-www-form-urlencoded, raw, binary)
-3. **JSON Editor**: Textarea with real-time JSON validation and visual valid/invalid indicators
-4. **Form-Data Editor**: Key-value editor with type switcher (text/file) and file upload support per parameter
-5. **URL-Encoded Editor**: Key-value editor for x-www-form-urlencoded format
-6. **Raw Editor**: Textarea with Content-Type selector (6 common types)
-7. **Binary Upload**: File input for binary file selection with file info display
-8. **Auto-Initialization**: Watcher creates first param row when switching to form-data/urlencoded
-
-**Key Implementation Details:**
-- BodyParam interface extends HeaderParam pattern with 'type' field (text | file)
-- Added bodyFormat, jsonBody, formDataParams, rawBody, rawContentType, binaryFile refs
-- validateJson() function provides real-time JSON syntax checking
-- buildBody() function converts state to appropriate type (string, FormData, URLSearchParams string, File)
-- Content-Type header auto-managed based on format in sendRequest()
-- form-data and binary let browser set Content-Type automatically
-- Raw format allows custom Content-Type via rawContentType ref
-- URL-encoded format uses URLSearchParams for proper encoding
-
-**Files Changed:**
-- app/components/RequestBuilder.vue (complete body editor implementation)
-
-**Learnings:**
-- BodyParam pattern should follow QueryParam/HeaderParam for consistency
-- File inputs in Vue need event handlers that access event.target.files
-- FormData object handles multipart form data automatically in browser fetch
-- URLSearchParams is the standard way to encode URL-encoded bodies
-- Content-Type management differs by body format (automatic for FormData, explicit for others)
-- Real-time JSON validation improves UX with immediate feedback
-- File upload in form-data needs both file object tracking and filename display
-- Switch UI per format (text input vs file input) within same row for form-data
-
-## Command to run:
-```bash
-npm run build
-```
-
-**To verify in browser:**
-1. Navigate to http://localhost:3000/admin
-2. Click Workspace tab and expand tree
-3. Click on a request to open Request Builder
-4. Click the "body" tab
-5. Switch between formats using the dropdown (none → JSON → form-data → urlencoded → raw → binary)
-6. For JSON: enter JSON data and observe valid/invalid indicators
-7. For form-data: add params, switch between text/file types, upload files
-8. For URL-encoded: add key-value params
-9. For raw: enter text content and select Content-Type
-10. For binary: select a file and see file info
-11. Send request and verify body is properly sent
-
----
-## ✓ Iteration 7 - US-022: Request Builder UI - Body editor
-*2026-01-20T17:13:38.599Z (152s)*
-
-**Status:** Completed
-
-**Notes:**
-sessionID":"ses_4239c7e33ffeIiG7weT2x8bYkR","part":{"id":"prt_bdc65c1fb00171VwKjeNBxumYC","sessionID":"ses_4239c7e33ffeIiG7weT2x8bYkR","messageID":"msg_bdc65b905001m9J3UtiIulhCwN","type":"step-start","snapshot":"b0c2b6c732290a334be6ef2befa1c14fb087715b"}}
-{"type":"text","timestamp":1768929218509,"sessionID":"ses_4239c7e33ffeIiG7weT2x8bYkR","part":{"id":"prt_bdc65c455001feOWL9NgK2zWJT","sessionID":"ses_4239c7e33ffeIiG7weT2x8bYkR","messageID":"msg_bdc65b905001m9J3UtiIulhCwN","type":"text","text":"
-
----
-
-## [2026-01-21] - US-023
-- Implemented complete Auth editor in Request Builder with all acceptance criteria met
-- Added 'auth' tab to request builder tab system (params, headers, body, auth, response)
-- Created auth type selector with 4 options: No Auth, Basic Auth, Bearer Token, API Key
-- Implemented API Key editor with key name, value, and toggle to add to header or query params
-- Implemented Bearer Token editor with password-protected token input field
-- Implemented Basic Auth editor with username and password fields (password-protected)
-- Added "Inherit from parent" checkbox for future hierarchical auth support
-- Integrated auth into request sending via buildAuthHeaders() and buildAuthQueryParams() functions
-- Auth headers merged with user headers in sendRequest() with auth params appended to URL
-- Added parseAuthFromRequest() function to initialize auth state from saved request
-- Files changed: app/components/RequestBuilder.vue
-- **Learnings:**
-  - Auth pattern follows same principles as headers and params but with type-specific UI
-  - Password input type (type="password") should be used for sensitive auth data (tokens, passwords)
-  - API Key auth is flexible - can be added as header or query parameter based on user choice
-  - Basic Auth uses Base64 encoding for credentials (username:password)
-  - Bearer tokens sent as "Authorization: Bearer <token>" header
-  - Auth config should be parsed from request.auth on mount like headers are from request.headers
-  - Auth headers merged with existing headers in sendRequest() - user can override if needed
-  - Query params from auth appended to URL before sending request
-  - Inherit from parent checkbox prepared for future hierarchical auth resolution from collection/project
-  - Database schema defines AuthType as 'none' | 'basic' | 'bearer' | 'api-key' | 'oauth2'
-  - OAuth2 type defined in schema but not implemented in UI yet (future enhancement)
-  - Current implementation focuses on the 4 most common auth types
-
----
-
-## [2026-01-21] - US-024
-- Implemented Response Viewer UI with syntax highlighting and all acceptance criteria met
-- Added response view sub-tabs: Pretty (syntax-highlighted tree), Preview (rendered preview), Raw (plain text)
-- Created JsonNode.vue component for recursive JSON tree rendering with syntax highlighting
-- Implemented JSON syntax highlighting with color coding: strings (green), numbers (orange), booleans (purple), null (red), keys (blue)
-- Added collapsible/expandable nodes for JSON arrays and objects with toggle buttons
-- Implemented expand all / collapse all functionality for JSON trees
-- Implemented XML syntax highlighting using regex-based transformation with colorized tags and attributes
-- Added HTML preview tab using iframe with srcdoc attribute for safe rendering
-- Implemented raw text view tab for displaying raw response content
-- Added copy response body button using navigator.clipboard.writeText API
-- Implemented search functionality with Cmd/Ctrl+F keyboard shortcut to toggle search input
-- Search filters displayed content and highlights matching text with yellow background marks using <mark> tags
-- Added response metadata display: status code, status text, timing (durationMs), and byte count
-- Implemented content-type based format detection (json, xml, html, text) with helper functions
-- Response view automatically switches based on content type but allows manual override
-- Node expansion state tracked using Set<string> of node paths for efficient O(1) lookups
-- Response panel below request builder with enhanced status bar showing response details
-- Files changed:
-  - app/components/RequestBuilder.vue (comprehensive response viewer implementation)
-  - app/components/JsonNode.vue (new recursive JSON tree component)
-- **Learnings:**
-  - Response viewer pattern should support multiple view modes: pretty (formatted), preview (rendered), raw (plain text)
-  - Custom JSON syntax highlighting can be implemented without external libraries using recursive tree traversal
-  - Recursive Vue components need careful path tracking to handle node expansion state management
-  - Set data structure is efficient for tracking expanded/collapsed node states with O(1) lookups
-  - Color-based syntax highlighting provides immediate visual feedback for different data types
-  - Search implementation should filter display data while maintaining original structure for navigation
-  - HTML content should be rendered in sandboxed iframe for security (srcdoc attribute keeps content local)
-  - Keyboard shortcuts should be registered globally but only activated when relevant tab is active
-  - nextTick() is needed to focus search input after showing the search UI
-  - Content-Type header parsing is crucial for determining appropriate response rendering mode
-  - Response size calculation helps users understand response volume and potential performance impact
-  - highlightText function with regex provides search highlighting with <mark> tags for yellow background
-  - escapeHtml function safely escapes HTML content when rendering in preview iframe
-  - Computed properties (getHighlightedJson, getFilteredJson) efficiently transform response data for display
-  - expandAll and collapseAll functions recursively traverse node tree to update expansion state
-  - Response viewer integration requires clearing state (expandedNodes, searchQuery) when sending new requests
-  - JsonNode component should be fully reusable with props for node data and query, and emit for toggle events
-  - quoteString function handles proper JSON string escaping with quotes
-
----
-## ✓ Iteration 8 - US-023: Request Builder UI - Auth editor
-*2026-01-20T17:17:06.911Z (207s)*
-
-**Status:** Completed
-
-**Notes:**
-``\n\n**To verify in browser:**\n1. Navigate to http://localhost:3000/admin\n2. Click Workspace tab and expand tree\n3. Click on a request to open Request Builder\n4. Click the \"auth\" tab\n5. Switch between auth types using the dropdown\n6. For API Key: enter key name, value, and toggle between header/query\n7. For Bearer Token: enter token value\n8. For Basic Auth: enter username and password\n9. Toggle \"Inherit from parent\" checkbox\n10. Send request and verify auth is properly applied\n\n
-
----
-## ✓ Iteration 9 - US-024: Response Viewer UI - Body display
-*2026-01-20T17:24:21.725Z (434s)*
-
-**Status:** Completed
-
-**Notes:**
-ypicode.com/todos/1)\n\n5. Click Send and verify:\n   - Response tab activates showing JSON with syntax highlighting\n   - Click chevrons to collapse/expand nodes\n   - Use Expand All / Collapse All buttons\n   - Click Preview tab to see rendered view\n   - Click Raw tab to see plain text\n   - Press Cmd/Ctrl+F to open search, type to filter\n   - Click copy button to copy response\n   - Try XML endpoint (e.g., https://mockapi.io/posts.xml)\n   - Try HTML endpoint (e.g., https://example.com)\n\n
-
----

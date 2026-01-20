@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import RequestBuilder from '~/components/RequestBuilder.vue';
+import SaveRequestDialog from '~/components/SaveRequestDialog.vue';
+import RequestTabs, { type OpenTab } from '~/components/RequestTabs.vue';
+import ImportModal from '~/components/ImportModal.vue';
 interface Collection {
   id: string;
   name: string;
@@ -92,6 +95,9 @@ const showDeleteConfirm = ref(false);
 const showCollectionModal = ref(false);
 const showDeleteCollectionConfirm = ref(false);
 const showDeleteGroupConfirm = ref(false);
+const showSaveDialog = ref(false);
+const showSaveAsDialog = ref(false);
+const showImportModal = ref(false);
 
 // State
 const previewContent = ref('');
@@ -104,6 +110,17 @@ const tryItResponse = ref<any>(null);
 const tryItError = ref('');
 const tryItTime = ref(0);
 const selectedCollectionForNewMock = ref<string | null>(null);
+
+// Tabs state
+const openTabs = ref<OpenTab[]>([]);
+const activeTabKey = ref<string | null>(null);
+
+// Helper to create a new tab key
+const createTabKey = () => `tab-${crypto.randomUUID()}`;
+
+// Save dialog state
+const requestToSave = ref<any>(null);
+const requestToSaveAs = ref<any>(null);
 
 const resourceForm = ref({
   name: '',
@@ -299,6 +316,7 @@ const sendTestRequest = async () => {
 const handleSelectMock = (mock: any) => {
     selectedMock.value = mock;
     selectedRequest.value = null;
+    activeTabKey.value = null;
     tryItResponse.value = null;
     tryItError.value = '';
 };
@@ -382,6 +400,10 @@ const exportOpenAPI = async () => {
    URL.revokeObjectURL(url);
 };
 
+const openImportModal = () => {
+  showImportModal.value = true;
+};
+
 const copyPath = (mock: Mock) => {
     const url = buildFullUrl(mock);
     navigator.clipboard.writeText(url);
@@ -417,8 +439,262 @@ const goToEdit = (id: string) => {
 
 // Request handlers
 const handleSelectRequest = (request: HttpRequest) => {
-  selectedRequest.value = request;
   selectedMock.value = null;
+  
+  const existingTab = openTabs.value.find(tab => tab.request.id === request.id);
+  if (existingTab) {
+    activeTabKey.value = existingTab.key;
+    selectedRequest.value = request;
+  } else {
+    const newTabKey = createTabKey();
+    const newTab: OpenTab = {
+      key: newTabKey,
+      request: { ...request },
+      hasUnsavedChanges: false
+    };
+    openTabs.value.push(newTab);
+    activeTabKey.value = newTabKey;
+    selectedRequest.value = newTab.request;
+  }
+};
+
+// Tab handlers
+const handleSelectTab = (tabKey: string) => {
+  const tab = openTabs.value.find(t => t.key === tabKey);
+  if (tab) {
+    activeTabKey.value = tabKey;
+    selectedRequest.value = tab.request;
+    selectedMock.value = null;
+  }
+};
+
+const handleCloseTab = (tabKey: string) => {
+  const tabIndex = openTabs.value.findIndex(t => t.key === tabKey);
+  if (tabIndex === -1) return;
+  
+  openTabs.value.splice(tabIndex, 1);
+  
+  // If closing the active tab, switch to another
+  if (activeTabKey.value === tabKey) {
+    if (openTabs.value.length > 0) {
+      const newIndex = Math.min(tabIndex, openTabs.value.length - 1);
+      activeTabKey.value = openTabs.value[newIndex].key;
+      selectedRequest.value = openTabs.value[newIndex].request;
+    } else {
+      activeTabKey.value = null;
+      selectedRequest.value = null;
+    }
+  }
+};
+
+const handleNewTab = () => {
+  const newRequest: HttpRequest = {
+    id: '',
+    folderId: '',
+    name: 'Untitled Request',
+    method: 'GET',
+    url: '',
+    headers: null,
+    body: null,
+    auth: null,
+    order: 0,
+    createdAt: new Date(),
+    updatedAt: new Date()
+  };
+  
+  const newTabKey = createTabKey();
+  const newTab: OpenTab = {
+    key: newTabKey,
+    request: newRequest,
+    hasUnsavedChanges: true
+  };
+  openTabs.value.push(newTab);
+  activeTabKey.value = newTabKey;
+  selectedRequest.value = newRequest;
+};
+
+const handleReorderTabs = (fromIndex: number, toIndex: number) => {
+  const tab = openTabs.value.splice(fromIndex, 1)[0];
+  openTabs.value.splice(toIndex, 0, tab);
+};
+
+const updateTabUnsavedStatus = (request: HttpRequest, hasUnsavedChanges: boolean) => {
+  const tab = openTabs.value.find(t => t.key === activeTabKey.value);
+  if (tab) {
+  // Match either by ID (for saved requests) or by active tab (for new requests)
+    const isMatchingRequest = request.id 
+      ? tab.request.id === request.id 
+      : true;
+    
+    if (isMatchingRequest) {
+      tab.hasUnsavedChanges = hasUnsavedChanges;
+      if (!hasUnsavedChanges) {
+        tab.request = { ...request };
+      }
+    }
+  }
+};
+
+const handleSaveRequest = (request: any) => {
+  requestToSave.value = request;
+  showSaveDialog.value = true;
+};
+
+const handleSaveAsRequest = (request: any) => {
+  requestToSaveAs.value = request;
+  showSaveAsDialog.value = true;
+};
+
+const handleSave = async (data: any) => {
+  if (!requestToSave.value) return;
+
+  try {
+    const isNewRequest = !requestToSave.value.id || requestToSave.value.id === '';
+    
+    // Check if we need to create a folder first
+    let targetFolderId = data.folderId || '';
+    
+    if (data.isNewFolder && data.newFolderName) {
+      const collectionIdToUse = data.collectionId || (workspaces.value?.[0]?.projects?.[0]?.collections?.[0]?.id);
+      
+      if (collectionIdToUse) {
+        const newFolder = await $fetch(`/api/admin/collections/${collectionIdToUse}/folders`, {
+          method: 'POST',
+          body: {
+            name: data.newFolderName.trim()
+          }
+        });
+        targetFolderId = newFolder.id;
+      }
+    }
+
+    if (isNewRequest) {
+      // Create a new request
+      const folderIdToUse = targetFolderId || (workspaces.value?.[0]?.projects?.[0]?.collections?.[0]?.folders?.[0]?.id);
+      
+      if (!folderIdToUse) {
+        alert('Please select a folder first');
+        return;
+      }
+
+      const newRequest = await $fetch(`/api/admin/folders/${folderIdToUse}/requests`, {
+        method: 'POST',
+        body: {
+          name: data.name,
+          method: requestToSave.value.method,
+          url: requestToSave.value.url,
+          headers: requestToSave.value.headers,
+          body: requestToSave.value.body,
+          auth: requestToSave.value.auth
+        }
+      });
+      
+      // Update the current tab with the new request data
+      if (activeTabKey.value) {
+        const tab = openTabs.value.find(t => t.key === activeTabKey.value);
+        if (tab) {
+          tab.request = newRequest;
+          tab.hasUnsavedChanges = false;
+          selectedRequest.value = newRequest;
+        }
+      }
+    } else {
+      // Update existing request
+      await $fetch(`/api/admin/requests/${requestToSave.value.id}`, {
+        method: 'PUT',
+        body: {
+          name: data.name,
+          method: requestToSave.value.method,
+          url: requestToSave.value.url,
+          headers: requestToSave.value.headers,
+          body: requestToSave.value.body,
+          auth: requestToSave.value.auth
+        }
+      });
+
+      // Also update selectedRequest if it matches
+      if (selectedRequest.value && selectedRequest.value.id === requestToSave.value.id) {
+        selectedRequest.value = {
+          ...selectedRequest.value,
+          name: data.name,
+          method: requestToSave.value.method,
+          url: requestToSave.value.url,
+          headers: requestToSave.value.headers,
+          body: requestToSave.value.body,
+          auth: requestToSave.value.auth
+        };
+      }
+      
+      // Reset unsaved flag on the tab
+      updateTabUnsavedStatus(requestToSave.value, false);
+    }
+
+    showSaveDialog.value = false;
+    requestToSave.value = null;
+    refresh();
+  } catch (e: any) {
+    alert('Error saving request: ' + (e.data?.message || e.message));
+  }
+};
+
+const handleSaveAs = async (data: any) => {
+  if (!requestToSaveAs.value) return;
+
+  try {
+    // Check if we need to create a folder first
+    let targetFolderId = data.folderId || '';
+    
+    if (data.isNewFolder && data.newFolderName) {
+      const collectionIdToUse = data.collectionId || (workspaces.value?.[0]?.projects?.[0]?.collections?.[0]?.id);
+      
+      if (collectionIdToUse) {
+        const newFolder = await $fetch(`/api/admin/collections/${collectionIdToUse}/folders`, {
+          method: 'POST',
+          body: {
+            name: data.newFolderName.trim()
+          }
+        });
+        targetFolderId = newFolder.id;
+      }
+    }
+
+    const folderIdToUse = targetFolderId || (workspaces.value?.[0]?.projects?.[0]?.collections?.[0]?.folders?.[0]?.id);
+    
+    if (!folderIdToUse) {
+      alert('Please select a folder first');
+      return;
+    }
+
+    const newRequest = await $fetch(`/api/admin/folders/${folderIdToUse}/requests`, {
+      method: 'POST',
+      body: {
+        name: data.name,
+        method: requestToSaveAs.value.method,
+        url: requestToSaveAs.value.url,
+        headers: requestToSaveAs.value.headers,
+        body: requestToSaveAs.value.body,
+        auth: requestToSaveAs.value.auth
+      }
+    });
+
+    showSaveAsDialog.value = false;
+    requestToSaveAs.value = null;
+    refresh();
+
+    // Select the newly created request (this creates a new tab)
+    handleSelectRequest(newRequest);
+    
+    // Reset unsaved flag on the original tab's request
+    if (activeTabKey.value) {
+      const tab = openTabs.value.find(t => t.key === activeTabKey.value);
+      if (tab) {
+        tab.hasUnsavedChanges = false;
+        tab.request = { ...requestToSaveAs.value };
+      }
+    }
+  } catch (e: any) {
+    alert('Error saving request as: ' + (e.data?.message || e.message));
+  }
 };
 
 const openCreateRequest = (folderId?: string) => {
@@ -435,6 +711,29 @@ const openCreateProject = (workspaceId?: string) => {
 
 const openCreateWorkspace = () => {
   alert('Create workspace handler');
+};
+
+const handleRestoreRequest = (request: any) => {
+  selectedMock.value = null;
+  
+  const newRequest: HttpRequest = {
+    ...request,
+    id: '',
+    folderId: '',
+    order: 0,
+    createdAt: new Date(),
+    updatedAt: new Date()
+  };
+  
+  const newTabKey = createTabKey();
+  const newTab: OpenTab = {
+    key: newTabKey,
+    request: newRequest,
+    hasUnsavedChanges: true
+  };
+  openTabs.value.push(newTab);
+  activeTabKey.value = newTabKey;
+  selectedRequest.value = newRequest;
 };
 
 // Collection Management
@@ -539,6 +838,7 @@ const deleteGroup = async () => {
       :active-environment="activeEnvironment"
       @open-settings="openSettings"
       @export-open-a-p-i="exportOpenAPI"
+      @import-open-a-p-i="openImportModal"
       @activate-environment="activateEnvironment"
     />
 
@@ -561,12 +861,13 @@ const deleteGroup = async () => {
         @edit-collection="openEditCollection"
         @delete-collection="confirmDeleteCollection"
         @delete-group="confirmDeleteGroup"
+        @restore-request="handleRestoreRequest"
       />
 
       <!-- Main Content -->
-      <main class="flex-1 overflow-hidden bg-bg-primary">
+      <main class="flex flex-col flex-1 overflow-hidden bg-bg-primary">
         <!-- Empty State -->
-        <div v-if="!selectedMock && !selectedRequest" class="flex flex-col items-center justify-center h-full p-10 text-center">
+        <div v-if="!selectedMock && !selectedRequest && openTabs.length === 0" class="flex flex-col items-center justify-center h-full p-10 text-center">
           <div class="mb-6">
             <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round" class="opacity-30">
               <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
@@ -574,23 +875,55 @@ const deleteGroup = async () => {
           </div>
           <h2 class="text-xl font-semibold text-text-primary mb-2">Select an endpoint</h2>
           <p class="text-text-secondary mb-6 max-w-[340px]">Choose an endpoint from the sidebar to view details, test it, and generate code snippets</p>
-          <button class="btn btn-primary" @click="goToCreate()">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-            Create New Mock
-          </button>
+          <div class="flex gap-2">
+            <button class="btn btn-primary" @click="goToCreate()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              Create New Mock
+            </button>
+            <button class="btn btn-secondary" @click="handleNewTab()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="12" y1="18" x2="12" y2="12"></line>
+                <line x1="9" y1="15" x2="15" y2="15"></line>
+              </svg>
+              New Request Tab
+            </button>
+          </div>
         </div>
 
-        <!-- Request Builder -->
-        <RequestBuilder
-          v-if="selectedRequest"
-          :request="selectedRequest"
-          :workspace-id="currentWorkspaceId"
-          :environment-id="activeEnvironment?.id"
-          :project-id="currentProjectId"
-        />
+        <!-- Request Tabs Area -->
+        <div v-if="openTabs.length > 0" class="flex flex-col flex-1 overflow-hidden">
+          <!-- Tabs -->
+          <RequestTabs
+            :open-tabs="openTabs"
+            :active-tab-key="activeTabKey"
+            @select-tab="handleSelectTab"
+            @close-tab="handleCloseTab"
+            @new-tab="handleNewTab"
+            @reorder-tabs="handleReorderTabs"
+          />
+
+          <!-- Request Builder -->
+          <RequestBuilder
+            v-if="selectedRequest && activeTabKey"
+            :request="selectedRequest"
+            :workspace-id="currentWorkspaceId"
+            :environment-id="activeEnvironment?.id"
+            :project-id="currentProjectId"
+            @save-request="handleSaveRequest"
+            @save-as-request="handleSaveAsRequest"
+            @unsaved-changes="updateTabUnsavedStatus"
+          />
+          
+          <!-- Placeholder when no active tab -->
+          <div v-else-if="!selectedRequest" class="flex-1 flex items-center justify-center text-text-muted">
+            Select a request from the tabs
+          </div>
+        </div>
 
         <!-- Selected Mock Details -->
         <div v-else-if="selectedMock" class="p-5 flex flex-col gap-5 h-[calc(100vh-48px)] overflow-y-auto">
@@ -963,5 +1296,23 @@ const deleteGroup = async () => {
         <button class="btn btn-danger" @click="deleteGroup">Delete Folder & Items</button>
       </template>
     </Modal>
+
+    <!-- Save Request Dialog -->
+    <SaveRequestDialog
+      :show="showSaveDialog || showSaveAsDialog"
+      :request="showSaveDialog ? requestToSave : requestToSaveAs"
+      :workspaces="workspaces || []"
+      :is-save-as="showSaveAsDialog"
+      @close="showSaveDialog = false; showSaveAsDialog = false; requestToSave = null; requestToSaveAs = null"
+      @save="showSaveDialog ? handleSave($event) : handleSaveAs($event)"
+    />
+
+    <!-- Import Modal -->
+    <ImportModal
+      :show="showImportModal"
+      :workspaces="workspaces || []"
+      @close="showImportModal = false"
+      @import-complete="refresh"
+    />
   </div>
 </template>

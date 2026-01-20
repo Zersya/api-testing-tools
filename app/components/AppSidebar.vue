@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import RequestHistoryPanel from './RequestHistoryPanel.vue';
+
 interface Collection {
   id: string;
   name: string;
@@ -117,6 +119,7 @@ const emit = defineEmits<{
   createFolder: [collectionId?: string];
   createProject: [workspaceId?: string];
   createWorkspace: [];
+  restoreRequest: [request: HttpRequest];
 }>();
 
 const selectedWorkspaceId = ref<string | null>(null);
@@ -387,6 +390,16 @@ onUnmounted(() => {
         </svg>
         Definitions
       </NuxtLink>
+      <button
+        :class="['flex items-center gap-2 py-2 px-3 rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors text-[13px] font-medium', activeView === 'history' ? 'bg-bg-active text-text-primary' : '']"
+        @click="activeView = 'history'"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <polyline points="12 6 12 12 16 14"></polyline>
+        </svg>
+        History
+      </button>
     </div>
 
     <!-- Workspace Switcher -->
@@ -414,6 +427,14 @@ onUnmounted(() => {
           <line x1="5" y1="12" x2="19" y2="12"></line>
         </svg>
       </button>
+    </div>
+
+    <!-- History Panel -->
+    <div v-if="activeView === 'history'" class="flex-1">
+      <RequestHistoryPanel
+        :workspace-id="currentWorkspace?.id"
+        @restore-request="emit('restoreRequest', $event)"
+      />
     </div>
 
     <!-- Sidebar Header - Mock Mode -->

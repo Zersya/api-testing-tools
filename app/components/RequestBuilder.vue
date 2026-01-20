@@ -89,6 +89,8 @@ const props = defineProps<Props>();
 
 const emit = defineEmits<{
   saveRequest: [request: HttpRequest];
+  saveAsRequest: [request: HttpRequest];
+  unsavedChanges: [request: HttpRequest, hasUnsavedChanges: boolean];
 }>();
 
 type TabType = 'params' | 'headers' | 'body' | 'auth' | 'response';
@@ -535,6 +537,38 @@ const parseResponseCookies = () => {
 
 const responseCookies = computed(() => parseResponseCookies());
 
+const hasUnsavedChanges = computed(() => {
+  const currentUrl = form.value.url;
+  const originalUrl = props.request.url;
+  const currentMethod = form.value.method;
+  const originalMethod = props.request.method;
+  const currentHeaders = buildHeadersRecord();
+  const originalHeaders = props.request.headers;
+  const currentBody = buildBody();
+  const originalBody = props.request.body;
+  const currentAuth = {
+    type: authType.value,
+    credentials: authType.value === 'api-key' ? { 
+      key: apiKey.value.key, 
+      value: apiKey.value.value,
+      addTo: apiKey.value.addTo
+    } : authType.value === 'bearer' ? { token: bearerToken.value } 
+      : authType.value === 'basic' ? {
+        username: basicAuth.value.username,
+        password: basicAuth.value.password
+      } : undefined
+  } || null;
+  const originalAuth = props.request.auth;
+
+  const urlChanged = currentUrl !== originalUrl;
+  const methodChanged = currentMethod !== originalMethod;
+  const headersChanged = JSON.stringify(currentHeaders) !== JSON.stringify(originalHeaders || {});
+  const bodyChanged = JSON.stringify(currentBody) !== JSON.stringify(originalBody);
+  const authChanged = JSON.stringify(currentAuth) !== JSON.stringify(originalAuth || {});
+
+  return urlChanged || methodChanged || headersChanged || bodyChanged || authChanged;
+});
+
 const getContentType = () => {
   if (response.value && 'success' in response.value && response.value.headers) {
     return response.value.headers['content-type'] || '';
@@ -742,6 +776,12 @@ const handleKeydown = (e: KeyboardEvent) => {
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
     e.preventDefault();
     sendRequest();
+  } else if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+    e.preventDefault();
+    openSaveDialog();
+  } else if ((e.metaKey || e.ctrlKey) && (e.shiftKey && e.key === 'S')) {
+    e.preventDefault();
+    openSaveAsDialog();
   } else if ((e.metaKey || e.ctrlKey) && e.key === 'f' && activeTab.value === 'response') {
     e.preventDefault();
     showSearch.value = !showSearch.value;
@@ -752,6 +792,60 @@ const handleKeydown = (e: KeyboardEvent) => {
       });
     }
   }
+};
+
+const openSaveDialog = () => {
+  emit('saveRequest', {
+    id: props.request.id,
+    folderId: props.request.folderId,
+    name: props.request.name,
+    method: form.value.method,
+    url: form.value.url,
+    headers: buildHeadersRecord(),
+    body: buildBody(),
+    auth: {
+      type: authType.value,
+      credentials: authType.value === 'api-key' ? { 
+        key: apiKey.value.key, 
+        value: apiKey.value.value,
+        addTo: apiKey.value.addTo
+      } : authType.value === 'bearer' ? { token: bearerToken.value } 
+        : authType.value === 'basic' ? {
+          username: basicAuth.value.username,
+          password: basicAuth.value.password
+        } : undefined
+    } || null,
+    order: props.request.order,
+    createdAt: props.request.createdAt,
+    updatedAt: new Date()
+  });
+};
+
+const openSaveAsDialog = () => {
+  emit('saveAsRequest', {
+    id: props.request.id,
+    folderId: props.request.folderId,
+    name: props.request.name,
+    method: form.value.method,
+    url: form.value.url,
+    headers: buildHeadersRecord(),
+    body: buildBody(),
+    auth: {
+      type: authType.value,
+      credentials: authType.value === 'api-key' ? { 
+        key: apiKey.value.key, 
+        value: apiKey.value.value,
+        addTo: apiKey.value.addTo
+      } : authType.value === 'bearer' ? { token: bearerToken.value } 
+        : authType.value === 'basic' ? {
+          username: basicAuth.value.username,
+          password: basicAuth.value.password
+        } : undefined
+    } || null,
+    order: props.request.order,
+    createdAt: props.request.createdAt,
+    updatedAt: new Date()
+  });
 };
 
 watch(() => form.value.url, (newUrl) => {
@@ -772,6 +866,10 @@ watch(bodyFormat, (newFormat) => {
       type: 'text'
     });
   }
+});
+
+watch(hasUnsavedChanges, (newValue) => {
+  emit('unsavedChanges', props.request, newValue);
 });
 
 onMounted(() => {
@@ -865,13 +963,36 @@ onUnmounted(() => {
     <div class="p-4 border-b border-border-default bg-bg-secondary">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
-          <h2 class="text-sm font-semibold text-text-primary">{{ request.name }}</h2>
+          <h2 class="text-sm font-semibold text-text-primary flex items-center gap-2">
+            {{ request.name }}
+            <span 
+              v-if="hasUnsavedChanges"
+              class="w-2 h-2 rounded-full bg-accent-orange"
+              title="Unsaved changes"
+            ></span>
+          </h2>
           <span 
             class="text-[10px] font-semibold px-1.5 py-0.5 rounded"
             :class="[methodColors[form.method] || 'text-text-primary']"
           >
             {{ form.method }}
           </span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button 
+            @click="openSaveAsDialog"
+            class="py-1.5 px-3 bg-bg-input text-text-secondary rounded border border-border-default cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-text-primary text-xs font-medium"
+            title="Save as new request (Cmd+Shift+S)"
+          >
+            Save As
+          </button>
+          <button 
+            @click="openSaveDialog"
+            class="py-1.5 px-3 bg-accent-blue text-white rounded border-none cursor-pointer transition-all duration-fast hover:bg-[#1976D2] text-xs font-medium"
+            title="Save request (Cmd+S)"
+          >
+            Save
+          </button>
         </div>
       </div>
     </div>

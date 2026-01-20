@@ -507,11 +507,12 @@
         "Verify in browser - metadata displays correctly"
       ],
       "priority": 25,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-024"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-026",
@@ -526,12 +527,13 @@
         "Verify in browser - can switch environments"
       ],
       "priority": 26,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-011",
         "US-018"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-027",
@@ -547,11 +549,12 @@
         "Verify in browser - can create and edit environments"
       ],
       "priority": 27,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-026"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-028",
@@ -566,12 +569,13 @@
         "Verify in browser - variables are highlighted"
       ],
       "priority": 28,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-027",
         "US-017"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-029",
@@ -587,12 +591,13 @@
         "Verify in browser - can save request to collection"
       ],
       "priority": 29,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-018",
         "US-019"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-030",
@@ -609,11 +614,12 @@
         "Verify in browser - can open multiple request tabs"
       ],
       "priority": 30,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-029"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-031",
@@ -628,12 +634,13 @@
         "Verify in browser - history shows recent requests"
       ],
       "priority": 31,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-013",
         "US-018"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-032",
@@ -651,11 +658,12 @@
         "Verify in browser - can import OpenAPI file"
       ],
       "priority": 32,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-014"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-033",
@@ -976,6 +984,6 @@
     }
   ],
   "metadata": {
-    "updatedAt": "2026-01-20T17:24:22.738Z"
+    "updatedAt": "2026-01-20T23:51:48.147Z"
   }
 }
