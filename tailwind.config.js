@@ -46,6 +46,8 @@ export default {
         'method-put': '#64B5F6',
         'method-delete': '#EF5350',
         'method-patch': '#AB47BC',
+        'method-head': '#8b5cf6',
+        'method-options': '#64748b',
 
         // Status colors (aliases)
         'status-success': '#73BF69',

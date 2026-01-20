@@ -3,10 +3,10 @@
   "sessionId": "52ce48cb-d294-40aa-8651-254622eadbd9",
   "status": "running",
   "startedAt": "2026-01-20T16:09:17.145Z",
-  "updatedAt": "2026-01-20T16:19:46.914Z",
-  "currentIteration": 1,
+  "updatedAt": "2026-01-20T17:02:33.092Z",
+  "currentIteration": 4,
   "maxIterations": 10,
-  "tasksCompleted": 1,
+  "tasksCompleted": 4,
   "isPaused": false,
   "agentPlugin": "opencode",
   "model": "fireworks-ai/accounts/fireworks/models/glm-4p7",
@@ -114,20 +114,20 @@
       {
         "id": "US-017",
         "title": "Variable substitution engine",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-018",
         "title": "Sidebar with Workspace/Project/Collection tree",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-019",
         "title": "Request Builder UI - URL and method",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-020",
@@ -315,12 +315,42 @@
       "durationMs": 627357,
       "startedAt": "2026-01-20T16:09:18.513Z",
       "endedAt": "2026-01-20T16:19:45.870Z"
+    },
+    {
+      "iteration": 2,
+      "status": "completed",
+      "taskId": "US-017",
+      "taskTitle": "Variable substitution engine",
+      "taskCompleted": true,
+      "durationMs": 291227,
+      "startedAt": "2026-01-20T16:19:46.904Z",
+      "endedAt": "2026-01-20T16:24:38.131Z"
+    },
+    {
+      "iteration": 3,
+      "status": "completed",
+      "taskId": "US-018",
+      "taskTitle": "Sidebar with Workspace/Project/Collection tree",
+      "taskCompleted": true,
+      "durationMs": 1917290,
+      "startedAt": "2026-01-20T16:24:39.176Z",
+      "endedAt": "2026-01-20T16:56:36.466Z"
+    },
+    {
+      "iteration": 4,
+      "status": "completed",
+      "taskId": "US-019",
+      "taskTitle": "Request Builder UI - URL and method",
+      "taskCompleted": true,
+      "durationMs": 354556,
+      "startedAt": "2026-01-20T16:56:37.490Z",
+      "endedAt": "2026-01-20T17:02:32.046Z"
     }
   ],
   "skippedTaskIds": [],
   "cwd": "/Users/zeinersyad/Playground/mock-service",
   "activeTaskIds": [
-    "US-017"
+    "US-020"
   ],
   "subagentPanelVisible": false
 }

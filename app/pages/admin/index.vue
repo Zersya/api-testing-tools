@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import RequestBuilder from '~/components/RequestBuilder.vue';
 interface Collection {
   id: string;
   name: string;
@@ -18,8 +19,30 @@ interface Mock {
   secure: boolean;
 }
 
+interface HttpRequest {
+  id: string;
+  folderId: string;
+  name: string;
+  method: string;
+  url: string;
+  headers: Record<string, string> | null;
+  body: Record<string, unknown> | string | null;
+  auth: {
+    type: string;
+    credentials?: Record<string, string>;
+  } | null;
+  order: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 const { data: mocks, refresh: refreshMocks, error } = await useFetch<Mock[]>('/api/admin/mocks');
 const { data: collections, refresh: refreshCollections } = await useFetch<Collection[]>('/api/admin/collections');
+const { data: workspaces } = await useFetch<any[]>('/api/admin/tree');
+
+const currentWorkspaceId = computed(() => {
+  return workspaces.value?.[0]?.id;
+});
 
 if (error.value && error.value.statusCode === 401) {
     await navigateTo('/login');
@@ -37,6 +60,7 @@ const showDeleteGroupConfirm = ref(false);
 // State
 const previewContent = ref('');
 const selectedMock = ref<any>(null);
+const selectedRequest = ref<HttpRequest | null>(null);
 const mockToDelete = ref<any>(null);
 const snippetLang = ref('curl');
 const tryItLoading = ref(false);
@@ -238,6 +262,7 @@ const sendTestRequest = async () => {
 // Actions
 const handleSelectMock = (mock: any) => {
     selectedMock.value = mock;
+    selectedRequest.value = null;
     tryItResponse.value = null;
     tryItError.value = '';
 };
@@ -354,6 +379,28 @@ const goToEdit = (id: string) => {
     navigateTo(`/admin/${id}`);
 };
 
+// Request handlers
+const handleSelectRequest = (request: HttpRequest) => {
+  selectedRequest.value = request;
+  selectedMock.value = null;
+};
+
+const openCreateRequest = (folderId?: string) => {
+  alert('Create request handler - folderId: ' + (folderId || 'None'));
+};
+
+const openCreateFolder = (collectionId?: string) => {
+  alert('Create folder handler - collectionId: ' + (collectionId || 'None'));
+};
+
+const openCreateProject = (workspaceId?: string) => {
+  alert('Create project handler - workspaceId: ' + (workspaceId || 'None'));
+};
+
+const openCreateWorkspace = () => {
+  alert('Create workspace handler');
+};
+
 // Collection Management
 const openCreateCollection = () => {
     collectionModalMode.value = 'create';
@@ -458,23 +505,29 @@ const deleteGroup = async () => {
 
     <div class="flex flex-1 overflow-hidden">
       <!-- Sidebar -->
-      <AppSidebar 
+      <AppSidebar
         :collections="collections || []"
         :mocks="mocks || []"
         :selected-mock-id="selectedMock?.id"
+        :workspaces="workspaces || []"
         @select-mock="handleSelectMock"
+        @select-request="handleSelectRequest"
         @create-mock="goToCreate"
         @create-resource="showResourceModal = true"
         @create-collection="openCreateCollection"
+        @create-request="openCreateRequest"
+        @create-folder="openCreateFolder"
+        @create-project="openCreateProject"
+        @create-workspace="openCreateWorkspace"
         @edit-collection="openEditCollection"
         @delete-collection="confirmDeleteCollection"
         @delete-group="confirmDeleteGroup"
       />
 
       <!-- Main Content -->
-      <main class="flex-1 overflow-y-auto bg-bg-primary">
+      <main class="flex-1 overflow-hidden bg-bg-primary">
         <!-- Empty State -->
-        <div v-if="!selectedMock" class="flex flex-col items-center justify-center h-full p-10 text-center">
+        <div v-if="!selectedMock && !selectedRequest" class="flex flex-col items-center justify-center h-full p-10 text-center">
           <div class="mb-6">
             <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round" class="opacity-30">
               <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
@@ -491,8 +544,11 @@ const deleteGroup = async () => {
           </button>
         </div>
 
+        <!-- Request Builder -->
+        <RequestBuilder v-if="selectedRequest" :request="selectedRequest" :workspace-id="currentWorkspaceId" />
+
         <!-- Selected Mock Details -->
-        <div v-else class="p-5 flex flex-col gap-5 h-[calc(100vh-48px)] overflow-y-auto">
+        <div v-else-if="selectedMock" class="p-5 flex flex-col gap-5 h-[calc(100vh-48px)] overflow-y-auto">
           <!-- URL Bar -->
           <div class="flex items-center gap-3 p-3 px-4 bg-bg-secondary border border-border-default rounded-lg">
             <MethodBadge :method="selectedMock.method" size="lg" />
