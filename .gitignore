@@ -25,3 +25,7 @@ logs
 .vercel
 collections
 mocks
+
+# SQLite database
+sqlite.db
+sqlite.db-journal

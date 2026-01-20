@@ -30,6 +30,14 @@ after each iteration and included in agent prompts for context.
 - Select/deselect all functionality for endpoint selection
 - Show loading state and error handling in UI
 
+**Variable Substitution Pattern**
+- Use `substituteVariables(input, context)` to replace {{variableName}} patterns
+- Context object defines scope: { environmentId, collectionId, projectId, workspaceId }
+- Engine respects precedence: environment > collection > project > global (workspace)
+- Supports nested references with circular reference protection
+- Returns both substituted value and warnings for undefined variables
+- Use `extractVariables(input)` to get list of all variable names in a string
+
 ---
 
 ## [2026-01-20] - US-016
@@ -45,3 +53,34 @@ after each iteration and included in agent prompts for context.
 
 ---
 
+## ✓ Iteration 1 - US-016: Generate mocks from API definition
+*2026-01-20T16:19:45.879Z (627s)*
+
+**Status:** Completed
+
+**Notes:**
+sessionID":"ses_423d5136dffe7iSLgcayC1d2zp","part":{"id":"prt_bdc3465a90013Fmt2eYWwf74TQ","sessionID":"ses_423d5136dffe7iSLgcayC1d2zp","messageID":"msg_bdc3437e00017iuVbzQF9evxf4","type":"step-start","snapshot":"00f86132c4437080ff5f580f249d4cc0a6ea06ed"}}
+{"type":"text","timestamp":1768925985748,"sessionID":"ses_423d5136dffe7iSLgcayC1d2zp","part":{"id":"prt_bdc346876001wno69a77M9lmqS","sessionID":"ses_423d5136dffe7iSLgcayC1d2zp","messageID":"msg_bdc3437e00017iuVbzQF9evxf4","type":"text","text":"
+
+---
+
+## [2026-01-20] - US-017
+- Implemented variable substitution engine with {{variableName}} syntax parsing
+- Created server/utils/variable-substitution.ts utility module
+- Support for environment, collection, project, and workspace/global variable scopes
+- Nested variable reference resolution with circular reference protection
+- Variable precedence: environment > collection > project > global
+- Returns warnings for undefined variables
+- ExtractVariables utility for parsing variable names from strings
+- Ready for integration in proxy endpoint
+- Files changed: server/utils/variable-substitution.ts, .ralph-tui/progress.md
+- **Learnings:**
+  - Variable substitution requires iterative parsing to handle nested references
+  - Circular reference detection is critical to prevent infinite loops
+  - Regex pattern `/\{\{([^{}]+)\}\}/g` reliably captures variable names
+  - Context-based resolution allows flexible scope specification
+  - Warning accumulation helps users identify missing variables
+  - Project baseUrl is automatically exposed as base_url variable
+  - Collection variables sourced from authConfig (extensible pattern)
+
+---

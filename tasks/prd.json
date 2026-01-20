@@ -1,0 +1,973 @@
+{
+  "name": "MockAPI Studio - Postman Alternative",
+  "description": "Transform mock-service into a comprehensive Postman alternative with OpenAPI import, Redocly-style API documentation, and enterprise-ready authentication",
+  "branchName": "ralph/postman-alternative",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Database schema for Workspace and Project entities",
+      "description": "As a developer, I need the foundational database schema for workspaces and projects so that I can organize API collections hierarchically.",
+      "acceptanceCriteria": [
+        "Create Workspace table with: id, name, created_at, updated_at",
+        "Create Project table with: id, workspace_id, name, base_url, created_at, updated_at",
+        "Foreign key relationship between Project and Workspace",
+        "Drizzle ORM schema files created",
+        "Default 'Personal' workspace seeded on first run",
+        "nuxt build passes without errors"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "",
+      "dependsOn": [],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-002",
+      "title": "Database schema for Collection and Folder entities",
+      "description": "As a developer, I need collection and folder entities so that I can organize requests in a hierarchical structure.",
+      "acceptanceCriteria": [
+        "Create Collection table with: id, project_id, name, description, auth_config (JSON), created_at",
+        "Create Folder table with: id, collection_id, parent_folder_id (self-referential), name, order",
+        "Support unlimited folder nesting via parent_folder_id",
+        "Foreign key relationships properly defined",
+        "nuxt build passes without errors"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "",
+      "dependsOn": [
+        "US-001"
+      ],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-003",
+      "title": "Database schema for SavedRequest entity",
+      "description": "As a developer, I need a saved request entity to persist user-created API requests.",
+      "acceptanceCriteria": [
+        "Create SavedRequest table with: id, folder_id, name, method, url, headers (JSON), body (JSON), auth (JSON), order, created_at, updated_at",
+        "Support all HTTP methods in method field",
+        "Foreign key to Folder table",
+        "nuxt build passes without errors"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "",
+      "dependsOn": [
+        "US-002"
+      ],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-004",
+      "title": "Database schema for Environment and EnvironmentVariable entities",
+      "description": "As a developer, I need environment entities to store variable configurations for different environments.",
+      "acceptanceCriteria": [
+        "Create Environment table with: id, project_id, name, is_active, created_at",
+        "Create EnvironmentVariable table with: id, environment_id, key, value, is_secret",
+        "Only one environment can be active per project",
+        "Secret values should be stored (encryption to be added later)",
+        "nuxt build passes without errors"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "",
+      "dependsOn": [
+        "US-001"
+      ],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-005",
+      "title": "Database schema for APIDefinition entity",
+      "description": "As a developer, I need an API definition entity to store imported OpenAPI specifications.",
+      "acceptanceCriteria": [
+        "Create APIDefinition table with: id, project_id, name, spec_format (openapi3, postman), spec_content (TEXT), source_url, is_public, public_slug, created_at, updated_at",
+        "Foreign key to Project table",
+        "nuxt build passes without errors"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "",
+      "dependsOn": [
+        "US-001"
+      ],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-006",
+      "title": "Database schema for RequestHistory entity",
+      "description": "As a developer, I need a request history entity to log all sent requests.",
+      "acceptanceCriteria": [
+        "Create RequestHistory table with: id, workspace_id, method, url, request_data (JSON), response_data (JSON), status_code, response_time_ms, timestamp",
+        "Foreign key to Workspace table",
+        "Index on timestamp for efficient querying",
+        "nuxt build passes without errors"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": "",
+      "dependsOn": [
+        "US-001"
+      ],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-007",
+      "title": "Workspace CRUD API endpoints",
+      "description": "As a developer, I need API endpoints to manage workspaces.",
+      "acceptanceCriteria": [
+        "GET /api/workspaces - List all workspaces",
+        "POST /api/workspaces - Create new workspace",
+        "GET /api/workspaces/:id - Get single workspace",
+        "PUT /api/workspaces/:id - Update workspace",
+        "DELETE /api/workspaces/:id - Delete workspace (cascade to projects)",
+        "Proper error handling and validation",
+        "nuxt build passes without errors"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": "",
+      "dependsOn": [
+        "US-001"
+      ],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-008",
+      "title": "Project CRUD API endpoints",
+      "description": "As a developer, I need API endpoints to manage projects within workspaces.",
+      "acceptanceCriteria": [
+        "GET /api/workspaces/:id/projects - List projects in workspace",
+        "POST /api/workspaces/:id/projects - Create project in workspace",
+        "GET /api/projects/:id - Get single project with collections",
+        "PUT /api/projects/:id - Update project",
+        "DELETE /api/projects/:id - Delete project (cascade)",
+        "nuxt build passes without errors"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": "",
+      "dependsOn": [
+        "US-007"
+      ],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-009",
+      "title": "Collection and Folder CRUD API endpoints",
+      "description": "As a developer, I need API endpoints to manage collections and folders.",
+      "acceptanceCriteria": [
+        "GET /api/projects/:id/collections - List collections with nested folders",
+        "POST /api/projects/:id/collections - Create collection",
+        "PUT /api/collections/:id - Update collection",
+        "DELETE /api/collections/:id - Delete collection",
+        "POST /api/collections/:id/folders - Create folder",
+        "PUT /api/folders/:id - Update folder (including move/reorder)",
+        "DELETE /api/folders/:id - Delete folder",
+        "nuxt build passes without errors"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": "",
+      "dependsOn": [
+        "US-008",
+        "US-002"
+      ],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-010",
+      "title": "SavedRequest CRUD API endpoints",
+      "description": "As a developer, I need API endpoints to manage saved requests.",
+      "acceptanceCriteria": [
+        "POST /api/folders/:id/requests - Create request in folder",
+        "GET /api/requests/:id - Get single request",
+        "PUT /api/requests/:id - Update request",
+        "DELETE /api/requests/:id - Delete request",
+        "PUT /api/requests/:id/move - Move request to different folder",
+        "nuxt build passes without errors"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": "",
+      "dependsOn": [
+        "US-009",
+        "US-003"
+      ],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-011",
+      "title": "Environment CRUD API endpoints",
+      "description": "As a developer, I need API endpoints to manage environments and variables.",
+      "acceptanceCriteria": [
+        "GET /api/projects/:id/environments - List environments",
+        "POST /api/projects/:id/environments - Create environment",
+        "PUT /api/environments/:id - Update environment",
+        "DELETE /api/environments/:id - Delete environment",
+        "PUT /api/environments/:id/activate - Set as active environment",
+        "CRUD for environment variables within environment",
+        "nuxt build passes without errors"
+      ],
+      "priority": 11,
+      "passes": true,
+      "notes": "",
+      "dependsOn": [
+        "US-008",
+        "US-004"
+      ],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-012",
+      "title": "HTTP Proxy endpoint for sending real requests",
+      "description": "As a developer, I need a server-side proxy to send HTTP requests and avoid CORS issues.",
+      "acceptanceCriteria": [
+        "POST /api/proxy/request - Proxy HTTP request to target URL",
+        "Support all HTTP methods (GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD)",
+        "Forward custom headers from request",
+        "Support request body (JSON, form-data, raw)",
+        "Return response: status, headers, body, timing info",
+        "Handle timeouts gracefully (default 30s)",
+        "Return response time in milliseconds",
+        "nuxt build passes without errors"
+      ],
+      "priority": 12,
+      "passes": true,
+      "notes": "",
+      "dependsOn": [
+        "US-001"
+      ],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-013",
+      "title": "Request History API endpoints",
+      "description": "As a developer, I need API endpoints to manage request history.",
+      "acceptanceCriteria": [
+        "GET /api/history - List request history with pagination",
+        "GET /api/history?method=GET&status=200 - Filter by method/status",
+        "DELETE /api/history - Clear all history",
+        "DELETE /api/history/:id - Delete single history entry",
+        "History auto-logged when using proxy endpoint",
+        "nuxt build passes without errors"
+      ],
+      "priority": 13,
+      "passes": true,
+      "notes": "",
+      "dependsOn": [
+        "US-012",
+        "US-006"
+      ],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-014",
+      "title": "OpenAPI 3.x import and parsing",
+      "description": "As a developer, I want to import OpenAPI specs so that I can auto-generate API definitions.",
+      "acceptanceCriteria": [
+        "POST /api/definitions/import - Import OpenAPI spec",
+        "Support OpenAPI 3.0 and 3.1 formats",
+        "Support both JSON and YAML input",
+        "Support import via: file upload, URL fetch, raw paste",
+        "Validate spec and return detailed errors",
+        "Store parsed spec in APIDefinition table",
+        "Extract: endpoints, schemas, examples, descriptions",
+        "nuxt build passes without errors"
+      ],
+      "priority": 14,
+      "passes": true,
+      "notes": "",
+      "dependsOn": [
+        "US-005"
+      ],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-015",
+      "title": "Postman Collection v2.1 import",
+      "description": "As a developer, I want to import Postman collections so that I can migrate existing workflows.",
+      "acceptanceCriteria": [
+        "POST /api/definitions/import/postman - Import Postman collection",
+        "Parse Postman Collection v2.1 JSON format",
+        "Import requests with headers, body, auth",
+        "Map Postman folders to collection folders",
+        "Import Postman environments as environment presets",
+        "Preserve request descriptions",
+        "nuxt build passes without errors"
+      ],
+      "priority": 15,
+      "passes": true,
+      "notes": "",
+      "dependsOn": [
+        "US-009",
+        "US-011"
+      ],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-016",
+      "title": "Generate mocks from API definition",
+      "description": "As a developer, I want to generate mock endpoints from my API definition.",
+      "acceptanceCriteria": [
+        "POST /api/definitions/:id/generate-mocks - Generate mocks",
+        "Select which endpoints to mock",
+        "Use OpenAPI examples if available",
+        "Generate example data from schema if no examples",
+        "Support response delay configuration",
+        "Link generated mocks to source API definition",
+        "nuxt build passes without errors"
+      ],
+      "priority": 16,
+      "passes": true,
+      "notes": "",
+      "dependsOn": [
+        "US-014"
+      ],
+      "completionNotes": "Completed by agent"
+    },
+    {
+      "id": "US-017",
+      "title": "Variable substitution engine",
+      "description": "As a developer, I need a variable substitution engine for {{variable}} syntax.",
+      "acceptanceCriteria": [
+        "Parse {{variableName}} syntax in strings",
+        "Resolve variables from environment scope",
+        "Support nested variable references",
+        "Variable precedence: environment > collection > project > global",
+        "Return list of undefined variables as warnings",
+        "Utility function usable in proxy endpoint",
+        "nuxt build passes without errors"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-011"
+      ]
+    },
+    {
+      "id": "US-018",
+      "title": "Sidebar with Workspace/Project/Collection tree",
+      "description": "As a user, I want a sidebar showing my workspace hierarchy so that I can navigate my API collections.",
+      "acceptanceCriteria": [
+        "Sidebar shows workspace switcher dropdown at top",
+        "Tree view: Projects > Collections > Folders > Requests",
+        "Collapsible tree nodes",
+        "Click request to open in request builder",
+        "Right-click context menu for CRUD actions",
+        "Visual indicators for method types (GET=green, POST=blue, etc.)",
+        "Verify in browser - sidebar renders correctly"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-010"
+      ]
+    },
+    {
+      "id": "US-019",
+      "title": "Request Builder UI - URL and method",
+      "description": "As a user, I want a request builder to construct HTTP requests.",
+      "acceptanceCriteria": [
+        "HTTP method dropdown (GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD)",
+        "URL input field with {{variable}} syntax highlighting",
+        "Send button to execute request",
+        "Loading state while request is in flight",
+        "Keyboard shortcut Cmd/Ctrl+Enter to send",
+        "Verify in browser - can input URL and select method"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-012"
+      ]
+    },
+    {
+      "id": "US-020",
+      "title": "Request Builder UI - Query params editor",
+      "description": "As a user, I want to edit query parameters in a key-value table.",
+      "acceptanceCriteria": [
+        "Params tab in request builder",
+        "Key-value table with add/remove rows",
+        "Checkbox to enable/disable individual params",
+        "Auto-sync with URL query string",
+        "Bulk edit mode (raw query string)",
+        "Verify in browser - params sync with URL"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-019"
+      ]
+    },
+    {
+      "id": "US-021",
+      "title": "Request Builder UI - Headers editor",
+      "description": "As a user, I want to edit request headers in a key-value table.",
+      "acceptanceCriteria": [
+        "Headers tab in request builder",
+        "Key-value table with add/remove rows",
+        "Checkbox to enable/disable individual headers",
+        "Common header name autocomplete (Content-Type, Authorization, etc.)",
+        "Preset common headers button",
+        "Verify in browser - headers can be added/removed"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-019"
+      ]
+    },
+    {
+      "id": "US-022",
+      "title": "Request Builder UI - Body editor",
+      "description": "As a user, I want to edit request body with multiple format options.",
+      "acceptanceCriteria": [
+        "Body tab in request builder",
+        "Format selector: none, JSON, form-data, x-www-form-urlencoded, raw, binary",
+        "JSON editor with syntax highlighting and validation",
+        "Form-data editor with file upload support",
+        "x-www-form-urlencoded key-value editor",
+        "Raw text editor with content-type selector",
+        "Binary file upload",
+        "Verify in browser - can switch formats and edit body"
+      ],
+      "priority": 22,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-019"
+      ]
+    },
+    {
+      "id": "US-023",
+      "title": "Request Builder UI - Auth editor",
+      "description": "As a user, I want to configure authentication for my requests.",
+      "acceptanceCriteria": [
+        "Auth tab in request builder",
+        "Auth type selector: No Auth, API Key, Bearer Token, Basic Auth",
+        "API Key: key name, value, add to header or query",
+        "Bearer Token: token input field",
+        "Basic Auth: username and password fields",
+        "Inherit from parent option",
+        "Verify in browser - auth options render correctly"
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-019"
+      ]
+    },
+    {
+      "id": "US-024",
+      "title": "Response Viewer UI - Body display",
+      "description": "As a user, I want to view API responses with syntax highlighting.",
+      "acceptanceCriteria": [
+        "Response panel below request builder",
+        "JSON syntax highlighting with collapsible nodes",
+        "XML syntax highlighting",
+        "HTML rendered preview tab",
+        "Raw text view",
+        "Copy response body button",
+        "Search within response (Cmd/Ctrl+F)",
+        "Verify in browser - JSON response renders with highlighting"
+      ],
+      "priority": 24,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-019"
+      ]
+    },
+    {
+      "id": "US-025",
+      "title": "Response Viewer UI - Metadata display",
+      "description": "As a user, I want to see response metadata like status, time, and size.",
+      "acceptanceCriteria": [
+        "Status code badge with color (2xx green, 4xx orange, 5xx red)",
+        "Response time in milliseconds",
+        "Response size (body + headers)",
+        "Headers tab showing response headers",
+        "Cookies tab showing response cookies",
+        "Verify in browser - metadata displays correctly"
+      ],
+      "priority": 25,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-024"
+      ]
+    },
+    {
+      "id": "US-026",
+      "title": "Environment switcher UI",
+      "description": "As a user, I want to quickly switch between environments.",
+      "acceptanceCriteria": [
+        "Environment dropdown in header bar",
+        "Shows active environment name",
+        "Quick switch between environments",
+        "No Environment option",
+        "Link to manage environments",
+        "Verify in browser - can switch environments"
+      ],
+      "priority": 26,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-011",
+        "US-018"
+      ]
+    },
+    {
+      "id": "US-027",
+      "title": "Environment management UI",
+      "description": "As a user, I want to manage environments and their variables.",
+      "acceptanceCriteria": [
+        "Environment management modal/page",
+        "List all environments for project",
+        "Create, rename, delete environments",
+        "Key-value editor for variables",
+        "Secret toggle for sensitive values (masked display)",
+        "Duplicate environment action",
+        "Verify in browser - can create and edit environments"
+      ],
+      "priority": 27,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-026"
+      ]
+    },
+    {
+      "id": "US-028",
+      "title": "Variable highlighting and autocomplete",
+      "description": "As a user, I want {{variables}} to be highlighted and autocompleted.",
+      "acceptanceCriteria": [
+        "{{variable}} syntax highlighted in URL, headers, body",
+        "Different color for defined vs undefined variables",
+        "Autocomplete dropdown when typing {{",
+        "Show variable value on hover",
+        "Quick jump to variable definition",
+        "Verify in browser - variables are highlighted"
+      ],
+      "priority": 28,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-027",
+        "US-017"
+      ]
+    },
+    {
+      "id": "US-029",
+      "title": "Save request dialog",
+      "description": "As a user, I want to save requests to my collections.",
+      "acceptanceCriteria": [
+        "Save button (Cmd/Ctrl+S) opens save dialog",
+        "Request name input",
+        "Collection/folder picker tree",
+        "Create new folder inline",
+        "Save As option for existing requests",
+        "Unsaved changes indicator (dot) on tab",
+        "Verify in browser - can save request to collection"
+      ],
+      "priority": 29,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-018",
+        "US-019"
+      ]
+    },
+    {
+      "id": "US-030",
+      "title": "Request tabs UI",
+      "description": "As a user, I want to work with multiple requests in tabs.",
+      "acceptanceCriteria": [
+        "Tab bar showing open requests",
+        "New tab button (+)",
+        "Close tab button (x)",
+        "Tab shows: method badge, request name",
+        "Unsaved indicator on tab",
+        "Middle-click to close",
+        "Drag to reorder tabs",
+        "Verify in browser - can open multiple request tabs"
+      ],
+      "priority": 30,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-029"
+      ]
+    },
+    {
+      "id": "US-031",
+      "title": "Request history panel",
+      "description": "As a user, I want to view my request history.",
+      "acceptanceCriteria": [
+        "History section in sidebar",
+        "List recent requests: method, URL, status, timestamp",
+        "Click to restore request to builder",
+        "Filter by date, method, status code",
+        "Clear history button",
+        "Verify in browser - history shows recent requests"
+      ],
+      "priority": 31,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-013",
+        "US-018"
+      ]
+    },
+    {
+      "id": "US-032",
+      "title": "OpenAPI import UI",
+      "description": "As a user, I want a UI to import OpenAPI specifications.",
+      "acceptanceCriteria": [
+        "Import button in sidebar/header",
+        "Import modal with tabs: File, URL, Paste",
+        "File upload drag-and-drop zone",
+        "URL input with fetch button",
+        "Text area for pasting spec",
+        "Format auto-detection (JSON/YAML)",
+        "Validation errors display",
+        "Progress indicator during import",
+        "Verify in browser - can import OpenAPI file"
+      ],
+      "priority": 32,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-014"
+      ]
+    },
+    {
+      "id": "US-033",
+      "title": "Postman import UI",
+      "description": "As a user, I want a UI to import Postman collections.",
+      "acceptanceCriteria": [
+        "Postman import tab in import modal",
+        "File upload for Postman collection JSON",
+        "Environment import option",
+        "Preview of what will be imported",
+        "Import progress and results",
+        "Verify in browser - can import Postman collection"
+      ],
+      "priority": 33,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-015",
+        "US-032"
+      ]
+    },
+    {
+      "id": "US-034",
+      "title": "API Definition list and management UI",
+      "description": "As a user, I want to view and manage my imported API definitions.",
+      "acceptanceCriteria": [
+        "API Definitions section in sidebar",
+        "List all imported specs",
+        "Show: name, format, endpoint count, last updated",
+        "Actions: View Docs, Generate Mocks, Re-import, Delete",
+        "Verify in browser - can view API definitions list"
+      ],
+      "priority": 34,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-032"
+      ]
+    },
+    {
+      "id": "US-035",
+      "title": "Redocly-style API documentation - Navigation",
+      "description": "As a user, I want beautiful API documentation with navigation.",
+      "acceptanceCriteria": [
+        "Three-panel layout: nav, content, code samples",
+        "Left nav: endpoint list grouped by tags",
+        "Search bar to filter endpoints",
+        "Expand/collapse tag groups",
+        "Active endpoint highlighting",
+        "Dark/light theme toggle",
+        "Verify in browser - navigation renders correctly"
+      ],
+      "priority": 35,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-034"
+      ]
+    },
+    {
+      "id": "US-036",
+      "title": "Redocly-style API documentation - Endpoint details",
+      "description": "As a user, I want detailed endpoint documentation.",
+      "acceptanceCriteria": [
+        "Method badge + path + summary header",
+        "Description with Markdown rendering",
+        "Parameters table: path, query, header params",
+        "Request body schema with examples",
+        "Response schemas for all status codes",
+        "Try it button to open in request builder",
+        "Verify in browser - endpoint details render"
+      ],
+      "priority": 36,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-035"
+      ]
+    },
+    {
+      "id": "US-037",
+      "title": "Redocly-style API documentation - Code samples",
+      "description": "As a user, I want code samples in multiple languages.",
+      "acceptanceCriteria": [
+        "Right panel: code samples",
+        "Language tabs: cURL, JavaScript, Python, Go, Ruby",
+        "Syntax highlighting for each language",
+        "Copy code button",
+        "Include authentication in samples",
+        "Verify in browser - code samples render correctly"
+      ],
+      "priority": 37,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-036"
+      ]
+    },
+    {
+      "id": "US-038",
+      "title": "Redocly-style API documentation - Schema viewer",
+      "description": "As a user, I want to browse data model schemas.",
+      "acceptanceCriteria": [
+        "Schemas section in documentation",
+        "List all schemas from OpenAPI components",
+        "Property table: name, type, required, description",
+        "Nested object expansion (click to expand)",
+        "Enum value display",
+        "Example values",
+        "Verify in browser - schemas render correctly"
+      ],
+      "priority": 38,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-036"
+      ]
+    },
+    {
+      "id": "US-039",
+      "title": "Public documentation sharing",
+      "description": "As a team lead, I want to share API docs via public URL.",
+      "acceptanceCriteria": [
+        "Public/private toggle on API definition",
+        "Generate shareable URL for public docs",
+        "Custom slug option for clean URLs",
+        "Public docs page without app chrome",
+        "Optional: password protection",
+        "Verify in browser - public docs URL works"
+      ],
+      "priority": 39,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-038"
+      ]
+    },
+    {
+      "id": "US-040",
+      "title": "Mock generation UI",
+      "description": "As a user, I want to generate mocks from my API definition via UI.",
+      "acceptanceCriteria": [
+        "Generate Mocks button on API definition",
+        "Endpoint selection checklist",
+        "Response type selection (success, errors)",
+        "Delay configuration per endpoint",
+        "Preview generated mock response",
+        "Confirm and generate action",
+        "Verify in browser - can generate mocks"
+      ],
+      "priority": 40,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-016",
+        "US-034"
+      ]
+    },
+    {
+      "id": "US-041",
+      "title": "Response comparison UI",
+      "description": "As a user, I want to compare responses between requests.",
+      "acceptanceCriteria": [
+        "Compare action on response viewer",
+        "Select two responses from history",
+        "Side-by-side diff view",
+        "Highlight additions (green), deletions (red), changes (yellow)",
+        "Filter: show all / only differences",
+        "Verify in browser - diff view works"
+      ],
+      "priority": 41,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-031",
+        "US-024"
+      ]
+    },
+    {
+      "id": "US-042",
+      "title": "OAuth 2.0 - Authorization Code flow",
+      "description": "As a user, I want to authenticate with OAuth 2.0 Authorization Code flow.",
+      "acceptanceCriteria": [
+        "OAuth 2.0 auth type option",
+        "Configuration: auth URL, token URL, client ID, client secret, scopes",
+        "Callback URL display/configuration",
+        "Get New Access Token button",
+        "OAuth popup/redirect flow",
+        "Token storage in environment variable",
+        "Token refresh handling",
+        "nuxt build passes without errors"
+      ],
+      "priority": 42,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-023"
+      ]
+    },
+    {
+      "id": "US-043",
+      "title": "OAuth 2.0 - Client Credentials flow",
+      "description": "As a user, I want to authenticate with OAuth 2.0 Client Credentials flow.",
+      "acceptanceCriteria": [
+        "Client Credentials grant type option",
+        "Configuration: token URL, client ID, client secret, scopes",
+        "Get Token button (no user interaction needed)",
+        "Token storage and auto-refresh",
+        "nuxt build passes without errors"
+      ],
+      "priority": 43,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-042"
+      ]
+    },
+    {
+      "id": "US-044",
+      "title": "Keycloak SSO integration",
+      "description": "As an enterprise user, I want to login with Keycloak SSO.",
+      "acceptanceCriteria": [
+        "Keycloak configuration page (realm, client ID, URLs)",
+        "Login with Keycloak button",
+        "Redirect to Keycloak login page",
+        "Handle callback and token storage",
+        "Display logged-in user info",
+        "Logout functionality",
+        "Session expiry handling",
+        "nuxt build passes without errors"
+      ],
+      "priority": 44,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-043"
+      ]
+    },
+    {
+      "id": "US-045",
+      "title": "Drag-and-drop reordering in sidebar",
+      "description": "As a user, I want to reorganize my collections with drag-and-drop.",
+      "acceptanceCriteria": [
+        "Drag requests between folders",
+        "Drag folders to reorder or nest",
+        "Visual drop indicators (line, highlight)",
+        "Prevent invalid drops (e.g., folder into itself)",
+        "Optimistic UI update",
+        "Verify in browser - drag and drop works"
+      ],
+      "priority": 45,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-018"
+      ]
+    },
+    {
+      "id": "US-046",
+      "title": "Keyboard shortcuts",
+      "description": "As a power user, I want keyboard shortcuts for common actions.",
+      "acceptanceCriteria": [
+        "Cmd/Ctrl+Enter - Send request",
+        "Cmd/Ctrl+S - Save request",
+        "Cmd/Ctrl+N - New request tab",
+        "Cmd/Ctrl+W - Close current tab",
+        "Cmd/Ctrl+L - Focus URL input",
+        "Keyboard shortcuts help modal (Cmd/Ctrl+?)",
+        "Verify in browser - shortcuts work"
+      ],
+      "priority": 46,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-030"
+      ]
+    },
+    {
+      "id": "US-047",
+      "title": "Migrate existing mock data to new schema",
+      "description": "As a developer, I need to migrate existing mock-service data to the new schema.",
+      "acceptanceCriteria": [
+        "Migration script to move existing services to projects",
+        "Map existing endpoints to saved requests",
+        "Preserve all mock response data",
+        "Create default workspace and project",
+        "Rollback capability if migration fails",
+        "nuxt build passes without errors"
+      ],
+      "priority": 47,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-001",
+        "US-002",
+        "US-003"
+      ]
+    },
+    {
+      "id": "US-048",
+      "title": "Cloud sync infrastructure (optional)",
+      "description": "As a developer, I need the infrastructure for optional cloud sync.",
+      "acceptanceCriteria": [
+        "Sync configuration in settings",
+        "Local-first architecture (works offline)",
+        "Sync status indicator in UI",
+        "Manual sync trigger button",
+        "Conflict detection (UI notification)",
+        "Self-hosted sync server documentation",
+        "nuxt build passes without errors"
+      ],
+      "priority": 48,
+      "passes": false,
+      "notes": "",
+      "dependsOn": [
+        "US-044"
+      ]
+    }
+  ],
+  "metadata": {
+    "updatedAt": "2026-01-20T16:19:46.904Z"
+  }
+}

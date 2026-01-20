@@ -1,0 +1,326 @@
+{
+  "version": 1,
+  "sessionId": "52ce48cb-d294-40aa-8651-254622eadbd9",
+  "status": "running",
+  "startedAt": "2026-01-20T16:09:17.145Z",
+  "updatedAt": "2026-01-20T16:19:46.914Z",
+  "currentIteration": 1,
+  "maxIterations": 10,
+  "tasksCompleted": 1,
+  "isPaused": false,
+  "agentPlugin": "opencode",
+  "model": "fireworks-ai/accounts/fireworks/models/glm-4p7",
+  "trackerState": {
+    "plugin": "json",
+    "prdPath": "tasks/prd.json",
+    "totalTasks": 48,
+    "tasks": [
+      {
+        "id": "US-001",
+        "title": "Database schema for Workspace and Project entities",
+        "status": "completed",
+        "completedInSession": false
+      },
+      {
+        "id": "US-002",
+        "title": "Database schema for Collection and Folder entities",
+        "status": "completed",
+        "completedInSession": false
+      },
+      {
+        "id": "US-003",
+        "title": "Database schema for SavedRequest entity",
+        "status": "completed",
+        "completedInSession": false
+      },
+      {
+        "id": "US-004",
+        "title": "Database schema for Environment and EnvironmentVariable entities",
+        "status": "completed",
+        "completedInSession": false
+      },
+      {
+        "id": "US-005",
+        "title": "Database schema for APIDefinition entity",
+        "status": "completed",
+        "completedInSession": false
+      },
+      {
+        "id": "US-006",
+        "title": "Database schema for RequestHistory entity",
+        "status": "completed",
+        "completedInSession": false
+      },
+      {
+        "id": "US-007",
+        "title": "Workspace CRUD API endpoints",
+        "status": "completed",
+        "completedInSession": false
+      },
+      {
+        "id": "US-008",
+        "title": "Project CRUD API endpoints",
+        "status": "completed",
+        "completedInSession": false
+      },
+      {
+        "id": "US-009",
+        "title": "Collection and Folder CRUD API endpoints",
+        "status": "completed",
+        "completedInSession": false
+      },
+      {
+        "id": "US-010",
+        "title": "SavedRequest CRUD API endpoints",
+        "status": "completed",
+        "completedInSession": false
+      },
+      {
+        "id": "US-011",
+        "title": "Environment CRUD API endpoints",
+        "status": "completed",
+        "completedInSession": false
+      },
+      {
+        "id": "US-012",
+        "title": "HTTP Proxy endpoint for sending real requests",
+        "status": "completed",
+        "completedInSession": false
+      },
+      {
+        "id": "US-013",
+        "title": "Request History API endpoints",
+        "status": "completed",
+        "completedInSession": false
+      },
+      {
+        "id": "US-014",
+        "title": "OpenAPI 3.x import and parsing",
+        "status": "completed",
+        "completedInSession": false
+      },
+      {
+        "id": "US-015",
+        "title": "Postman Collection v2.1 import",
+        "status": "completed",
+        "completedInSession": false
+      },
+      {
+        "id": "US-016",
+        "title": "Generate mocks from API definition",
+        "status": "completed",
+        "completedInSession": true
+      },
+      {
+        "id": "US-017",
+        "title": "Variable substitution engine",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-018",
+        "title": "Sidebar with Workspace/Project/Collection tree",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-019",
+        "title": "Request Builder UI - URL and method",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-020",
+        "title": "Request Builder UI - Query params editor",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-021",
+        "title": "Request Builder UI - Headers editor",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-022",
+        "title": "Request Builder UI - Body editor",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-023",
+        "title": "Request Builder UI - Auth editor",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-024",
+        "title": "Response Viewer UI - Body display",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-025",
+        "title": "Response Viewer UI - Metadata display",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-026",
+        "title": "Environment switcher UI",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-027",
+        "title": "Environment management UI",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-028",
+        "title": "Variable highlighting and autocomplete",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-029",
+        "title": "Save request dialog",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-030",
+        "title": "Request tabs UI",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-031",
+        "title": "Request history panel",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-032",
+        "title": "OpenAPI import UI",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-033",
+        "title": "Postman import UI",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-034",
+        "title": "API Definition list and management UI",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-035",
+        "title": "Redocly-style API documentation - Navigation",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-036",
+        "title": "Redocly-style API documentation - Endpoint details",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-037",
+        "title": "Redocly-style API documentation - Code samples",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-038",
+        "title": "Redocly-style API documentation - Schema viewer",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-039",
+        "title": "Public documentation sharing",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-040",
+        "title": "Mock generation UI",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-041",
+        "title": "Response comparison UI",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-042",
+        "title": "OAuth 2.0 - Authorization Code flow",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-043",
+        "title": "OAuth 2.0 - Client Credentials flow",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-044",
+        "title": "Keycloak SSO integration",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-045",
+        "title": "Drag-and-drop reordering in sidebar",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-046",
+        "title": "Keyboard shortcuts",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-047",
+        "title": "Migrate existing mock data to new schema",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-048",
+        "title": "Cloud sync infrastructure (optional)",
+        "status": "open",
+        "completedInSession": false
+      }
+    ]
+  },
+  "iterations": [
+    {
+      "iteration": 1,
+      "status": "completed",
+      "taskId": "US-016",
+      "taskTitle": "Generate mocks from API definition",
+      "taskCompleted": true,
+      "durationMs": 627357,
+      "startedAt": "2026-01-20T16:09:18.513Z",
+      "endedAt": "2026-01-20T16:19:45.870Z"
+    }
+  ],
+  "skippedTaskIds": [],
+  "cwd": "/Users/zeinersyad/Playground/mock-service",
+  "activeTaskIds": [
+    "US-017"
+  ],
+  "subagentPanelVisible": false
+}
