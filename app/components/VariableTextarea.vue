@@ -26,6 +26,7 @@ const emit = defineEmits<{
 }>();
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
+const backdropDiv = ref<HTMLElement | null>(null);
 
 const VARIABLE_PATTERN = /\{\{([^{}]+)\}\}/g;
 
@@ -49,15 +50,19 @@ const highlightedContent = computed(() => {
     const variable = props.variables?.find(v => v.key === trimmedName);
     const isDefined = !!variable;
     
-    const colorClass = isDefined 
-      ? 'text-accent-blue underline decoration-dotted decoration-accent-blue/50' 
-      : 'text-accent-orange underline decoration-dotted decoration-accent-orange/50';
+    const colorClass = isDefined ? 'text-accent-blue' : 'text-accent-orange';
+    const cursorClass = isDefined ? 'cursor-pointer' : 'cursor-default';
+    const underlinedClass = isDefined ? 'underline decoration-dotted' : '';
     
     const titleAttr = variable 
       ? (variable.isSecret ? '••••••••' : variable.value)
       : 'Undefined variable';
     
-    result += `<span class="variable-highlight ${colorClass}" title="${escapeHtml(titleAttr)}">${escapeHtml(fullMatch)}</span>`;
+    result += `<span class="variable-highlight ${colorClass} ${cursorClass} ${underlinedClass}" 
+      title="${escapeHtml(titleAttr)}" 
+      data-variable="${trimmedName}"
+      data-defined="${isDefined}"
+    >${escapeHtml(fullMatch)}</span>`;
 
     lastIndex = endIndex;
   }
@@ -73,23 +78,27 @@ const highlightedContent = computed(() => {
   return result;
 });
 
+const handleBackdropClick = (event: MouseEvent) => {
+  const target = event.target as HTMLElement;
+  const variableSpan = target.closest('.variable-highlight');
+  if (variableSpan) {
+    const variableName = variableSpan.getAttribute('data-variable');
+    const isDefined = variableSpan.getAttribute('data-defined') === 'true';
+    if (variableName && isDefined) {
+      jumpToVariableDefinition(variableName);
+    }
+  }
+};
+
+const jumpToVariableDefinition = (variableName: string) => {
+  navigateTo('/admin/environments');
+};
+
 const escapeHtml = (text: string): string => {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
 };
-
-const handleScroll = () => {
-  if (textareaRef.value) {
-    const backdrop = textareaRef.value.previousElementSibling as HTMLElement;
-    if (backdrop) {
-      backdrop.scrollTop = textareaRef.value.scrollTop;
-      backdrop.scrollLeft = textareaRef.value.scrollLeft;
-    }
-  }
-};
-
-const backdropDiv = ref<HTMLElement | null>(null);
 
 const syncScroll = () => {
   if (textareaRef.value && backdropDiv.value) {
@@ -108,8 +117,9 @@ const handleInput = (event: Event) => {
   <div class="relative variable-textarea-wrapper">
     <div
       ref="backdropDiv"
-      class="absolute inset-0 p-2 bg-bg-input border border-border-default rounded overflow-hidden pointer-events-none whitespace-pre-wrap break-words"
+      class="absolute inset-0 p-2 bg-bg-input border border-border-default rounded overflow-hidden whitespace-pre-wrap break-words"
       :style="{ height: `${textareaRef?.scrollHeight || 0}px` }"
+      @click="handleBackdropClick"
     >
       <div 
         class="text-xs font-mono leading-relaxed min-h-full"

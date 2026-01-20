@@ -55,7 +55,12 @@ const highlightVariables = computed(() => {
     const isDefined = !!variable;
     
     const colorClass = isDefined ? 'text-accent-blue' : 'text-accent-orange';
-    result += `<span class="variable-highlight ${colorClass}" title="${variable?.value || 'Undefined variable'}">${escapeHtml(fullMatch)}</span>`;
+    const cursorClass = isDefined ? 'cursor-pointer' : 'cursor-default';
+    const titleAttr = variable 
+      ? (variable.isSecret ? '••••••••' : variable.value)
+      : 'Undefined variable';
+    
+    result += `<span class="variable-highlight ${colorClass} ${cursorClass}" title="${escapeHtml(titleAttr)}" data-variable="${trimmedName}">${escapeHtml(fullMatch)}</span>`;
 
     lastIndex = endIndex;
   }
@@ -162,6 +167,13 @@ const selectVariable = (variable: Variable) => {
   });
 };
 
+const jumpToVariableDefinition = (variableName: string) => {
+  const variable = props.variables?.find(v => v.key === variableName);
+  if (variable) {
+    navigateTo('/admin/environments');
+  }
+};
+
 const closeAutocomplete = () => {
   setTimeout(() => {
     showAutocomplete.value = false;
@@ -231,11 +243,18 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.variable-input-wrapper:deep(.variable-highlight) {
+.variable-input-wrapper :deep(.variable-highlight) {
   font-weight: 500;
   background: var(--bg-tertiary);
   padding: 0 2px;
   border-radius: 2px;
+}
+
+.variable-input-wrapper :deep(.variable-highlight.cursor-pointer) {
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: currentcolor;
+  text-decoration-thickness: 1px;
 }
 
 .variable-autocomplete {
