@@ -1,6 +1,15 @@
 <script setup lang="ts">
-import { computed, nextTick } from 'vue';
+import { computed, nextTick, watch } from 'vue';
 import JsonNode from './JsonNode.vue';
+import VariableInput from './VariableInput.vue';
+import VariableTextarea from './VariableTextarea.vue';
+
+interface Variable {
+  id: string;
+  key: string;
+  value: string;
+  isSecret: boolean;
+}
 
 interface QueryParam {
   id: string;
@@ -71,6 +80,9 @@ interface ProxyErrorResponse {
 interface Props {
   request: HttpRequest;
   workspaceId?: string;
+  environmentId?: string;
+  collectionId?: string;
+  projectId?: string;
 }
 
 const props = defineProps<Props>();
@@ -135,6 +147,22 @@ const activeTab = ref<TabType>('params');
 const isLoading = ref(false);
 const response = ref<ProxyResponse | ProxyErrorResponse | null>(null);
 const variableWarnings = ref<string[]>([]);
+const environmentVariables = ref<Variable[]>([]);
+
+// Fetch environment variables if environmentId is provided
+watch(() => props.environmentId, async (newEnvId) => {
+  if (newEnvId) {
+    try {
+      const variables = await $fetch<Variable[]>(`/api/admin/environments/${newEnvId}/variables`);
+      environmentVariables.value = variables;
+    } catch (error) {
+      console.error('Failed to fetch environment variables:', error);
+      environmentVariables.value = [];
+    }
+  } else {
+    environmentVariables.value = [];
+  }
+}, { immediate: true });
 const responseViewType = ref<ResponseViewType>('pretty');
 const searchQuery = ref('');
 const showSearch = ref(false);
@@ -860,11 +888,11 @@ onUnmounted(() => {
           >
             <option v-for="m in HTTP_METHODS" :key="m" :value="m">{{ m }}</option>
           </select>
-          <input 
-            v-model="form.url" 
-            type="text" 
-            class="flex-1 py-2.5 px-3 bg-transparent border-none text-text-primary font-mono text-sm focus:outline-none placeholder:text-text-muted" 
+          <VariableInput
+            v-model="form.url"
+            :variables="environmentVariables"
             placeholder="https://api.example.com/endpoint"
+            class="flex-1 py-2.5 px-3 bg-transparent border-none text-text-primary font-mono text-sm focus:outline-none placeholder:text-text-muted"
             @keyup.enter="sendRequest"
           />
           <button 
@@ -934,21 +962,21 @@ onUnmounted(() => {
                   @change="updateQueryParam(param.id, 'enabled', ($event.target as HTMLInputElement).checked)"
                   class="w-4 h-4 rounded border-border-default bg-bg-input text-accent-blue focus:ring-accent-blue focus:ring-offset-bg-secondary cursor-pointer"
                 />
-                <input 
-                  :value="param.key"
-                  @input="updateQueryParam(param.id, 'key', ($event.target as HTMLInputElement).value)"
+                <VariableInput
+                  :model-value="param.key"
+                  @update:model-value="updateQueryParam(param.id, 'key', $event)"
                   :disabled="!param.enabled"
-                  type="text" 
-                  class="flex-1 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed placeholder:text-text-muted"
+                  :variables="environmentVariables"
                   placeholder="Key"
+                  class="flex-1"
                 />
-                <input 
-                  :value="param.value"
-                  @input="updateQueryParam(param.id, 'value', ($event.target as HTMLInputElement).value)"
+                <VariableInput
+                  :model-value="param.value"
+                  @update:model-value="updateQueryParam(param.id, 'value', $event)"
                   :disabled="!param.enabled"
-                  type="text" 
-                  class="flex-1 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed placeholder:text-text-muted"
+                  :variables="environmentVariables"
                   placeholder="Value"
+                  class="flex-1"
                 />
                 <button 
                   @click="removeQueryParam(param.id)"
@@ -1000,22 +1028,21 @@ onUnmounted(() => {
                   @change="updateHeader(header.id, 'enabled', ($event.target as HTMLInputElement).checked)"
                   class="w-4 h-4 rounded border-border-default bg-bg-input text-accent-blue focus:ring-accent-blue focus:ring-offset-bg-secondary cursor-pointer"
                 />
-                <input
-                  :value="header.key"
-                  @input="updateHeader(header.id, 'key', ($event.target as HTMLInputElement).value)"
+                <VariableInput
+                  :model-value="header.key"
+                  @update:model-value="updateHeader(header.id, 'key', $event)"
                   :disabled="!header.enabled"
-                  type="text"
-                  list="common-headers"
-                  class="flex-1 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed placeholder:text-text-muted"
+                  :variables="environmentVariables"
                   placeholder="Header Name"
+                  class="flex-1"
                 />
-                <input
-                  :value="header.value"
-                  @input="updateHeader(header.id, 'value', ($event.target as HTMLInputElement).value)"
+                <VariableInput
+                  :model-value="header.value"
+                  @update:model-value="updateHeader(header.id, 'value', $event)"
                   :disabled="!header.enabled"
-                  type="text"
-                  class="flex-1 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed placeholder:text-text-muted"
+                  :variables="environmentVariables"
                   placeholder="Header Value"
+                  class="flex-1"
                 />
                 <button
                   @click="removeHeader(header.id)"
@@ -1069,12 +1096,14 @@ onUnmounted(() => {
 
             <div v-else-if="bodyFormat === 'json'" class="space-y-3">
               <div class="relative">
-                <textarea
+                <VariableTextarea
                   v-model="jsonBody"
-                  class="w-full h-[300px] p-3 bg-bg-input border border-border-default rounded-lg text-text-primary font-mono text-xs resize-none focus:outline-none focus:border-accent-blue"
+                  :variables="environmentVariables"
+                  :rows="12"
                   placeholder="{
   &quot;key&quot;: &quot;value&quot;
 }"
+                  class="w-full"
                 />
                 <div v-if="validateJson(jsonBody).valid" class="absolute top-2 right-2 px-2 py-0.5 bg-accent-green/15 text-accent-green text-[10px] font-semibold rounded">
                   Valid JSON
@@ -1100,13 +1129,13 @@ onUnmounted(() => {
                   @change="updateFormDataParam(param.id, 'enabled', ($event.target as HTMLInputElement).checked)"
                   class="w-4 h-4 rounded border-border-default bg-bg-input text-accent-blue focus:ring-accent-blue focus:ring-offset-bg-secondary cursor-pointer"
                 />
-                <input
-                  :value="param.key"
-                  @input="updateFormDataParam(param.id, 'key', ($event.target as HTMLInputElement).value)"
+                <VariableInput
+                  :model-value="param.key"
+                  @update:model-value="updateFormDataParam(param.id, 'key', $event)"
                   :disabled="!param.enabled"
-                  type="text"
-                  class="flex-1 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed placeholder:text-text-muted"
+                  :variables="environmentVariables"
                   placeholder="Key"
+                  class="flex-1"
                 />
                 <select
                   :value="param.type"
@@ -1118,13 +1147,13 @@ onUnmounted(() => {
                   <option value="file">File</option>
                 </select>
                 <div v-if="param.type === 'text'" class="flex-1">
-                  <input
-                    :value="param.value"
-                    @input="updateFormDataParam(param.id, 'value', ($event.target as HTMLInputElement).value)"
+                  <VariableInput
+                    :model-value="param.value"
+                    @update:model-value="updateFormDataParam(param.id, 'value', $event)"
                     :disabled="!param.enabled"
-                    type="text"
-                    class="w-full py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed placeholder:text-text-muted"
+                    :variables="environmentVariables"
                     placeholder="Value"
+                    class="w-full"
                   />
                 </div>
                 <div v-else class="flex-1">
@@ -1170,21 +1199,21 @@ onUnmounted(() => {
                   @change="updateFormDataParam(param.id, 'enabled', ($event.target as HTMLInputElement).checked)"
                   class="w-4 h-4 rounded border-border-default bg-bg-input text-accent-blue focus:ring-accent-blue focus:ring-offset-bg-secondary cursor-pointer"
                 />
-                <input
-                  :value="param.key"
-                  @input="updateFormDataParam(param.id, 'key', ($event.target as HTMLInputElement).value)"
+                <VariableInput
+                  :model-value="param.key"
+                  @update:model-value="updateFormDataParam(param.id, 'key', $event)"
                   :disabled="!param.enabled"
-                  type="text"
-                  class="flex-1 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed placeholder:text-text-muted"
+                  :variables="environmentVariables"
                   placeholder="Key"
+                  class="flex-1"
                 />
-                <input
-                  :value="param.value"
-                  @input="updateFormDataParam(param.id, 'value', ($event.target as HTMLInputElement).value)"
+                <VariableInput
+                  :model-value="param.value"
+                  @update:model-value="updateFormDataParam(param.id, 'value', $event)"
                   :disabled="!param.enabled"
-                  type="text"
-                  class="flex-1 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed placeholder:text-text-muted"
+                  :variables="environmentVariables"
                   placeholder="Value"
+                  class="flex-1"
                 />
                 <button
                   @click="removeFormDataParam(param.id)"
@@ -1219,10 +1248,12 @@ onUnmounted(() => {
                   <option v-for="ct in RAW_CONTENT_TYPES" :key="ct" :value="ct">{{ ct }}</option>
                 </select>
               </div>
-              <textarea
+              <VariableTextarea
                 v-model="rawBody"
-                class="w-full h-[300px] p-3 bg-bg-input border border-border-default rounded-lg text-text-primary font-mono text-xs resize-none focus:outline-none focus:border-accent-blue"
+                :variables="environmentVariables"
+                :rows="12"
                 placeholder="Enter raw body content..."
+                class="w-full"
               />
             </div>
 
@@ -1269,20 +1300,21 @@ onUnmounted(() => {
               <div v-if="authType === 'api-key'" class="space-y-3 p-3 bg-bg-tertiary rounded border border-border-default">
                 <div class="space-y-2">
                   <label class="text-xs font-medium text-text-secondary">Key</label>
-                  <input
+                  <VariableInput
                     v-model="apiKey.key"
-                    type="text"
-                    class="w-full py-2 px-3 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue placeholder:text-text-muted"
+                    :variables="environmentVariables"
                     placeholder="Enter key name (e.g., X-API-Key)"
+                    class="w-full"
                   />
                 </div>
                 <div class="space-y-2">
                   <label class="text-xs font-medium text-text-secondary">Value</label>
-                  <input
+                  <VariableInput
                     v-model="apiKey.value"
+                    :variables="environmentVariables"
                     type="password"
-                    class="w-full py-2 px-3 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue placeholder:text-text-muted"
                     placeholder="Enter API key value"
+                    class="w-full"
                   />
                 </div>
                 <div class="space-y-2">
@@ -1317,11 +1349,12 @@ onUnmounted(() => {
               <div v-if="authType === 'bearer'" class="space-y-3 p-3 bg-bg-tertiary rounded border border-border-default">
                 <div class="space-y-2">
                   <label class="text-xs font-medium text-text-secondary">Token</label>
-                  <input
+                  <VariableInput
                     v-model="bearerToken"
+                    :variables="environmentVariables"
                     type="password"
-                    class="w-full py-2 px-3 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue placeholder:text-text-muted"
                     placeholder="Enter bearer token"
+                    class="w-full"
                   />
                 </div>
                 <div class="text-xs text-text-muted">
@@ -1332,20 +1365,21 @@ onUnmounted(() => {
               <div v-if="authType === 'basic'" class="space-y-3 p-3 bg-bg-tertiary rounded border border-border-default">
                 <div class="space-y-2">
                   <label class="text-xs font-medium text-text-secondary">Username</label>
-                  <input
+                  <VariableInput
                     v-model="basicAuth.username"
-                    type="text"
-                    class="w-full py-2 px-3 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue placeholder:text-text-muted"
+                    :variables="environmentVariables"
                     placeholder="Enter username"
+                    class="w-full"
                   />
                 </div>
                 <div class="space-y-2">
                   <label class="text-xs font-medium text-text-secondary">Password</label>
-                  <input
+                  <VariableInput
                     v-model="basicAuth.password"
+                    :variables="environmentVariables"
                     type="password"
-                    class="w-full py-2 px-3 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue placeholder:text-text-muted"
                     placeholder="Enter password"
+                    class="w-full"
                   />
                 </div>
                 <div class="text-xs text-text-muted">

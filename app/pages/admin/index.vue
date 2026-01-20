@@ -44,6 +44,42 @@ const currentWorkspaceId = computed(() => {
   return workspaces.value?.[0]?.id;
 });
 
+const currentProjectId = computed(() => {
+  return workspaces.value?.[0]?.projects?.[0]?.id;
+});
+
+interface Environment {
+  id: string;
+  projectId: string;
+  name: string;
+  isActive: boolean;
+  createdAt: Date;
+}
+
+const { data: environments, refresh: refreshEnvironments } = await useFetch<Environment[]>(
+  computed(() => `/api/admin/projects/${currentProjectId.value}/environments`),
+  {
+    immediate: true
+  }
+);
+
+const activeEnvironment = computed(() => {
+  return environments.value?.find(env => env.isActive) || null;
+});
+
+const activateEnvironment = async (environmentId: string | null) => {
+  if (!environmentId) {
+    return;
+  }
+  
+  try {
+    await $fetch(`/api/admin/environments/${environmentId}/activate`, { method: 'PUT' });
+    await refreshEnvironments();
+  } catch (e: any) {
+    alert('Error activating environment: ' + e.message);
+  }
+};
+
 if (error.value && error.value.statusCode === 401) {
     await navigateTo('/login');
 }
@@ -499,8 +535,11 @@ const deleteGroup = async () => {
     <!-- Header -->
     <AppHeader 
       title="Mock Services"
+      :environments="environments || []"
+      :active-environment="activeEnvironment"
       @open-settings="openSettings"
       @export-open-a-p-i="exportOpenAPI"
+      @activate-environment="activateEnvironment"
     />
 
     <div class="flex flex-1 overflow-hidden">
@@ -545,7 +584,13 @@ const deleteGroup = async () => {
         </div>
 
         <!-- Request Builder -->
-        <RequestBuilder v-if="selectedRequest" :request="selectedRequest" :workspace-id="currentWorkspaceId" />
+        <RequestBuilder
+          v-if="selectedRequest"
+          :request="selectedRequest"
+          :workspace-id="currentWorkspaceId"
+          :environment-id="activeEnvironment?.id"
+          :project-id="currentProjectId"
+        />
 
         <!-- Selected Mock Details -->
         <div v-else-if="selectedMock" class="p-5 flex flex-col gap-5 h-[calc(100vh-48px)] overflow-y-auto">
