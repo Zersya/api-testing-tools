@@ -465,11 +465,12 @@
         "Verify in browser - auth options render correctly"
       ],
       "priority": 23,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-019"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-024",
@@ -486,11 +487,12 @@
         "Verify in browser - JSON response renders with highlighting"
       ],
       "priority": 24,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-019"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-025",
@@ -974,6 +976,6 @@
     }
   ],
   "metadata": {
-    "updatedAt": "2026-01-20T17:13:39.611Z"
+    "updatedAt": "2026-01-20T17:24:22.738Z"
   }
 }

@@ -3,10 +3,10 @@
   "sessionId": "52ce48cb-d294-40aa-8651-254622eadbd9",
   "status": "running",
   "startedAt": "2026-01-20T16:09:17.145Z",
-  "updatedAt": "2026-01-20T17:13:39.621Z",
-  "currentIteration": 7,
+  "updatedAt": "2026-01-20T17:24:22.746Z",
+  "currentIteration": 9,
   "maxIterations": 10,
-  "tasksCompleted": 7,
+  "tasksCompleted": 9,
   "isPaused": false,
   "agentPlugin": "opencode",
   "model": "fireworks-ai/accounts/fireworks/models/glm-4p7",
@@ -150,14 +150,14 @@
       {
         "id": "US-023",
         "title": "Request Builder UI - Auth editor",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-024",
         "title": "Response Viewer UI - Body display",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-025",
@@ -375,12 +375,32 @@
       "durationMs": 151843,
       "startedAt": "2026-01-20T17:11:06.750Z",
       "endedAt": "2026-01-20T17:13:38.593Z"
+    },
+    {
+      "iteration": 8,
+      "status": "completed",
+      "taskId": "US-023",
+      "taskTitle": "Request Builder UI - Auth editor",
+      "taskCompleted": true,
+      "durationMs": 207295,
+      "startedAt": "2026-01-20T17:13:39.611Z",
+      "endedAt": "2026-01-20T17:17:06.906Z"
+    },
+    {
+      "iteration": 9,
+      "status": "completed",
+      "taskId": "US-024",
+      "taskTitle": "Response Viewer UI - Body display",
+      "taskCompleted": true,
+      "durationMs": 433794,
+      "startedAt": "2026-01-20T17:17:07.924Z",
+      "endedAt": "2026-01-20T17:24:21.718Z"
     }
   ],
   "skippedTaskIds": [],
   "cwd": "/Users/zeinersyad/Playground/mock-service",
   "activeTaskIds": [
-    "US-023"
+    "US-025"
   ],
   "subagentPanelVisible": false
 }

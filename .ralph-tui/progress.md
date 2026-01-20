@@ -106,7 +106,7 @@ after each iteration and included in agent prompts for context.
 - Each auth type has its own UI panel with appropriate inputs (password inputs for sensitive data)
 
 **Response Viewer Pattern**
-- Response viewer supports multiple views: Pretty (syntax-highlighted tree), Preview (rendered preview), and Raw (plain text)
+- Response viewer supports multiple views: Pretty (syntax-highlighted tree), Preview (rendered preview), Raw (plain text), Headers, and Cookies
 - JSON syntax highlighting uses custom tree traversal to convert JSON objects to renderable nodes
 - Collapsible nodes for JSON arrays and objects with expand/collapse toggle buttons
 - Node expansion state tracked using Set<string> of node paths for O(1) lookups
@@ -115,11 +115,15 @@ after each iteration and included in agent prompts for context.
 - Search functionality filters displayed content and highlights matching text with yellow background marks
 - Search keyboard shortcut Cmd/Ctrl+F toggles search input when response tab is active
 - Copy to clipboard using navigator.clipboard.writeText API
-- Response size and type displayed in response header (status, timing, bytes count)
+- Response size includes both body and headers (calculated by iterating through headers)
 - HTML preview uses iframe with srcdoc attribute for safe rendering
 - Content-Type headers used to determine response format (json, xml, html, text)
+- Status badge uses dynamic color coding: 2xx (green), 4xx (orange), 5xx (red)
 - getContentType(), isJsonResponse(), isXmlResponse(), isHtmlResponse() helper functions for format detection
 - Response text extraction with getResponseText() handles both string and object responses
+- Headers tab displays all response headers in a key-value table with colorized key names
+- Cookies tab parses set-cookie header and displays cookies with name, value, and attributes
+- Cookies tab only appears when response contains set-cookie headers
 
 ---
 
@@ -136,13 +140,41 @@ after each iteration and included in agent prompts for context.
 
 ---
 
-## ✓ Iteration 4 - US-019: Request Builder UI - URL and method
-*2026-01-20T17:02:32.054Z (355s)*
+## ✓ Iteration 9 - US-024: Response Viewer UI - Body display
+*2026-01-20T17:24:21.725Z (434s)*
 
 **Status:** Completed
 
 **Notes:**
-s**:\n   - Added HEAD (#8b5cf6) and OPTIONS (#64748b) method colors\n   - All methods now have proper color coding\n\n## Command to run:\n\n```bash\nnpm run build\n```\n\nAfter building, verify in browser:\n- Navigate to http://localhost:3000/admin\n- Click Workspace tab and expand tree\n- Click on a request to open Request Builder\n- Select HTTP method from dropdown\n- Enter URL and press Enter or Cmd/Ctrl+Enter\n- See loading state during request\n- View response with status code and timing\n\n
+ypicode.com/todos/1)\n\n5. Click Send and verify:\n   - Response tab activates showing JSON with syntax highlighting\n   - Click chevrons to collapse/expand nodes\n   - Use Expand All / Collapse All buttons\n   - Click Preview tab to see rendered view\n   - Click Raw tab to see plain text\n   - Press Cmd/Ctrl+F to open search, type to filter\n   - Click copy button to copy response\n   - Try XML endpoint (e.g., https://mockapi.io/posts.xml)\n   - Try HTML endpoint (e.g., https://example.com)\n\n
+
+## [2026-01-21] - US-025
+- Implemented Response Viewer UI - Metadata display with all acceptance criteria met
+- Added dynamic status badge color coding: 2xx (green), 4xx (orange), 5xx (red)
+- Updated response size calculation to include both body and headers
+- Added Headers tab displaying all response headers in key-value table format
+- Added Cookies tab parsing set-cookie headers and showing name, value, and attributes
+- Cookies tab conditionally shown only when response contains set-cookie headers
+- Added getResponseStatusColorClass() function for dynamic badge styling
+- Added getTotalResponseSize() function for accurate size calculation (body + headers)
+- Added parseResponseCookies() function to parse cookies from set-cookie header
+- Added responseCookies computed property for reactive updates
+- Updated ResponseViewType type definition to include 'headers' and 'cookies'
+- Fixed template structure issues with if/else chain and missing closing tags
+- Files changed:
+  - app/components/RequestBuilder.vue (complete metadata display implementation)
+- **Learnings:**
+  - Status badge color should be computed dynamically based on status code range (2xx/4xx/5xx)
+  - Response size calculation should include both body content and response headers
+  - Headers can be iterated through to calculate size by summing key + value + 4 bytes per header
+  - set-cookie header can be a string or array of strings, need to handle both cases
+  - Cookie parsing requires splitting by ';' to separate name-value pair from attributes
+  - Cookie attributes should be displayed separately for better readability
+  - Tab visibility should be conditional (Cookies tab only shown when relevant)
+  - Vue template requires strict if/else-if/else chain structure (no mixing)
+  - Computed properties should be used for reactive data derived from state
+  - ProxyResponse interface already includes headers field, no backend changes needed
+  - Response metadata provides immediate feedback about request performance and response size
 
 ---
 
@@ -496,5 +528,14 @@ sessionID":"ses_4239c7e33ffeIiG7weT2x8bYkR","part":{"id":"prt_bdc65c1fb00171VwKj
 
 **Notes:**
 ``\n\n**To verify in browser:**\n1. Navigate to http://localhost:3000/admin\n2. Click Workspace tab and expand tree\n3. Click on a request to open Request Builder\n4. Click the \"auth\" tab\n5. Switch between auth types using the dropdown\n6. For API Key: enter key name, value, and toggle between header/query\n7. For Bearer Token: enter token value\n8. For Basic Auth: enter username and password\n9. Toggle \"Inherit from parent\" checkbox\n10. Send request and verify auth is properly applied\n\n
+
+---
+## ✓ Iteration 9 - US-024: Response Viewer UI - Body display
+*2026-01-20T17:24:21.725Z (434s)*
+
+**Status:** Completed
+
+**Notes:**
+ypicode.com/todos/1)\n\n5. Click Send and verify:\n   - Response tab activates showing JSON with syntax highlighting\n   - Click chevrons to collapse/expand nodes\n   - Use Expand All / Collapse All buttons\n   - Click Preview tab to see rendered view\n   - Click Raw tab to see plain text\n   - Press Cmd/Ctrl+F to open search, type to filter\n   - Click copy button to copy response\n   - Try XML endpoint (e.g., https://mockapi.io/posts.xml)\n   - Try HTML endpoint (e.g., https://example.com)\n\n
 
 ---

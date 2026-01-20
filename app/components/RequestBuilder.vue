@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick } from 'vue';
+import JsonNode from './JsonNode.vue';
 
 interface QueryParam {
   id: string;
@@ -80,7 +81,7 @@ const emit = defineEmits<{
 
 type TabType = 'params' | 'headers' | 'body' | 'auth' | 'response';
 type BodyFormat = 'none' | 'json' | 'form-data' | 'urlencoded' | 'raw' | 'binary';
-type ResponseViewType = 'pretty' | 'preview' | 'raw';
+type ResponseViewType = 'pretty' | 'preview' | 'raw' | 'headers' | 'cookies';
 
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'] as const;
 const COMMON_HEADERS = [
@@ -457,6 +458,54 @@ const parseAuthFromRequest = (authConfig: any) => {
     basicAuth.value.password = authConfig.credentials.password || '';
   }
 };
+
+const getResponseStatusColorClass = (status: number) => {
+  if (status >= 200 && status < 300) return 'bg-accent-green/15 text-accent-green';
+  if (status >= 400 && status < 500) return 'bg-accent-orange/15 text-accent-orange';
+  if (status >= 500) return 'bg-accent-red/15 text-accent-red';
+  return 'bg-bg-tertiary text-text-muted';
+};
+
+const getTotalResponseSize = () => {
+  if (!response.value || !('success' in response.value)) return 0;
+
+  const bodyText = getResponseText();
+  let headersSize = 0;
+
+  if (response.value.headers) {
+    Object.entries(response.value.headers).forEach(([key, value]) => {
+      headersSize += key.length + value.length + 4;
+    });
+  }
+
+  return bodyText.length + headersSize;
+};
+
+const parseResponseCookies = () => {
+  if (!response.value || !('success' in response.value) || !response.value.headers) {
+    return [];
+  }
+
+  const setCookieHeader = response.value.headers['set-cookie'];
+  if (!setCookieHeader) return [];
+
+  const cookies: Array<{ name: string; value: string; attributes: string }> = [];
+  const cookieHeaders = Array.isArray(setCookieHeader) ? setCookieHeader : [setCookieHeader];
+
+  cookieHeaders.forEach(cookieHeader => {
+    const [pair, ...attributeParts] = cookieHeader.split(';');
+    const [name, value] = pair.split('=').map(s => s.trim());
+    cookies.push({
+      name,
+      value: value || '',
+      attributes: attributeParts.join(';').trim()
+    });
+  });
+
+  return cookies;
+};
+
+const responseCookies = computed(() => parseResponseCookies());
 
 const getContentType = () => {
   if (response.value && 'success' in response.value && response.value.headers) {
@@ -1326,13 +1375,14 @@ onUnmounted(() => {
             <div v-if="response.success" class="border-b border-border-default bg-bg-secondary">
               <div class="flex items-center justify-between py-2.5 px-4 border-b border-border-default">
                 <div class="flex items-center gap-3">
-                  <span 
-                    class="py-1 px-2.5 rounded text-[11px] font-semibold uppercase bg-accent-green/15 text-accent-green"
+                  <span
+                    class="py-1 px-2.5 rounded text-[11px] font-semibold uppercase"
+                    :class="getResponseStatusColorClass(response.status)"
                   >
                     {{ response.status }} {{ response.statusText }}
                   </span>
                   <span class="text-xs text-text-muted font-mono">{{ response.timing.durationMs }}ms</span>
-                  <span class="text-xs text-text-muted">{{ getResponseText().length }} bytes</span>
+                  <span class="text-xs text-text-muted">{{ getTotalResponseSize() }} bytes</span>
                 </div>
                 <div class="flex items-center gap-2">
                   <button 
@@ -1416,6 +1466,21 @@ onUnmounted(() => {
                 >
                   Raw
                 </button>
+                <button
+                  @click="responseViewType = 'headers'"
+                  class="px-3 py-2 text-xs font-medium transition-colors duration-fast whitespace-nowrap"
+                  :class="responseViewType === 'headers' ? 'text-text-primary border-b-2 border-accent-blue' : 'text-text-muted hover:text-text-secondary'"
+                >
+                  Headers
+                </button>
+                <button
+                  v-if="responseCookies.length > 0"
+                  @click="responseViewType = 'cookies'"
+                  class="px-3 py-2 text-xs font-medium transition-colors duration-fast whitespace-nowrap"
+                  :class="responseViewType === 'cookies' ? 'text-text-primary border-b-2 border-accent-blue' : 'text-text-muted hover:text-text-secondary'"
+                >
+                  Cookies
+                </button>
               </div>
             </div>
 
@@ -1461,6 +1526,13 @@ onUnmounted(() => {
                 </div>
               </div>
 
+              <div v-else-if="responseViewType === 'preview' && isJsonResponse()" class="h-full">
+                <iframe
+                  :srcdoc="`<!DOCTYPE html><html><head><style>body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; margin: 0; }</style></head><body><pre>${escapeHtml(getResponseText())}</pre></body></html>`"
+                  class="w-full h-full border-none rounded bg-bg-tertiary"
+                ></iframe>
+              </div>
+
               <div v-else-if="responseViewType === 'raw'" class="space-y-1">
                 <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
                   <span class="text-xs text-text-muted">{{ getContentType().split(';')[0] }}</span>
@@ -1468,11 +1540,42 @@ onUnmounted(() => {
                 <pre class="font-mono text-xs leading-normal bg-bg-tertiary rounded p-3 border border-border-default overflow-auto whitespace-pre-wrap break-words text-text-primary m-0">{{ getResponseText() }}</pre>
               </div>
 
-              <div v-else-if="responseViewType === 'preview' && isJsonResponse()" class="h-full">
-                <iframe
-                  :srcdoc="`<!DOCTYPE html><html><head><style>body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; margin: 0; }</style></head><body><pre>${escapeHtml(getResponseText())}</pre></body></html>`"
-                  class="w-full h-full border-none rounded bg-bg-tertiary"
-                ></iframe>
+              <div v-else-if="responseViewType === 'headers'" class="space-y-1">
+                <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
+                  <span class="text-xs text-text-muted">{{ Object.keys(response.headers).length }} headers</span>
+                </div>
+                <div class="bg-bg-tertiary rounded border border-border-default overflow-hidden">
+                  <div
+                    v-for="[key, value] in Object.entries(response.headers)"
+                    :key="key"
+                    class="flex items-start py-2 px-3 border-b border-border-default last:border-b-0 hover:bg-bg-hover transition-colors duration-fast"
+                  >
+                    <span class="font-mono text-xs text-accent-blue flex-shrink-0 w-1/3">{{ key }}</span>
+                    <span class="font-mono text-xs text-text-primary flex-1 break-all">{{ value }}</span>
+                  </div>
+                </div>
+              </div>
+
+<div v-else-if="responseViewType === 'cookies'" class="space-y-1">
+                <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
+                  <span class="text-xs text-text-muted">{{ responseCookies.length }} cookies</span>
+                </div>
+                <div class="bg-bg-tertiary rounded border border-border-default overflow-hidden">
+                  <div
+                    v-for="(cookie, index) in responseCookies"
+                    :key="index"
+                    class="py-2 px-3 border-b border-border-default last:border-b-0 hover:bg-bg-hover transition-colors duration-fast"
+                  >
+                    <div class="flex items-start gap-2 mb-1">
+                      <span class="font-mono text-xs text-accent-blue flex-shrink-0">{{ cookie.name }}</span>
+                      <span class="text-text-secondary">=</span>
+                      <span class="font-mono text-xs text-text-primary flex-1 break-all">{{ cookie.value }}</span>
+                    </div>
+                    <div v-if="cookie.attributes" class="text-xs text-text-muted font-mono ml-2">
+                      {{ cookie.attributes }}
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div v-else class="space-y-1">
