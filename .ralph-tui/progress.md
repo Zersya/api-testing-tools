@@ -91,6 +91,20 @@ after each iteration and included in agent prompts for context.
 - Content-Type header auto-managed based on body format (except form-data and binary which let browser handle it)
 - Watcher auto-initializes param list when switching to form-data or urlencoded formats
 
+**Auth Editor Pattern**
+- AuthType supports: none, basic, bearer, api-key, oauth2 (matching database schema)
+- Auth state uses reactive refs with separate configs per type (apiKey, bearerToken, basicAuth)
+- buildAuthHeaders() function converts auth config to Authorization headers based on type
+  - API Key (addTo=header): { key: value }
+  - Bearer: { Authorization: "Bearer <token>" }
+  - Basic Auth: { Authorization: "Basic <base64(username:password)>" }
+- buildAuthQueryParams() function converts auth config to query parameters for API Key (addTo=query)
+- parseAuthFromRequest() function initializes auth state from saved request auth config
+- Auth headers merged with user headers in sendRequest() (user headers take precedence)
+- URL modified in sendRequest() to include auth query params when needed
+- Inherit from parent checkbox for future hierarchical auth resolution
+- Each auth type has its own UI panel with appropriate inputs (password inputs for sensitive data)
+
 ---
 
 ## [2026-01-20] - US-016
@@ -376,5 +390,43 @@ npm run build
 9. For raw: enter text content and select Content-Type
 10. For binary: select a file and see file info
 11. Send request and verify body is properly sent
+
+---
+## ✓ Iteration 7 - US-022: Request Builder UI - Body editor
+*2026-01-20T17:13:38.599Z (152s)*
+
+**Status:** Completed
+
+**Notes:**
+sessionID":"ses_4239c7e33ffeIiG7weT2x8bYkR","part":{"id":"prt_bdc65c1fb00171VwKjeNBxumYC","sessionID":"ses_4239c7e33ffeIiG7weT2x8bYkR","messageID":"msg_bdc65b905001m9J3UtiIulhCwN","type":"step-start","snapshot":"b0c2b6c732290a334be6ef2befa1c14fb087715b"}}
+{"type":"text","timestamp":1768929218509,"sessionID":"ses_4239c7e33ffeIiG7weT2x8bYkR","part":{"id":"prt_bdc65c455001feOWL9NgK2zWJT","sessionID":"ses_4239c7e33ffeIiG7weT2x8bYkR","messageID":"msg_bdc65b905001m9J3UtiIulhCwN","type":"text","text":"
+
+---
+
+## [2026-01-21] - US-023
+- Implemented complete Auth editor in Request Builder with all acceptance criteria met
+- Added 'auth' tab to request builder tab system (params, headers, body, auth, response)
+- Created auth type selector with 4 options: No Auth, Basic Auth, Bearer Token, API Key
+- Implemented API Key editor with key name, value, and toggle to add to header or query params
+- Implemented Bearer Token editor with password-protected token input field
+- Implemented Basic Auth editor with username and password fields (password-protected)
+- Added "Inherit from parent" checkbox for future hierarchical auth support
+- Integrated auth into request sending via buildAuthHeaders() and buildAuthQueryParams() functions
+- Auth headers merged with user headers in sendRequest() with auth params appended to URL
+- Added parseAuthFromRequest() function to initialize auth state from saved request
+- Files changed: app/components/RequestBuilder.vue
+- **Learnings:**
+  - Auth pattern follows same principles as headers and params but with type-specific UI
+  - Password input type (type="password") should be used for sensitive auth data (tokens, passwords)
+  - API Key auth is flexible - can be added as header or query parameter based on user choice
+  - Basic Auth uses Base64 encoding for credentials (username:password)
+  - Bearer tokens sent as "Authorization: Bearer <token>" header
+  - Auth config should be parsed from request.auth on mount like headers are from request.headers
+  - Auth headers merged with existing headers in sendRequest() - user can override if needed
+  - Query params from auth appended to URL before sending request
+  - Inherit from parent checkbox prepared for future hierarchical auth resolution from collection/project
+  - Database schema defines AuthType as 'none' | 'basic' | 'bearer' | 'api-key' | 'oauth2'
+  - OAuth2 type defined in schema but not implemented in UI yet (future enhancement)
+  - Current implementation focuses on the 4 most common auth types
 
 ---

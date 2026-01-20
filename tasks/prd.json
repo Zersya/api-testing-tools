@@ -444,11 +444,12 @@
         "Verify in browser - can switch formats and edit body"
       ],
       "priority": 22,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-019"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-023",
@@ -973,6 +974,6 @@
     }
   ],
   "metadata": {
-    "updatedAt": "2026-01-20T17:11:06.750Z"
+    "updatedAt": "2026-01-20T17:13:39.611Z"
   }
 }

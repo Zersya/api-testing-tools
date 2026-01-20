@@ -3,10 +3,10 @@
   "sessionId": "52ce48cb-d294-40aa-8651-254622eadbd9",
   "status": "running",
   "startedAt": "2026-01-20T16:09:17.145Z",
-  "updatedAt": "2026-01-20T17:11:06.755Z",
-  "currentIteration": 6,
+  "updatedAt": "2026-01-20T17:13:39.621Z",
+  "currentIteration": 7,
   "maxIterations": 10,
-  "tasksCompleted": 6,
+  "tasksCompleted": 7,
   "isPaused": false,
   "agentPlugin": "opencode",
   "model": "fireworks-ai/accounts/fireworks/models/glm-4p7",
@@ -144,8 +144,8 @@
       {
         "id": "US-022",
         "title": "Request Builder UI - Body editor",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-023",
@@ -365,12 +365,22 @@
       "durationMs": 171228,
       "startedAt": "2026-01-20T17:08:14.504Z",
       "endedAt": "2026-01-20T17:11:05.732Z"
+    },
+    {
+      "iteration": 7,
+      "status": "completed",
+      "taskId": "US-022",
+      "taskTitle": "Request Builder UI - Body editor",
+      "taskCompleted": true,
+      "durationMs": 151843,
+      "startedAt": "2026-01-20T17:11:06.750Z",
+      "endedAt": "2026-01-20T17:13:38.593Z"
     }
   ],
   "skippedTaskIds": [],
   "cwd": "/Users/zeinersyad/Playground/mock-service",
   "activeTaskIds": [
-    "US-022"
+    "US-023"
   ],
   "subagentPanelVisible": false
 }

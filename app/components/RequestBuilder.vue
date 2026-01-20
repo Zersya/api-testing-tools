@@ -76,7 +76,7 @@ const emit = defineEmits<{
   saveRequest: [request: HttpRequest];
 }>();
 
-type TabType = 'params' | 'headers' | 'body' | 'response';
+type TabType = 'params' | 'headers' | 'body' | 'auth' | 'response';
 type BodyFormat = 'none' | 'json' | 'form-data' | 'urlencoded' | 'raw' | 'binary';
 
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'] as const;
@@ -144,6 +144,20 @@ const formDataParams = ref<BodyParam[]>([]);
 const rawBody = ref('');
 const rawContentType = ref('text/plain');
 const binaryFile = ref<File | null>(null);
+
+type AuthType = 'none' | 'basic' | 'bearer' | 'api-key';
+const authType = ref<AuthType>('none');
+const apiKey = ref({
+  key: '',
+  value: '',
+  addTo: 'header' as 'header' | 'query'
+});
+const bearerToken = ref('');
+const basicAuth = ref({
+  username: '',
+  password: ''
+});
+const inheritFromParent = ref(false);
 
 const parseUrlQuery = (url: string) => {
   try {
@@ -389,6 +403,54 @@ const buildBody = (): any => {
   }
 };
 
+const buildAuthHeaders = (): Record<string, string> => {
+  const authHeaders: Record<string, string> = {};
+
+  if (authType.value === 'api-key') {
+    if (apiKey.value.addTo === 'header' && apiKey.value.key) {
+      authHeaders[apiKey.value.key] = apiKey.value.value;
+    }
+  } else if (authType.value === 'bearer' && bearerToken.value) {
+    authHeaders['Authorization'] = `Bearer ${bearerToken.value}`;
+  } else if (authType.value === 'basic' && basicAuth.value.username) {
+    const credentials = btoa(`${basicAuth.value.username}:${basicAuth.value.password}`);
+    authHeaders['Authorization'] = `Basic ${credentials}`;
+  }
+
+  return authHeaders;
+};
+
+const buildAuthQueryParams = (): Record<string, string> => {
+  const queryParams: Record<string, string> = {};
+
+  if (authType.value === 'api-key' && apiKey.value.addTo === 'query' && apiKey.value.key) {
+    queryParams[apiKey.value.key] = apiKey.value.value;
+  }
+
+  return queryParams;
+};
+
+const parseAuthFromRequest = (authConfig: any) => {
+  if (!authConfig) {
+    authType.value = 'none';
+    return;
+  }
+
+  const type = authConfig.type as AuthType;
+  authType.value = type;
+
+  if (type === 'api-key' && authConfig.credentials) {
+    apiKey.value.key = authConfig.credentials.key || '';
+    apiKey.value.value = authConfig.credentials.value || '';
+    apiKey.value.addTo = (authConfig.credentials.addTo as 'header' | 'query') || 'header';
+  } else if (type === 'bearer' && authConfig.credentials) {
+    bearerToken.value = authConfig.credentials.token || '';
+  } else if (type === 'basic' && authConfig.credentials) {
+    basicAuth.value.username = authConfig.credentials.username || '';
+    basicAuth.value.password = authConfig.credentials.password || '';
+  }
+};
+
 watch(() => form.value.url, (newUrl) => {
   const params = parseUrlQuery(newUrl);
   if (params.length !== queryParams.value.length ||
@@ -411,6 +473,7 @@ watch(bodyFormat, (newFormat) => {
 
 onMounted(() => {
   headers.value = parseHeadersFromRequest(props.request.headers);
+  parseAuthFromRequest(props.request.auth);
 });
 
 const sendRequest = async () => {
@@ -423,6 +486,7 @@ const sendRequest = async () => {
   try {
     const requestBody = buildBody();
     let requestHeaders = buildHeadersRecord();
+    const authHeaders = buildAuthHeaders();
 
     if (bodyFormat.value === 'raw') {
       requestHeaders['Content-Type'] = rawContentType.value;
@@ -436,10 +500,25 @@ const sendRequest = async () => {
       delete requestHeaders['Content-Type'];
     }
 
+    requestHeaders = { ...requestHeaders, ...authHeaders };
+
+    let requestUrl = form.value.url;
+    const authQueryParams = buildAuthQueryParams();
+    if (Object.keys(authQueryParams).length > 0) {
+      try {
+        const urlObj = new URL(requestUrl);
+        Object.entries(authQueryParams).forEach(([key, value]) => {
+          urlObj.searchParams.set(key, value);
+        });
+        requestUrl = urlObj.toString();
+      } catch {
+      }
+    }
+
     const result = await $fetch<ProxyResponse | ProxyErrorResponse>('/api/proxy/request', {
       method: 'POST',
       body: {
-        url: form.value.url,
+        url: requestUrl,
         method: form.value.method,
         headers: requestHeaders,
         body: requestBody,
@@ -536,7 +615,7 @@ onUnmounted(() => {
       <div class="border-b border-border-default bg-bg-secondary">
         <div class="flex gap-0">
           <button
-            v-for="tab in ['params', 'headers', 'body', 'response'] as TabType[]"
+            v-for="tab in ['params', 'headers', 'body', 'auth', 'response'] as TabType[]"
             :key="tab"
             @click="activeTab = tab"
             class="px-4 py-3 text-xs font-medium capitalize transition-all duration-fast border-b-2 focus:outline-none whitespace-nowrap"
@@ -886,6 +965,125 @@ onUnmounted(() => {
                 <div v-if="binaryFile" class="mt-3 text-sm text-text-primary">
                   Selected: {{ binaryFile.name }} ({{ (binaryFile.size / 1024).toFixed(2) }} KB)
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-else-if="activeTab === 'auth'" class="flex-1 flex flex-col overflow-hidden">
+          <div class="flex-1 overflow-auto p-4">
+            <div class="space-y-4">
+              <div class="space-y-2">
+                <label class="text-xs font-medium text-text-secondary">Auth Type</label>
+                <select
+                  v-model="authType"
+                  class="w-full py-2 px-3 bg-bg-input border border-border-default rounded text-text-primary text-sm focus:outline-none focus:border-accent-blue"
+                >
+                  <option value="none">No Auth</option>
+                  <option value="basic">Basic Auth</option>
+                  <option value="bearer">Bearer Token</option>
+                  <option value="api-key">API Key</option>
+                </select>
+              </div>
+
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  v-model="inheritFromParent"
+                  class="w-4 h-4 rounded border-border-default bg-bg-input text-accent-blue focus:ring-accent-blue focus:ring-offset-bg-secondary cursor-pointer"
+                />
+                <span class="text-xs text-text-secondary">Inherit from parent</span>
+              </label>
+
+              <div v-if="authType === 'api-key'" class="space-y-3 p-3 bg-bg-tertiary rounded border border-border-default">
+                <div class="space-y-2">
+                  <label class="text-xs font-medium text-text-secondary">Key</label>
+                  <input
+                    v-model="apiKey.key"
+                    type="text"
+                    class="w-full py-2 px-3 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue placeholder:text-text-muted"
+                    placeholder="Enter key name (e.g., X-API-Key)"
+                  />
+                </div>
+                <div class="space-y-2">
+                  <label class="text-xs font-medium text-text-secondary">Value</label>
+                  <input
+                    v-model="apiKey.value"
+                    type="password"
+                    class="w-full py-2 px-3 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue placeholder:text-text-muted"
+                    placeholder="Enter API key value"
+                  />
+                </div>
+                <div class="space-y-2">
+                  <label class="text-xs font-medium text-text-secondary">Add to</label>
+                  <div class="flex gap-2">
+                    <button
+                      @click="apiKey.addTo = 'header'"
+                      class="flex-1 py-2 px-3 rounded text-xs font-medium transition-all duration-fast"
+                      :class="apiKey.addTo === 'header' ? 'bg-accent-blue text-white' : 'bg-bg-input text-text-secondary hover:border-accent-blue border border-border-default'"
+                    >
+                      Header
+                    </button>
+                    <button
+                      @click="apiKey.addTo = 'query'"
+                      class="flex-1 py-2 px-3 rounded text-xs font-medium transition-all duration-fast"
+                      :class="apiKey.addTo === 'query' ? 'bg-accent-blue text-white' : 'bg-bg-input text-text-secondary hover:border-accent-blue border border-border-default'"
+                    >
+                      Query Params
+                    </button>
+                  </div>
+                </div>
+                <div class="text-xs text-text-muted">
+                  <span v-if="apiKey.addTo === 'header'">
+                    This will be sent as a header: <span class="font-mono text-text-secondary">{{ apiKey.key || 'X-API-Key' }}: {{ apiKey.value ? '***' : '' }}</span>
+                  </span>
+                  <span v-else>
+                    This will be sent as a query parameter: <span class="font-mono text-text-secondary">{{ apiKey.key || 'api_key' }}={{ apiKey.value ? '***' : '' }}</span>
+                  </span>
+                </div>
+              </div>
+
+              <div v-if="authType === 'bearer'" class="space-y-3 p-3 bg-bg-tertiary rounded border border-border-default">
+                <div class="space-y-2">
+                  <label class="text-xs font-medium text-text-secondary">Token</label>
+                  <input
+                    v-model="bearerToken"
+                    type="password"
+                    class="w-full py-2 px-3 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue placeholder:text-text-muted"
+                    placeholder="Enter bearer token"
+                  />
+                </div>
+                <div class="text-xs text-text-muted">
+                  This will be sent as an Authorization header in the format: <span class="font-mono text-text-secondary">Bearer &lt;token&gt;</span>
+                </div>
+              </div>
+
+              <div v-if="authType === 'basic'" class="space-y-3 p-3 bg-bg-tertiary rounded border border-border-default">
+                <div class="space-y-2">
+                  <label class="text-xs font-medium text-text-secondary">Username</label>
+                  <input
+                    v-model="basicAuth.username"
+                    type="text"
+                    class="w-full py-2 px-3 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue placeholder:text-text-muted"
+                    placeholder="Enter username"
+                  />
+                </div>
+                <div class="space-y-2">
+                  <label class="text-xs font-medium text-text-secondary">Password</label>
+                  <input
+                    v-model="basicAuth.password"
+                    type="password"
+                    class="w-full py-2 px-3 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue placeholder:text-text-muted"
+                    placeholder="Enter password"
+                  />
+                </div>
+                <div class="text-xs text-text-muted">
+                  This will be sent as an Authorization header in the format: <span class="font-mono text-text-secondary">Basic &lt;base64(username:password)&gt;</span>
+                </div>
+              </div>
+
+              <div v-if="authType === 'none'" class="p-4 text-center text-text-muted text-sm">
+                This request will be sent without authentication
               </div>
             </div>
           </div>
