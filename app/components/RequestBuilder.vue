@@ -6,6 +6,21 @@ interface QueryParam {
   enabled: boolean;
 }
 
+interface HeaderParam {
+  id: string;
+  key: string;
+  value: string;
+  enabled: boolean;
+}
+
+interface BodyParam {
+  id: string;
+  key: string;
+  value: string;
+  enabled: boolean;
+  type: 'text' | 'file';
+}
+
 interface HttpRequest {
   id: string;
   folderId: string;
@@ -61,9 +76,31 @@ const emit = defineEmits<{
   saveRequest: [request: HttpRequest];
 }>();
 
-type TabType = 'params' | 'response';
+type TabType = 'params' | 'headers' | 'body' | 'response';
+type BodyFormat = 'none' | 'json' | 'form-data' | 'urlencoded' | 'raw' | 'binary';
 
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'] as const;
+const COMMON_HEADERS = [
+  'Accept',
+  'Accept-Encoding',
+  'Accept-Language',
+  'Authorization',
+  'Cache-Control',
+  'Connection',
+  'Content-Encoding',
+  'Content-Length',
+  'Content-Type',
+  'Cookie',
+  'DNT',
+  'Host',
+  'Origin',
+  'Referer',
+  'User-Agent',
+  'X-Requested-With',
+  'API-Key',
+  'X-API-Key',
+  'Bearer'
+] as const;
 
 const methodColors: Record<string, string> = {
   GET: 'text-method-get',
@@ -74,6 +111,16 @@ const methodColors: Record<string, string> = {
   HEAD: 'text-method-head',
   OPTIONS: 'text-method-options'
 };
+
+const BODY_FORMATS = ['none', 'json', 'form-data', 'urlencoded', 'raw', 'binary'] as const;
+const RAW_CONTENT_TYPES = [
+  'text/plain',
+  'text/html',
+  'text/xml',
+  'application/json',
+  'application/javascript',
+  'application/xml'
+] as const;
 
 const form = ref({
   method: props.request.method as typeof HTTP_METHODS[number],
@@ -88,6 +135,15 @@ const variableWarnings = ref<string[]>([]);
 const queryParams = ref<QueryParam[]>([]);
 const isBulkEditMode = ref(false);
 const bulkQueryString = ref('');
+
+const headers = ref<HeaderParam[]>([]);
+
+const bodyFormat = ref<BodyFormat>('none');
+const jsonBody = ref('');
+const formDataParams = ref<BodyParam[]>([]);
+const rawBody = ref('');
+const rawContentType = ref('text/plain');
+const binaryFile = ref<File | null>(null);
 
 const parseUrlQuery = (url: string) => {
   try {
@@ -178,13 +234,184 @@ const updateQueryParam = (id: string, field: keyof QueryParam, value: string | b
   }
 };
 
+const parseHeadersFromRequest = (headersObj: Record<string, string> | null) => {
+  if (!headersObj) return [];
+  return Object.entries(headersObj).map(([key, value]) => ({
+    id: crypto.randomUUID(),
+    key,
+    value,
+    enabled: true
+  }));
+};
+
+const addHeader = () => {
+  headers.value.push({
+    id: crypto.randomUUID(),
+    key: '',
+    value: '',
+    enabled: true
+  });
+};
+
+const removeHeader = (id: string) => {
+  const index = headers.value.findIndex(h => h.id === id);
+  if (index !== -1) {
+    headers.value.splice(index, 1);
+  }
+};
+
+const updateHeader = (id: string, field: keyof HeaderParam, value: string | boolean) => {
+  const header = headers.value.find(h => h.id === id);
+  if (header) {
+    header[field] = value as never;
+  }
+};
+
+const addPresetHeaders = () => {
+  const presetHeaders = [
+    { key: 'Content-Type', value: 'application/json' },
+    { key: 'Accept', value: 'application/json' }
+  ];
+
+  presetHeaders.forEach(preset => {
+    const existingHeader = headers.value.find(h => 
+      h.key.toLowerCase() === preset.key.toLowerCase()
+    );
+
+    if (existingHeader) {
+      existingHeader.value = preset.value;
+      existingHeader.enabled = true;
+    } else {
+      headers.value.push({
+        id: crypto.randomUUID(),
+        key: preset.key,
+        value: preset.value,
+        enabled: true
+      });
+    }
+  });
+};
+
+const buildHeadersRecord = (): Record<string, string> => {
+  const headersRecord: Record<string, string> = {};
+  headers.value.forEach(header => {
+    if (header.enabled && header.key) {
+      headersRecord[header.key] = header.value;
+    }
+  });
+  return headersRecord;
+};
+
+const addFormDataParam = () => {
+  formDataParams.value.push({
+    id: crypto.randomUUID(),
+    key: '',
+    value: '',
+    enabled: true,
+    type: 'text'
+  });
+};
+
+const removeFormDataParam = (id: string) => {
+  const index = formDataParams.value.findIndex(p => p.id === id);
+  if (index !== -1) {
+    formDataParams.value.splice(index, 1);
+  }
+};
+
+const updateFormDataParam = (id: string, field: keyof BodyParam, value: string | boolean | 'text' | 'file') => {
+  const param = formDataParams.value.find(p => p.id === id);
+  if (param) {
+    param[field] = value as never;
+  }
+};
+
+const handleFileSelect = (id: string, event: Event) => {
+  const target = event.target as HTMLInputElement;
+  if (target.files && target.files[0]) {
+    const param = formDataParams.value.find(p => p.id === id);
+    if (param) {
+      param.value = target.files[0].name;
+    }
+  }
+};
+
+const handleBinaryFileSelect = (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  if (target.files && target.files[0]) {
+    binaryFile.value = target.files[0];
+  }
+};
+
+const validateJson = (jsonString: string): { valid: boolean; error?: string } => {
+  try {
+    if (jsonString.trim() === '') {
+      return { valid: true };
+    }
+    JSON.parse(jsonString);
+    return { valid: true };
+  } catch (error: any) {
+    return { valid: false, error: error.message };
+  }
+};
+
+const buildBody = (): any => {
+  switch (bodyFormat.value) {
+    case 'none':
+      return undefined;
+    case 'json':
+      try {
+        return JSON.parse(jsonBody.value);
+      } catch {
+        return jsonBody.value;
+      }
+    case 'form-data':
+      const formData = new FormData();
+      formDataParams.value.forEach(param => {
+        if (param.enabled && param.key) {
+          formData.append(param.key, param.value);
+        }
+      });
+      return formData;
+    case 'urlencoded':
+      const enabledParams = formDataParams.value.filter(p => p.enabled && p.key);
+      const params = new URLSearchParams();
+      enabledParams.forEach(param => {
+        params.append(param.key, param.value);
+      });
+      return params.toString();
+    case 'raw':
+      return rawBody.value;
+    case 'binary':
+      return binaryFile.value;
+    default:
+      return undefined;
+  }
+};
+
 watch(() => form.value.url, (newUrl) => {
   const params = parseUrlQuery(newUrl);
-  if (params.length !== queryParams.value.length || 
+  if (params.length !== queryParams.value.length ||
       JSON.stringify(params) !== JSON.stringify(queryParams.value.map(p => ({ key: p.key, value: p.value, enabled: p.enabled })))) {
     queryParams.value = params;
   }
 }, { immediate: true });
+
+watch(bodyFormat, (newFormat) => {
+  if ((newFormat === 'form-data' || newFormat === 'urlencoded') && formDataParams.value.length === 0) {
+    formDataParams.value.push({
+      id: crypto.randomUUID(),
+      key: '',
+      value: '',
+      enabled: true,
+      type: 'text'
+    });
+  }
+});
+
+onMounted(() => {
+  headers.value = parseHeadersFromRequest(props.request.headers);
+});
 
 const sendRequest = async () => {
   if (!form.value.url) return;
@@ -194,13 +421,28 @@ const sendRequest = async () => {
   activeTab.value = 'response';
 
   try {
+    const requestBody = buildBody();
+    let requestHeaders = buildHeadersRecord();
+
+    if (bodyFormat.value === 'raw') {
+      requestHeaders['Content-Type'] = rawContentType.value;
+    } else if (bodyFormat.value === 'json') {
+      requestHeaders['Content-Type'] = 'application/json';
+    } else if (bodyFormat.value === 'form-data') {
+      delete requestHeaders['Content-Type'];
+    } else if (bodyFormat.value === 'urlencoded') {
+      requestHeaders['Content-Type'] = 'application/x-www-form-urlencoded';
+    } else if (bodyFormat.value === 'binary') {
+      delete requestHeaders['Content-Type'];
+    }
+
     const result = await $fetch<ProxyResponse | ProxyErrorResponse>('/api/proxy/request', {
       method: 'POST',
       body: {
         url: form.value.url,
         method: form.value.method,
-        headers: props.request.headers || {},
-        body: props.request.body,
+        headers: requestHeaders,
+        body: requestBody,
         workspaceId: props.workspaceId
       }
     });
@@ -293,14 +535,14 @@ onUnmounted(() => {
 
       <div class="border-b border-border-default bg-bg-secondary">
         <div class="flex gap-0">
-          <button 
-            v-for="tab in ['params', 'response'] as TabType[]" 
+          <button
+            v-for="tab in ['params', 'headers', 'body', 'response'] as TabType[]"
             :key="tab"
             @click="activeTab = tab"
             class="px-4 py-3 text-xs font-medium capitalize transition-all duration-fast border-b-2 focus:outline-none whitespace-nowrap"
             :class="[
-              activeTab === tab 
-                ? 'border-accent-blue text-text-primary' 
+              activeTab === tab
+                ? 'border-accent-blue text-text-primary'
                 : 'border-transparent text-text-muted hover:text-text-secondary'
             ]"
           >
@@ -380,6 +622,271 @@ onUnmounted(() => {
                 </svg>
                 Add Query Param
               </button>
+            </div>
+          </div>
+        </div>
+
+        <div v-else-if="activeTab === 'headers'" class="flex-1 flex flex-col overflow-hidden">
+          <div class="p-2 border-b border-border-default bg-bg-secondary flex items-center justify-between">
+            <span class="text-xs text-text-muted">{{ headers.filter(h => h.enabled).length }} headers</span>
+            <button
+              @click="addPresetHeaders"
+              class="text-xs text-accent-blue hover:text-accent-blue/80"
+            >
+              Add Preset Headers
+            </button>
+          </div>
+
+          <div class="flex-1 overflow-auto">
+            <div class="p-2">
+              <div
+                v-for="(header, index) in headers"
+                :key="header.id"
+                class="flex items-center gap-2 py-2 px-2 rounded hover:bg-bg-hover transition-colors duration-fast group"
+              >
+                <input
+                  type="checkbox"
+                  :checked="header.enabled"
+                  @change="updateHeader(header.id, 'enabled', ($event.target as HTMLInputElement).checked)"
+                  class="w-4 h-4 rounded border-border-default bg-bg-input text-accent-blue focus:ring-accent-blue focus:ring-offset-bg-secondary cursor-pointer"
+                />
+                <input
+                  :value="header.key"
+                  @input="updateHeader(header.id, 'key', ($event.target as HTMLInputElement).value)"
+                  :disabled="!header.enabled"
+                  type="text"
+                  list="common-headers"
+                  class="flex-1 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed placeholder:text-text-muted"
+                  placeholder="Header Name"
+                />
+                <input
+                  :value="header.value"
+                  @input="updateHeader(header.id, 'value', ($event.target as HTMLInputElement).value)"
+                  :disabled="!header.enabled"
+                  type="text"
+                  class="flex-1 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed placeholder:text-text-muted"
+                  placeholder="Header Value"
+                />
+                <button
+                  @click="removeHeader(header.id)"
+                  class="p-1.5 text-text-muted hover:text-accent-red opacity-0 group-hover:opacity-100 transition-all duration-fast focus:opacity-100 focus:outline-none"
+                  title="Remove header"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </button>
+              </div>
+
+              <button
+                @click="addHeader"
+                class="w-full mt-2 py-2 text-xs text-accent-blue hover:text-accent-blue/80 border border-dashed border-border-default rounded hover:border-accent-blue transition-colors duration-fast flex items-center justify-center gap-2"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                Add Header
+              </button>
+            </div>
+          </div>
+
+          <datalist id="common-headers">
+            <option v-for="header in COMMON_HEADERS" :key="header" :value="header">{{ header }}</option>
+          </datalist>
+        </div>
+
+        <div v-else-if="activeTab === 'body'" class="flex-1 flex flex-col overflow-hidden">
+          <div class="p-2 border-b border-border-default bg-bg-secondary">
+            <select 
+              v-model="bodyFormat"
+              class="py-1.5 px-3 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue cursor-pointer"
+            >
+              <option value="none">None</option>
+              <option value="json">JSON</option>
+              <option value="form-data">Form Data</option>
+              <option value="urlencoded">x-www-form-urlencoded</option>
+              <option value="raw">Raw</option>
+              <option value="binary">Binary</option>
+            </select>
+          </div>
+
+          <div class="flex-1 overflow-auto p-4">
+            <div v-if="bodyFormat === 'none'" class="flex items-center justify-center text-text-muted text-sm py-10">
+              This request does not have a body
+            </div>
+
+            <div v-else-if="bodyFormat === 'json'" class="space-y-3">
+              <div class="relative">
+                <textarea
+                  v-model="jsonBody"
+                  class="w-full h-[300px] p-3 bg-bg-input border border-border-default rounded-lg text-text-primary font-mono text-xs resize-none focus:outline-none focus:border-accent-blue"
+                  placeholder="{
+  &quot;key&quot;: &quot;value&quot;
+}"
+                />
+                <div v-if="validateJson(jsonBody).valid" class="absolute top-2 right-2 px-2 py-0.5 bg-accent-green/15 text-accent-green text-[10px] font-semibold rounded">
+                  Valid JSON
+                </div>
+                <div v-else-if="jsonBody.trim()" class="absolute top-2 right-2 px-2 py-0.5 bg-accent-red/15 text-accent-red text-[10px] font-semibold rounded">
+                  Invalid JSON
+                </div>
+              </div>
+              <div v-if="!validateJson(jsonBody).valid && jsonBody.trim()" class="text-xs text-accent-red">
+                {{ validateJson(jsonBody).error }}
+              </div>
+            </div>
+
+            <div v-else-if="bodyFormat === 'form-data'" class="space-y-2">
+              <div
+                v-for="(param, index) in formDataParams"
+                :key="param.id"
+                class="flex items-center gap-2 py-2 px-2 rounded hover:bg-bg-hover transition-colors duration-fast group"
+              >
+                <input
+                  type="checkbox"
+                  :checked="param.enabled"
+                  @change="updateFormDataParam(param.id, 'enabled', ($event.target as HTMLInputElement).checked)"
+                  class="w-4 h-4 rounded border-border-default bg-bg-input text-accent-blue focus:ring-accent-blue focus:ring-offset-bg-secondary cursor-pointer"
+                />
+                <input
+                  :value="param.key"
+                  @input="updateFormDataParam(param.id, 'key', ($event.target as HTMLInputElement).value)"
+                  :disabled="!param.enabled"
+                  type="text"
+                  class="flex-1 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed placeholder:text-text-muted"
+                  placeholder="Key"
+                />
+                <select
+                  :value="param.type"
+                  @change="updateFormDataParam(param.id, 'type', ($event.target as HTMLSelectElement).value as 'text' | 'file')"
+                  :disabled="!param.enabled"
+                  class="py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <option value="text">Text</option>
+                  <option value="file">File</option>
+                </select>
+                <div v-if="param.type === 'text'" class="flex-1">
+                  <input
+                    :value="param.value"
+                    @input="updateFormDataParam(param.id, 'value', ($event.target as HTMLInputElement).value)"
+                    :disabled="!param.enabled"
+                    type="text"
+                    class="w-full py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed placeholder:text-text-muted"
+                    placeholder="Value"
+                  />
+                </div>
+                <div v-else class="flex-1">
+                  <input
+                    type="file"
+                    @change="handleFileSelect(param.id, $event)"
+                    :disabled="!param.enabled"
+                    class="w-full py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-muted text-xs focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                </div>
+                <button
+                  @click="removeFormDataParam(param.id)"
+                  class="p-1.5 text-text-muted hover:text-accent-red opacity-0 group-hover:opacity-100 transition-all duration-fast focus:opacity-100 focus:outline-none"
+                  title="Remove param"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </button>
+              </div>
+              <button
+                @click="addFormDataParam"
+                class="w-full py-2 text-xs text-accent-blue hover:text-accent-blue/80 border border-dashed border-border-default rounded hover:border-accent-blue transition-colors duration-fast flex items-center justify-center gap-2"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                Add Form Data Param
+              </button>
+            </div>
+
+            <div v-else-if="bodyFormat === 'urlencoded'" class="space-y-2">
+              <div
+                v-for="(param, index) in formDataParams"
+                :key="param.id"
+                class="flex items-center gap-2 py-2 px-2 rounded hover:bg-bg-hover transition-colors duration-fast group"
+              >
+                <input
+                  type="checkbox"
+                  :checked="param.enabled"
+                  @change="updateFormDataParam(param.id, 'enabled', ($event.target as HTMLInputElement).checked)"
+                  class="w-4 h-4 rounded border-border-default bg-bg-input text-accent-blue focus:ring-accent-blue focus:ring-offset-bg-secondary cursor-pointer"
+                />
+                <input
+                  :value="param.key"
+                  @input="updateFormDataParam(param.id, 'key', ($event.target as HTMLInputElement).value)"
+                  :disabled="!param.enabled"
+                  type="text"
+                  class="flex-1 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed placeholder:text-text-muted"
+                  placeholder="Key"
+                />
+                <input
+                  :value="param.value"
+                  @input="updateFormDataParam(param.id, 'value', ($event.target as HTMLInputElement).value)"
+                  :disabled="!param.enabled"
+                  type="text"
+                  class="flex-1 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed placeholder:text-text-muted"
+                  placeholder="Value"
+                />
+                <button
+                  @click="removeFormDataParam(param.id)"
+                  class="p-1.5 text-text-muted hover:text-accent-red opacity-0 group-hover:opacity-100 transition-all duration-fast focus:opacity-100 focus:outline-none"
+                  title="Remove param"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </button>
+              </div>
+              <button
+                @click="addFormDataParam"
+                class="w-full py-2 text-xs text-accent-blue hover:text-accent-blue/80 border border-dashed border-border-default rounded hover:border-accent-blue transition-colors duration-fast flex items-center justify-center gap-2"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                Add URL Encoded Param
+              </button>
+            </div>
+
+            <div v-else-if="bodyFormat === 'raw'" class="space-y-3">
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-text-muted">Content-Type:</span>
+                <select
+                  v-model="rawContentType"
+                  class="flex-1 py-1.5 px-3 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue"
+                >
+                  <option v-for="ct in RAW_CONTENT_TYPES" :key="ct" :value="ct">{{ ct }}</option>
+                </select>
+              </div>
+              <textarea
+                v-model="rawBody"
+                class="w-full h-[300px] p-3 bg-bg-input border border-border-default rounded-lg text-text-primary font-mono text-xs resize-none focus:outline-none focus:border-accent-blue"
+                placeholder="Enter raw body content..."
+              />
+            </div>
+
+            <div v-else-if="bodyFormat === 'binary'" class="space-y-3">
+              <div class="p-8 border-2 border-dashed border-border-default rounded-lg text-center">
+                <input
+                  type="file"
+                  @change="handleBinaryFileSelect($event)"
+                  class="w-full"
+                />
+                <div v-if="binaryFile" class="mt-3 text-sm text-text-primary">
+                  Selected: {{ binaryFile.name }} ({{ (binaryFile.size / 1024).toFixed(2) }} KB)
+                </div>
+              </div>
             </div>
           </div>
         </div>

@@ -3,10 +3,10 @@
   "sessionId": "52ce48cb-d294-40aa-8651-254622eadbd9",
   "status": "running",
   "startedAt": "2026-01-20T16:09:17.145Z",
-  "updatedAt": "2026-01-20T17:02:33.092Z",
-  "currentIteration": 4,
+  "updatedAt": "2026-01-20T17:11:06.755Z",
+  "currentIteration": 6,
   "maxIterations": 10,
-  "tasksCompleted": 4,
+  "tasksCompleted": 6,
   "isPaused": false,
   "agentPlugin": "opencode",
   "model": "fireworks-ai/accounts/fireworks/models/glm-4p7",
@@ -132,14 +132,14 @@
       {
         "id": "US-020",
         "title": "Request Builder UI - Query params editor",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-021",
         "title": "Request Builder UI - Headers editor",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-022",
@@ -345,12 +345,32 @@
       "durationMs": 354556,
       "startedAt": "2026-01-20T16:56:37.490Z",
       "endedAt": "2026-01-20T17:02:32.046Z"
+    },
+    {
+      "iteration": 5,
+      "status": "completed",
+      "taskId": "US-020",
+      "taskTitle": "Request Builder UI - Query params editor",
+      "taskCompleted": true,
+      "durationMs": 340403,
+      "startedAt": "2026-01-20T17:02:33.079Z",
+      "endedAt": "2026-01-20T17:08:13.482Z"
+    },
+    {
+      "iteration": 6,
+      "status": "completed",
+      "taskId": "US-021",
+      "taskTitle": "Request Builder UI - Headers editor",
+      "taskCompleted": true,
+      "durationMs": 171228,
+      "startedAt": "2026-01-20T17:08:14.504Z",
+      "endedAt": "2026-01-20T17:11:05.732Z"
     }
   ],
   "skippedTaskIds": [],
   "cwd": "/Users/zeinersyad/Playground/mock-service",
   "activeTaskIds": [
-    "US-020"
+    "US-022"
   ],
   "subagentPanelVisible": false
 }

@@ -402,11 +402,12 @@
         "Verify in browser - params sync with URL"
       ],
       "priority": 20,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-019"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-021",
@@ -421,11 +422,12 @@
         "Verify in browser - headers can be added/removed"
       ],
       "priority": 21,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-019"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-022",
@@ -971,6 +973,6 @@
     }
   ],
   "metadata": {
-    "updatedAt": "2026-01-20T17:02:33.079Z"
+    "updatedAt": "2026-01-20T17:11:06.750Z"
   }
 }

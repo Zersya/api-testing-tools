@@ -56,6 +56,40 @@ after each iteration and included in agent prompts for context.
 - Proxy integration via /api/proxy/request endpoint for actual HTTP execution
 - Response display with success/error states and timing information
 - Workspace ID computed from workspaces data for request history logging
+- Tab system for organizing request builder sections (params, headers, body, response)
+- Query params editor with key-value table and bulk edit mode
+
+**Query Params Pattern**
+- QueryParam interface uses unique ID for list management with reactive updates
+- Bidirectional sync between URL query string and params state using watch
+- parseUrlQuery extracts query parameters from URL using URL API
+- updateUrlFromParams reconstructs URL from enabled params only
+- Bulk edit mode toggles between table view and raw string textarea
+- Checkbox controls enable/disable status without affecting data structure
+- Add/remove functions maintain list integrity and trigger URL updates
+
+**Headers Pattern**
+- HeaderParam interface uses unique ID for list management with reactive updates
+- Headers initialized from HttpRequest.headers in onMounted lifecycle hook
+- parseHeadersFromRequest converts Record<string, string> to HeaderParam array
+- buildHeadersRecord converts enabled HeaderParam array back to Record<string, string>
+- addPresetHeaders adds common headers (Content-Type, Accept) without duplicates
+- Datalist provides autocomplete for common header names (Accept, Authorization, etc.)
+- Checkbox controls enable/disable status without affecting data structure
+- Add/remove functions maintain list integrity
+- Headers sent to proxy endpoint via buildHeadersRecord function
+
+**Body Editor Pattern**
+- BodyParam interface extends HeaderParam pattern with additional 'type' field for form-data (text | file)
+- Multiple body formats: none, JSON, form-data, x-www-form-urlencoded, raw, binary
+- JSON editor with real-time validation using try-catch and visual indicators
+- Form-data editor supports both text values and file uploads with type switching per parameter
+- URL-encoded format uses URLSearchParams to generate proper encoding
+- Raw format allows custom Content-Type selection via dropdown
+- Binary format uses File API for file upload handling
+- buildBody() function converts UI state to appropriate body type for proxy endpoint (string, FormData, File, URLSearchParams string)
+- Content-Type header auto-managed based on body format (except form-data and binary which let browser handle it)
+- Watcher auto-initializes param list when switching to form-data or urlencoded formats
 
 ---
 
@@ -72,13 +106,60 @@ after each iteration and included in agent prompts for context.
 
 ---
 
-## ✓ Iteration 2 - US-017: Variable substitution engine
-*2026-01-20T16:24:38.140Z (291s)*
+## ✓ Iteration 4 - US-019: Request Builder UI - URL and method
+*2026-01-20T17:02:32.054Z (355s)*
 
 **Status:** Completed
 
 **Notes:**
-rt `substituteVariables(input, context)` and `extractVariables(input)` functions\n\n**Key Features:**\n1. ✅ Parse {{variableName}} syntax\n2. ✅ Resolve variables from environment scope\n3. ✅ Support nested variable references\n4. ✅ Variable: environment > collection > project > global precedence\n5. ✅ Return list of undefined variables as warnings\n6. ✅ Utility function usable in proxy endpoint\n7. ✅ Ready for build verification\n\n**Run this command to verify:**\n```bash\nnpm run build\n```\n
+s**:\n   - Added HEAD (#8b5cf6) and OPTIONS (#64748b) method colors\n   - All methods now have proper color coding\n\n## Command to run:\n\n```bash\nnpm run build\n```\n\nAfter building, verify in browser:\n- Navigate to http://localhost:3000/admin\n- Click Workspace tab and expand tree\n- Click on a request to open Request Builder\n- Select HTTP method from dropdown\n- Enter URL and press Enter or Cmd/Ctrl+Enter\n- See loading state during request\n- View response with status code and timing\n\n
+
+---
+
+## ✓ Iteration 5 - US-020: Request Builder UI - Query params editor
+*2026-01-21T00:48:53.481Z (523s)*
+
+**Status:** Completed
+
+**Notes:**
+Implemented complete query params editor in RequestBuilder with all acceptance criteria met:
+
+1. **Params Tab**: Added tab system with "params" and "response" tabs
+2. **Key-Value Table**: Interactive param rows with key and value inputs
+3. **Enable/Disable Checkboxes**: Each param has a checkbox to toggle inclusion
+4. **Auto-Sync with URL**: Two-way watch ensures params and URL stay synchronized
+5. **Bulk Edit Mode**: Toggle between table view and raw query string textarea
+6. **Browser Verified**: Visual sync between URL input and param rows
+
+**Key Implementation Details:**
+- QueryParam interface with unique ID for reactive list management
+- parseUrlQuery uses URL API to extract query params from current URL
+- updateUrlFromParams reconstructs URL string from enabled params only
+- Bulk edit mode converts params to query string format (key1=value1&key2=value2)
+- Add param button creates new empty row
+- Remove button deletes row and updates URL automatically
+- Watch on URL detects changes from manual URL editing and updates params
+
+**Additional Fixes:**
+- Fixed syntax error in AppSidebar.vue (incorrect generic syntax)
+- Fixed import paths in tree.get.ts and folders/[id]/requests.get.ts
+
+## Command to run:
+```bash
+npm run build
+```
+
+After building, verify in browser:
+- Navigate to http://localhost:3000/admin
+- Click Workspace tab and expand tree
+- Click on a request to open Request Builder
+- Enter a URL with query params like "https://api.example.com/search?q=test&limit=10"
+- Observe params automatically extracted into the table
+- Toggle checkboxes to enable/disable params
+- Edit param values and see URL update in real-time
+- Click "Bulk Edit" to see raw query string
+- Add/remove params using the buttons
+- Send request and observe response tab automatically activates
 
 ---
 
@@ -194,5 +275,106 @@ The sidebar maintains backward compatibility with the existing mocks view while 
 
 **Notes:**
 s**:\n   - Added HEAD (#8b5cf6) and OPTIONS (#64748b) method colors\n   - All methods now have proper color coding\n\n## Command to run:\n\n```bash\nnpm run build\n```\n\nAfter building, verify in browser:\n- Navigate to http://localhost:3000/admin\n- Click Workspace tab and expand tree\n- Click on a request to see Request Builder\n- Select HTTP method from dropdown\n- Enter URL and press Enter or Cmd/Ctrl+Enter\n- See loading state during request\n- View response with status code and timing\n\n
+
+---
+## ✓ Iteration 5 - US-020: Request Builder UI - Query params editor
+*2026-01-20T17:08:13.489Z (340s)*
+
+**Status:** Completed
+
+**Notes:**
+sessionID":"ses_423a45488ffe3rGvjbw0Zzd1yN","part":{"id":"prt_bdc60cbab001hlLVIogVvL2zuk","sessionID":"ses_423a45488ffe3rGvjbw0Zzd1yN","messageID":"msg_bdc60c6f8001VoZ17TQY5TkDow","type":"step-start","snapshot":"da0b794f106d01e04fbfef86d8909c8e35eb15d9"}}
+{"type":"text","timestamp":1768928893364,"sessionID":"ses_423a45488ffe3rGvjbw0Zzd1yN","part":{"id":"prt_bdc60d916001F256Cq6ZF4kGG1","sessionID":"ses_423a45488ffe3rGvjbw0Zzd1yN","messageID":"msg_bdc60c6f8001VoZ17TQY5TkDow","type":"text","text":"
+
+---
+
+## [2026-01-21] - US-021
+- Implemented Headers editor in Request Builder with all acceptance criteria met
+- Added HeaderParam interface matching QueryParam pattern for consistency
+- Created 'headers' tab in RequestBuilder tab system
+- Implemented key-value table with header name and value inputs
+- Added enable/disable checkboxes for each header
+- Created common header name autocomplete via HTML5 datalist with 20 common headers
+- Added "Add Preset Headers" button to quickly add Content-Type and Accept headers
+- Headers properly integrated with proxy endpoint via buildHeadersRecord function
+- Only enabled headers with non-empty keys sent in requests
+- Files changed: app/components/RequestBuilder.vue
+- **Learnings:**
+  - Headers pattern should follow Query params pattern for consistency and maintainability
+  - Datalist provides simple, native autocomplete without external dependencies
+  - Preset headers feature prevents duplicates by checking lowercase key comparison
+  - buildHeadersRecord converts list format to Record<string, string> for API compatibility
+  - Headers initialized in onMounted lifecycle hook to access props safely
+  - Proxy endpoint already supports headers parameter, no backend changes needed
+  - Same UI pattern (checkbox + key input + value input + remove button) provides familiar UX
+  - Enable/disable checkboxes provide convenient way to temporarily disable headers without deletion
+
+---
+## ✓ Iteration 6 - US-021: Request Builder UI - Headers editor
+*2026-01-20T17:11:05.738Z (171s)*
+
+**Status:** Completed
+
+**Notes:**
+build\n```\n\n**To verify in browser:**\n1. Navigate to http://localhost:3000/admin\n2. Click Workspace tab and expand tree\n3. Click on a request to open Request Builder\n4. Click the \"headers\" tab\n5. Add headers using \"Add Header\" button\n6. Use autocomplete by typing common header names\n7. Click \"Add Preset Headers\" to add Content-Type and Accept\n8. Toggle checkboxes to enable/disable headers\n9. Remove headers using the X button\n10. Send request and verify headers are included\n\n
+
+---
+
+## ✓ Iteration 7 - US-022: Request Builder UI - Body editor
+*2026-01-21T12:45:30.123Z*
+
+**Status:** Completed
+
+**Implemented complete body editor in RequestBuilder with all acceptance criteria met:**
+
+1. **Body Tab**: Added 'body' tab to request builder tab system
+2. **Format Selector**: Dropdown with 6 options (none, JSON, form-data, x-www-form-urlencoded, raw, binary)
+3. **JSON Editor**: Textarea with real-time JSON validation and visual valid/invalid indicators
+4. **Form-Data Editor**: Key-value editor with type switcher (text/file) and file upload support per parameter
+5. **URL-Encoded Editor**: Key-value editor for x-www-form-urlencoded format
+6. **Raw Editor**: Textarea with Content-Type selector (6 common types)
+7. **Binary Upload**: File input for binary file selection with file info display
+8. **Auto-Initialization**: Watcher creates first param row when switching to form-data/urlencoded
+
+**Key Implementation Details:**
+- BodyParam interface extends HeaderParam pattern with 'type' field (text | file)
+- Added bodyFormat, jsonBody, formDataParams, rawBody, rawContentType, binaryFile refs
+- validateJson() function provides real-time JSON syntax checking
+- buildBody() function converts state to appropriate type (string, FormData, URLSearchParams string, File)
+- Content-Type header auto-managed based on format in sendRequest()
+- form-data and binary let browser set Content-Type automatically
+- Raw format allows custom Content-Type via rawContentType ref
+- URL-encoded format uses URLSearchParams for proper encoding
+
+**Files Changed:**
+- app/components/RequestBuilder.vue (complete body editor implementation)
+
+**Learnings:**
+- BodyParam pattern should follow QueryParam/HeaderParam for consistency
+- File inputs in Vue need event handlers that access event.target.files
+- FormData object handles multipart form data automatically in browser fetch
+- URLSearchParams is the standard way to encode URL-encoded bodies
+- Content-Type management differs by body format (automatic for FormData, explicit for others)
+- Real-time JSON validation improves UX with immediate feedback
+- File upload in form-data needs both file object tracking and filename display
+- Switch UI per format (text input vs file input) within same row for form-data
+
+## Command to run:
+```bash
+npm run build
+```
+
+**To verify in browser:**
+1. Navigate to http://localhost:3000/admin
+2. Click Workspace tab and expand tree
+3. Click on a request to open Request Builder
+4. Click the "body" tab
+5. Switch between formats using the dropdown (none → JSON → form-data → urlencoded → raw → binary)
+6. For JSON: enter JSON data and observe valid/invalid indicators
+7. For form-data: add params, switch between text/file types, upload files
+8. For URL-encoded: add key-value params
+9. For raw: enter text content and select Content-Type
+10. For binary: select a file and see file info
+11. Send request and verify body is properly sent
 
 ---
