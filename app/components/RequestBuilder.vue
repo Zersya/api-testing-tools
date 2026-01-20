@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { computed, nextTick } from 'vue';
+
 interface QueryParam {
   id: string;
   key: string;
@@ -78,6 +80,7 @@ const emit = defineEmits<{
 
 type TabType = 'params' | 'headers' | 'body' | 'auth' | 'response';
 type BodyFormat = 'none' | 'json' | 'form-data' | 'urlencoded' | 'raw' | 'binary';
+type ResponseViewType = 'pretty' | 'preview' | 'raw';
 
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'] as const;
 const COMMON_HEADERS = [
@@ -131,6 +134,10 @@ const activeTab = ref<TabType>('params');
 const isLoading = ref(false);
 const response = ref<ProxyResponse | ProxyErrorResponse | null>(null);
 const variableWarnings = ref<string[]>([]);
+const responseViewType = ref<ResponseViewType>('pretty');
+const searchQuery = ref('');
+const showSearch = ref(false);
+const expandedNodes = ref<Set<string>>(new Set());
 
 const queryParams = ref<QueryParam[]>([]);
 const isBulkEditMode = ref(false);
@@ -451,6 +458,225 @@ const parseAuthFromRequest = (authConfig: any) => {
   }
 };
 
+const getContentType = () => {
+  if (response.value && 'success' in response.value && response.value.headers) {
+    return response.value.headers['content-type'] || '';
+  }
+  return '';
+};
+
+const isJsonResponse = () => {
+  const contentType = getContentType();
+  return contentType.includes('json') || (response.value && 'success' in response.value && typeof response.value.body === 'object');
+};
+
+const isXmlResponse = () => {
+  const contentType = getContentType();
+  return contentType.includes('xml') || contentType.includes('text/xml');
+};
+
+const isHtmlResponse = () => {
+  const contentType = getContentType();
+  return contentType.includes('html');
+};
+
+const getResponseText = () => {
+  if (!response.value || !('success' in response.value)) return '';
+  
+  const body = response.value.body;
+  if (typeof body === 'string') return body;
+  if (typeof body === 'object') return JSON.stringify(body, null, 2);
+  return String(body);
+};
+
+const copyResponseBody = async () => {
+  const text = getResponseText();
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (error) {
+    console.error('Failed to copy:', error);
+  }
+};
+
+const highlightJson = (data: any, path = 'root', level = 0): any => {
+  if (data === null) {
+    return { type: 'null', value: 'null', path, level };
+  }
+  
+  if (typeof data === 'boolean') {
+    return { type: 'boolean', value: String(data), path, level };
+  }
+  
+  if (typeof data === 'number') {
+    return { type: 'number', value: String(data), path, level };
+  }
+  
+  if (typeof data === 'string') {
+    return { type: 'string', value: data, path, level };
+  }
+  
+  if (Array.isArray(data)) {
+    return {
+      type: 'array',
+      length: data.length,
+      children: data.map((item, index) => highlightJson(item, `${path}[${index}]`, level + 1)),
+      path,
+      level,
+      expanded: expandedNodes.value.has(path)
+    };
+  }
+  
+  if (typeof data === 'object') {
+    const entries = Object.entries(data);
+    return {
+      type: 'object',
+      entries: entries.map(([key, value]) => ({
+        key,
+        value: highlightJson(value, `${path}.${key}`, level + 1)
+      })),
+      path,
+      level,
+      expanded: expandedNodes.value.has(path)
+    };
+  }
+  
+  return { type: 'unknown', value: String(data), path, level };
+};
+
+const toggleNode = (path: string) => {
+  if (expandedNodes.value.has(path)) {
+    expandedNodes.value.delete(path);
+  } else {
+    expandedNodes.value.add(path);
+  }
+};
+
+const expandAll = () => {
+  const expandRecursive = (node: any) => {
+    if (node.path) {
+      expandedNodes.value.add(node.path);
+    }
+    if (node.children) {
+      node.children.forEach(expandRecursive);
+    }
+    if (node.entries) {
+      node.entries.forEach((entry: any) => expandRecursive(entry.value));
+    }
+  };
+
+  if (response.value && 'success' in response.value && typeof response.value.body === 'object') {
+    const highlighted = highlightJson(response.value.body);
+    expandRecursive(highlighted);
+  }
+};
+
+const collapseAll = () => {
+  expandedNodes.value.clear();
+};
+
+const highlightXml = (xml: string) => {
+  const lines = xml.split('\n');
+  return lines.map((line, index) => {
+    let highlighted = line
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    
+    highlighted = highlighted.replace(/(&lt;\/?[a-zA-Z][a-zA-Z0-9:]*)/g, '<span class="text-accent-purple">$1</span>');
+    highlighted = highlighted.replace(/(\/?&gt;)/g, '<span class="text-accent-purple">$1</span>');
+    highlighted = highlighted.replace(/(="[^"]*")/g, '<span class="text-accent-orange">$1</span>');
+    
+    return { index: index + 1, content: highlighted, original: line };
+  });
+};
+
+const getHighlightedJson = computed(() => {
+  if (!response.value || !('success' in response.value)) return null;
+  
+  const body = response.value.body;
+  if (typeof body !== 'object') return null;
+  
+  return highlightJson(body);
+});
+
+const escapeHtml = (str: string): string => {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+};
+
+const getFilteredJson = computed(() => {
+  if (!searchQuery.value) return getHighlightedJson.value;
+  
+  const filterData = (data: any, query: string): any => {
+    const queryLower = query.toLowerCase();
+    
+    if (!query) return data;
+    
+    const hasMatch = (obj: any): boolean => {
+      if (obj.type === 'string' && obj.value.toLowerCase().includes(queryLower)) {
+        return true;
+      }
+      if (obj.type === 'number' || obj.type === 'boolean' || obj.type === 'null') {
+        if (String(obj.value).toLowerCase().includes(queryLower)) {
+          return true;
+        }
+      }
+      if (obj.children) {
+        return obj.children.some(hasMatch);
+      }
+      if (obj.entries) {
+        return obj.entries.some((entry: any) => 
+          entry.key.toLowerCase().includes(queryLower) || hasMatch(entry.value)
+        );
+      }
+      return false;
+    };
+    
+    if (!hasMatch(data)) return null;
+    
+    if (data.type === 'array') {
+      return {
+        ...data,
+        children: data.children.map((child: any) => filterData(child, query)).filter(Boolean)
+      };
+    }
+    
+    if (data.type === 'object') {
+      return {
+        ...data,
+        entries: data.entries
+          .map((entry: any) => ({
+            key: entry.key,
+            value: filterData(entry.value, query)
+          }))
+          .filter((entry: any) => entry.value !== null || entry.key.toLowerCase().includes(queryLower))
+      };
+    }
+    
+    return data;
+  };
+  
+  if (!getHighlightedJson.value) return null;
+  return filterData(getHighlightedJson.value, searchQuery.value);
+});
+
+const handleKeydown = (e: KeyboardEvent) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    e.preventDefault();
+    sendRequest();
+  } else if ((e.metaKey || e.ctrlKey) && e.key === 'f' && activeTab.value === 'response') {
+    e.preventDefault();
+    showSearch.value = !showSearch.value;
+    if (showSearch.value) {
+      nextTick(() => {
+        const searchInput = document.querySelector('#response-search-input') as HTMLInputElement;
+        searchInput?.focus();
+      });
+    }
+  }
+};
+
 watch(() => form.value.url, (newUrl) => {
   const params = parseUrlQuery(newUrl);
   if (params.length !== queryParams.value.length ||
@@ -482,6 +708,9 @@ const sendRequest = async () => {
   isLoading.value = true;
   response.value = null;
   activeTab.value = 'response';
+  searchQuery.value = '';
+  showSearch.value = false;
+  expandedNodes.value.clear();
 
   try {
     const requestBody = buildBody();
@@ -542,13 +771,6 @@ const sendRequest = async () => {
     };
   } finally {
     isLoading.value = false;
-  }
-};
-
-const handleKeydown = (e: KeyboardEvent) => {
-  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-    e.preventDefault();
-    sendRequest();
   }
 };
 
@@ -1100,26 +1322,170 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div v-else class="flex-1 overflow-auto p-4">
-            <div class="space-y-4">
-              <div v-if="response.success" class="bg-bg-secondary border border-border-default rounded-lg overflow-hidden">
-                <div class="flex items-center justify-between py-2.5 px-4 border-b border-border-default">
-                  <div class="flex items-center gap-3">
-                    <span 
-                      class="py-1 px-2.5 rounded text-[11px] font-semibold uppercase bg-accent-green/15 text-accent-green"
-                    >
-                      {{ response.status }} {{ response.statusText }}
-                    </span>
-                    <span class="text-xs text-text-muted font-mono">{{ response.timing.durationMs }}ms</span>
-                  </div>
+          <div v-else class="flex-1 flex flex-col overflow-hidden">
+            <div v-if="response.success" class="border-b border-border-default bg-bg-secondary">
+              <div class="flex items-center justify-between py-2.5 px-4 border-b border-border-default">
+                <div class="flex items-center gap-3">
+                  <span 
+                    class="py-1 px-2.5 rounded text-[11px] font-semibold uppercase bg-accent-green/15 text-accent-green"
+                  >
+                    {{ response.status }} {{ response.statusText }}
+                  </span>
+                  <span class="text-xs text-text-muted font-mono">{{ response.timing.durationMs }}ms</span>
+                  <span class="text-xs text-text-muted">{{ getResponseText().length }} bytes</span>
                 </div>
-                <div class="p-4 max-h-[400px] overflow-auto bg-bg-tertiary">
-                  <pre class="font-mono text-xs leading-normal text-text-primary m-0 whitespace-pre-wrap break-words">{{ JSON.stringify(response.body, null, 2) }}</pre>
+                <div class="flex items-center gap-2">
+                  <button 
+                    @click="showSearch = !showSearch"
+                    class="p-1.5 text-text-muted hover:text-text-secondary transition-colors duration-fast"
+                    title="Search (Cmd/Ctrl+F)"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                  </button>
+                  <button 
+                    @click="copyResponseBody"
+                    class="p-1.5 text-text-muted hover:text-text-secondary transition-colors duration-fast"
+                    title="Copy response body"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                  </button>
                 </div>
               </div>
 
-              <div v-else class="bg-bg-secondary border border-accent-red/30 rounded-lg overflow-hidden">
-                <div class="flex items-center justify-between py-2.5 px-4 border-b border-accent-red/30">
+              <div v-if="showSearch || searchQuery" class="px-4 py-2 border-b border-border-default">
+                <div class="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-text-muted">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                  <input
+                    id="response-search-input"
+                    v-model="searchQuery"
+                    type="text"
+                    class="flex-1 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs focus:outline-none focus:border-accent-blue placeholder:text-text-muted"
+                    placeholder="Search in response..."
+                  />
+                  <button
+                    v-if="searchQuery"
+                    @click="searchQuery = ''"
+                    class="p-1 text-text-muted hover:text-text-secondary"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </button>
+                  <button
+                    @click="showSearch = false"
+                    class="p-1 text-text-muted hover:text-text-secondary"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <div class="flex items-center gap-1 border-b border-border-default overflow-x-auto">
+                <button
+                  @click="responseViewType = 'pretty'"
+                  class="px-3 py-2 text-xs font-medium transition-colors duration-fast whitespace-nowrap"
+                  :class="responseViewType === 'pretty' ? 'text-text-primary border-b-2 border-accent-blue' : 'text-text-muted hover:text-text-secondary'"
+                >
+                  Pretty
+                </button>
+                <button
+                  v-if="isJsonResponse()"
+                  @click="responseViewType = 'preview'"
+                  class="px-3 py-2 text-xs font-medium transition-colors duration-fast whitespace-nowrap"
+                  :class="responseViewType === 'preview' ? 'text-text-primary border-b-2 border-accent-blue' : 'text-text-muted hover:text-text-secondary'"
+                >
+                  Preview
+                </button>
+                <button
+                  @click="responseViewType = 'raw'"
+                  class="px-3 py-2 text-xs font-medium transition-colors duration-fast whitespace-nowrap"
+                  :class="responseViewType === 'raw' ? 'text-text-primary border-b-2 border-accent-blue' : 'text-text-muted hover:text-text-secondary'"
+                >
+                  Raw
+                </button>
+              </div>
+            </div>
+
+            <div v-if="response.success" class="flex-1 overflow-auto p-4">
+              <div v-if="responseViewType === 'pretty' && isJsonResponse() && getFilteredJson" class="space-y-1">
+                <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
+                  <span class="text-xs text-text-muted">JSON</span>
+                  <button
+                    @click="expandAll"
+                    class="text-xs text-accent-blue hover:text-accent-blue/80"
+                  >
+                    Expand All
+                  </button>
+                  <span class="text-text-muted">|</span>
+                  <button
+                    @click="collapseAll"
+                    class="text-xs text-accent-blue hover:text-accent-blue/80"
+                  >
+                    Collapse All
+                  </button>
+                </div>
+                <JsonNode
+                  :node="getFilteredJson"
+                  :search-query="searchQuery"
+                  @toggle="toggleNode"
+                />
+              </div>
+
+              <div v-else-if="responseViewType === 'pretty' && isXmlResponse()" class="space-y-1">
+                <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
+                  <span class="text-xs text-text-muted">XML</span>
+                </div>
+                <div class="font-mono text-xs leading-normal bg-bg-tertiary rounded p-3 border border-border-default">
+                  <div
+                    v-for="(line, index) in highlightXml(getResponseText())"
+                    :key="index"
+                    class="hover:bg-bg-hover px-1 -mx-1 transition-colors duration-fast"
+                    :class="{ 'bg-accent-yellow/20': searchQuery && line.original.toLowerCase().includes(searchQuery.toLowerCase()) }"
+                  >
+                    <span class="text-text-muted select-none w-8 inline-block">{{ String(line.index).padStart(3, '0') }}</span>
+                    <span v-html="line.content"></span>
+                  </div>
+                </div>
+              </div>
+
+              <div v-else-if="responseViewType === 'raw'" class="space-y-1">
+                <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
+                  <span class="text-xs text-text-muted">{{ getContentType().split(';')[0] }}</span>
+                </div>
+                <pre class="font-mono text-xs leading-normal bg-bg-tertiary rounded p-3 border border-border-default overflow-auto whitespace-pre-wrap break-words text-text-primary m-0">{{ getResponseText() }}</pre>
+              </div>
+
+              <div v-else-if="responseViewType === 'preview' && isJsonResponse()" class="h-full">
+                <iframe
+                  :srcdoc="`<!DOCTYPE html><html><head><style>body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; margin: 0; }</style></head><body><pre>${escapeHtml(getResponseText())}</pre></body></html>`"
+                  class="w-full h-full border-none rounded bg-bg-tertiary"
+                ></iframe>
+              </div>
+
+              <div v-else class="space-y-1">
+                <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
+                  <span class="text-xs text-text-muted">{{ getContentType().split(';')[0] }}</span>
+                </div>
+                <pre class="font-mono text-xs leading-normal bg-bg-tertiary rounded p-3 border border-border-default overflow-auto whitespace-pre-wrap break-words text-text-primary m-0">{{ getResponseText() }}</pre>
+              </div>
+            </div>
+
+            <div v-else class="flex-1 overflow-auto p-4">
+              <div class="bg-bg-secondary border border-accent-red/30 rounded-lg overflow-hidden">
+                <div class="flex items-center py-2.5 px-4 border-b border-accent-red/30">
                   <div class="flex items-center gap-3">
                     <span class="py-1 px-2.5 rounded text-[11px] font-semibold uppercase bg-accent-red/15 text-accent-red">
                       Error
