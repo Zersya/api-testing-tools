@@ -233,3 +233,12 @@ app/components/AppHeader.vue` (updated)\n- `app/pages/admin/index.vue` (updated)
 - **Dynamic File Upload Pattern**: Track separate file inputs for collection and environment; separate drop handlers for each zone; conditional rendering of environment upload zone based on import type and checkbox state.
 - **Multi-API Integration Pattern**: Single modal calls different backend endpoints (/api/definitions/import for OpenAPI, /api/definitions/import/postman for Postman) based on activeImportType; adapt request body/response handling for each api.
 
+## ✓ Iteration 5 - US-033: Postman import UI
+*2026-01-20T23:54:35.833Z (168s)*
+
+**Status:** Completed
+
+**Notes:**
+\n```bash\nnpm run dev\n```\n\nNavigate to `/admin`, click the **Import** button in the header, and test:\n1. Click **Postman** tab\n2. **File Tab**: Drag & drop a Postman collection JSON file\n3. **Environment Import**: Enable checkbox and upload environment file\n4. **URL Tab**: Enter collection URL (optional environment URL)\n5. **Paste Tab**: Paste collection JSON (optional environment JSON)\n\nThe backend API at `/api/definitions/import/postman` handles parsing, validation, and storage.\n\n
+
+---

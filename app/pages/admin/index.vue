@@ -3,6 +3,7 @@ import RequestBuilder from '~/components/RequestBuilder.vue';
 import SaveRequestDialog from '~/components/SaveRequestDialog.vue';
 import RequestTabs, { type OpenTab } from '~/components/RequestTabs.vue';
 import ImportModal from '~/components/ImportModal.vue';
+import MethodBadge from '~/components/MethodBadge.vue';
 interface Collection {
   id: string;
   name: string;
@@ -736,6 +737,65 @@ const handleRestoreRequest = (request: any) => {
   selectedRequest.value = newRequest;
 };
 
+// API Definitions handlers
+const showGenerateModal = ref(false);
+const selectedDefinition = ref<any>(null);
+const selectedEndpoints = ref<string[]>([]);
+const targetCollection = ref('root');
+const responseDelay = ref(0);
+const isGenerating = ref(false);
+const showDefinitionDocs = ref(false);
+const definitionDocs = ref<any>(null);
+
+const handleViewDefinitionDocs = (definition: any) => {
+  definitionDocs.value = definition;
+  showDefinitionDocs.value = true;
+};
+
+const handleGenerateDefinitionMocks = (definition: any) => {
+  selectedDefinition.value = definition;
+  if (definition.parsedInfo) {
+    selectedEndpoints.value = definition.parsedInfo.endpoints.map((ep: any) => `${ep.method}:${ep.path}`);
+  }
+  targetCollection.value = 'root';
+  showGenerateModal.value = true;
+};
+
+const handleReimportDefinition = (definition: any) => {
+  showImportModal.value = true;
+};
+
+const toggleEndpoint = (method: string, path: string) => {
+  const key = `${method}:${path}`;
+  if (selectedEndpoints.value.includes(key)) {
+    selectedEndpoints.value = selectedEndpoints.value.filter(k => k !== key);
+  } else {
+    selectedEndpoints.value.push(key);
+  }
+};
+
+const generateMocks = async () => {
+  if (!selectedDefinition.value) return;
+
+  isGenerating.value = true;
+  try {
+    await $fetch(`/api/definitions/${selectedDefinition.value.id}/generate-mocks`, {
+      method: 'POST',
+      body: {
+        endpoints: selectedEndpoints.value,
+        collection: targetCollection.value,
+        delay: responseDelay.value
+      }
+    });
+    showGenerateModal.value = false;
+    refresh();
+  } catch (e: any) {
+    alert('Error generating mocks: ' + (e.data?.message || e.message));
+  } finally {
+    isGenerating.value = false;
+  }
+};
+
 // Collection Management
 const openCreateCollection = () => {
     collectionModalMode.value = 'create';
@@ -862,6 +922,9 @@ const deleteGroup = async () => {
         @delete-collection="confirmDeleteCollection"
         @delete-group="confirmDeleteGroup"
         @restore-request="handleRestoreRequest"
+        @view-definition-docs="handleViewDefinitionDocs"
+        @generate-definition-mocks="handleGenerateDefinitionMocks"
+        @reimport-definition="handleReimportDefinition"
       />
 
       <!-- Main Content -->
@@ -1314,5 +1377,94 @@ const deleteGroup = async () => {
       @close="showImportModal = false"
       @import-complete="refresh"
     />
+
+    <!-- API Definition Docs Modal -->
+    <Modal :show="showDefinitionDocs" title="API Documentation" size="lg" @close="showDefinitionDocs = false">
+      <div v-if="definitionDocs" class="space-y-4">
+        <div class="flex items-center gap-4 pb-3 border-b border-border-default">
+          <div>
+            <h3 class="text-lg font-semibold text-text-primary mb-1">{{ definitionDocs.name }}</h3>
+            <div class="flex items-center gap-2 text-sm text-text-secondary">
+              <span class="px-2 py-0.5 rounded bg-bg-tertiary text-xs font-mono">
+                {{ definitionDocs.specFormat === 'openapi3' ? 'OpenAPI' : 'Postman' }}
+              </span>
+              <span>{{ definitionDocs.parsedInfo?.endpoints?.length || 0 }} endpoints</span>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="definitionDocs.parsedInfo?.endpoints" class="max-h-[400px] overflow-y-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-bg-tertiary">
+              <tr>
+                <th class="text-left py-2 px-3 text-xs font-medium text-text-muted uppercase tracking-wider">Method</th>
+                <th class="text-left py-2 px-3 text-xs font-medium text-text-muted uppercase tracking-wider">Path</th>
+                <th class="text-left py-2 px-3 text-xs font-medium text-text-muted uppercase tracking-wider">Summary</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-border-default">
+              <tr v-for="ep in definitionDocs.parsedInfo.endpoints" :key="`${ep.method}:${ep.path}`" class="hover:bg-bg-hover">
+                <td class="py-2 px-3">
+                  <MethodBadge :method="ep.method" size="sm" />
+                </td>
+                <td class="py-2 px-3 font-mono text-xs text-text-primary">{{ ep.path }}</td>
+                <td class="py-2 px-3 text-xs text-text-secondary">{{ ep.summary || '-' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </Modal>
+
+    <!-- Generate Mocks Modal -->
+    <Modal :show="showGenerateModal" title="Generate Mocks" size="lg" @close="showGenerateModal = false">
+      <div v-if="selectedDefinition && selectedDefinition.parsedInfo">
+        <div class="mb-4">
+          <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide mb-2">Target Collection</label>
+          <select v-model="targetCollection" class="w-full py-2 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue">
+            <option value="root">Root</option>
+            <option v-for="col in collections" :key="col.id" :value="col.id">{{ col.name }}</option>
+          </select>
+        </div>
+
+        <div class="mb-4">
+          <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide mb-2">Response Delay (ms)</label>
+          <input type="number" v-model.number="responseDelay" class="w-full py-2 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue" min="0" />
+        </div>
+
+        <div class="mb-4">
+          <div class="flex items-center justify-between mb-2">
+            <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide">Select Endpoints</label>
+            <div class="text-xs">
+              <button class="text-accent-blue hover:underline mr-2" @click="selectedEndpoints = selectedDefinition.parsedInfo.endpoints.map(ep => `${ep.method}:${ep.path}`)">Select All</button>
+              <button class="text-text-muted hover:underline" @click="selectedEndpoints = []">Deselect All</button>
+            </div>
+          </div>
+          <div class="max-h-[300px] overflow-y-auto border border-border-default rounded-md bg-bg-tertiary divide-y divide-border-default">
+            <div
+              v-for="ep in selectedDefinition.parsedInfo.endpoints"
+              :key="`${ep.method}:${ep.path}`"
+              class="flex items-center p-2 hover:bg-bg-hover cursor-pointer"
+              @click="toggleEndpoint(ep.method, ep.path)">
+              <input type="checkbox" :checked="selectedEndpoints.includes(`${ep.method}:${ep.path}`)" class="mr-3" />
+              <MethodBadge :method="ep.method" size="sm" class="mr-2" />
+              <span class="text-sm font-mono text-text-primary truncate">{{ ep.path }}</span>
+              <span v-if="ep.summary" class="ml-2 text-xs text-text-muted truncate">- {{ ep.summary }}</span>
+            </div>
+          </div>
+          <p class="text-xs text-text-muted mt-2">{{ selectedEndpoints.length }} selected</p>
+        </div>
+      </div>
+      <div v-else class="py-8 text-center text-text-muted">
+        Loading definition details...
+      </div>
+
+      <template #footer>
+        <button class="btn btn-secondary" @click="showGenerateModal = false">Cancel</button>
+        <button class="btn btn-primary" @click="generateMocks" :disabled="isGenerating || selectedEndpoints.length === 0">
+          {{ isGenerating ? 'Generating...' : 'Generate Mocks' }}
+        </button>
+      </template>
+    </Modal>
   </div>
 </template>

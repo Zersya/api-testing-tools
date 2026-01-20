@@ -3,10 +3,10 @@
   "sessionId": "cd68ab27-67ee-4314-a5c5-6f6d929b781c",
   "status": "running",
   "startedAt": "2026-01-20T23:40:21.803Z",
-  "updatedAt": "2026-01-20T23:51:48.156Z",
-  "currentIteration": 4,
+  "updatedAt": "2026-01-20T23:54:36.875Z",
+  "currentIteration": 5,
   "maxIterations": 10,
-  "tasksCompleted": 4,
+  "tasksCompleted": 5,
   "isPaused": false,
   "agentPlugin": "opencode",
   "model": "fireworks-ai/accounts/fireworks/models/glm-4p7",
@@ -210,8 +210,8 @@
       {
         "id": "US-033",
         "title": "Postman import UI",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-034",
@@ -345,12 +345,22 @@
       "durationMs": 176879,
       "startedAt": "2026-01-20T23:48:50.236Z",
       "endedAt": "2026-01-20T23:51:47.115Z"
+    },
+    {
+      "iteration": 5,
+      "status": "completed",
+      "taskId": "US-033",
+      "taskTitle": "Postman import UI",
+      "taskCompleted": true,
+      "durationMs": 167681,
+      "startedAt": "2026-01-20T23:51:48.146Z",
+      "endedAt": "2026-01-20T23:54:35.827Z"
     }
   ],
   "skippedTaskIds": [],
   "cwd": "/Users/zeinersyad/Playground/mock-service",
   "activeTaskIds": [
-    "US-033"
+    "US-034"
   ],
   "subagentPanelVisible": false
 }

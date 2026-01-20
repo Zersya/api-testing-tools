@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import RequestHistoryPanel from './RequestHistoryPanel.vue';
+import ApiDefinitionsPanel from './ApiDefinitionsPanel.vue';
 
 interface Collection {
   id: string;
@@ -120,10 +121,13 @@ const emit = defineEmits<{
   createProject: [workspaceId?: string];
   createWorkspace: [];
   restoreRequest: [request: HttpRequest];
+  viewDefinitionDocs: [definition: any];
+  generateDefinitionMocks: [definition: any];
+  reimportDefinition: [definition: any];
 }>();
 
 const selectedWorkspaceId = ref<string | null>(null);
-const activeView = ref<'hierarchy' | 'mocks'>('mocks');
+const activeView = ref<'hierarchy' | 'mocks' | 'history' | 'definitions'>('mocks');
 const contextMenu = ref<{ x: number; y: number; type: string; data: any } | null>(null);
 
 const expandedCollections = ref<Set<string>>(new Set());
@@ -380,7 +384,10 @@ onUnmounted(() => {
         </svg>
         Mocks
       </NuxtLink>
-      <NuxtLink to="/admin/definitions" active-class="bg-bg-active text-text-primary" class="flex items-center gap-2 py-2 px-3 rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors text-[13px] font-medium no-underline">
+      <button
+        :class="['flex items-center gap-2 py-2 px-3 rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors text-[13px] font-medium', activeView === 'definitions' ? 'bg-bg-active text-text-primary' : '']"
+        @click="activeView = 'definitions'"
+      >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
           <polyline points="14 2 14 8 20 8"></polyline>
@@ -389,7 +396,7 @@ onUnmounted(() => {
           <polyline points="10 9 9 9 8 9"></polyline>
         </svg>
         Definitions
-      </NuxtLink>
+      </button>
       <button
         :class="['flex items-center gap-2 py-2 px-3 rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors text-[13px] font-medium', activeView === 'history' ? 'bg-bg-active text-text-primary' : '']"
         @click="activeView = 'history'"
@@ -434,6 +441,16 @@ onUnmounted(() => {
       <RequestHistoryPanel
         :workspace-id="currentWorkspace?.id"
         @restore-request="emit('restoreRequest', $event)"
+      />
+    </div>
+
+    <!-- API Definitions Panel -->
+    <div v-if="activeView === 'definitions'" class="flex-1">
+      <ApiDefinitionsPanel
+        :workspace-id="currentWorkspace?.id"
+        @view-docs="emit('viewDefinitionDocs', $event)"
+        @generate-mocks="emit('generateDefinitionMocks', $event)"
+        @reimport="emit('reimportDefinition', $event)"
       />
     </div>
 
