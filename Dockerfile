@@ -5,7 +5,9 @@ WORKDIR /app
 
 RUN apk add --no-cache bash curl
 
-RUN curl -fsSL https://bun.sh/install | bash
+RUN curl -fsSL https://bun.sh/install | bash && \
+    cp /root/.bun/bin/bun /usr/local/bin/bun && \
+    rm -rf /root/.bun/install
 
 COPY package.json bun.lockb ./
 RUN bun install --frozen-lockfile
