@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import RequestHistoryPanel from './RequestHistoryPanel.vue';
+import ApiDefinitionsPanel from './ApiDefinitionsPanel.vue';
+
 interface Collection {
   id: string;
   name: string;
@@ -18,6 +21,65 @@ interface Mock {
   secure: boolean;
 }
 
+interface HttpRequest {
+  id: string;
+  folderId: string;
+  name: string;
+  method: string;
+  url: string;
+  headers: Record<string, string> | null;
+  body: Record<string, unknown> | string | null;
+  auth: {
+    type: string;
+    credentials?: Record<string, string>;
+  } | null;
+  order: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface FolderWithRequestsAndChildren {
+  id: string;
+  collectionId: string;
+  parentFolderId: string | null;
+  name: string;
+  order: number;
+  requests: HttpRequest[];
+  children: FolderWithRequestsAndChildren[];
+}
+
+interface CollectionWithFolders {
+  id: string;
+  projectId: string;
+  name: string;
+  description: string | null;
+  authConfig: Record<string, unknown> | null;
+  createdAt: Date;
+  folders: FolderWithRequestsAndChildren[];
+  folderCount: number;
+  requestCount: number;
+}
+
+interface ProjectWithCollections {
+  id: string;
+  workspaceId: string;
+  name: string;
+  baseUrl: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  collections: CollectionWithFolders[];
+  collectionCount: number;
+}
+
+interface WorkspaceWithProjects {
+  id: string;
+  name: string;
+  createdAt: Date;
+  updatedAt: Date;
+  projects: ProjectWithCollections[];
+  projectCount: number;
+}
+
 interface MockGroup {
   name: string;
   items: Mock[];
@@ -33,38 +95,96 @@ interface Props {
   mocks: Mock[];
   selectedMockId?: string | null;
   selectedCollectionId?: string | null;
+  workspaces?: WorkspaceWithProjects[];
+  selectedWorkspaceId?: string | null;
+  refreshTrigger?: number;
 }
 
 const props = withDefaults(defineProps<Props>(), {
+  collections: () => [],
+  mocks: () => [],
   selectedMockId: null,
-  selectedCollectionId: null
+  selectedCollectionId: null,
+  workspaces: () => [],
+  selectedWorkspaceId: null,
+  refreshTrigger: 0
 });
 
 const emit = defineEmits<{
   selectMock: [mock: Mock];
   selectCollection: [collection: Collection];
+  selectRequest: [request: HttpRequest];
   createMock: [collectionId?: string];
-  createCollection: [];
+  createCollection: [projectId?: string];
   createResource: [];
   editCollection: [collection: Collection];
+  renameCollection: [collection: Collection];
   deleteCollection: [collection: Collection];
   deleteGroup: [collectionId: string, groupName: string, mocks: Mock[]];
+  deleteFolder: [folder: any];
+  createRequest: [folderId?: string];
+  createFolder: [collectionId?: string];
+  createProject: [workspaceId?: string];
+  createWorkspace: [];
+  renameWorkspace: [workspace: { id: string; name: string }];
+  renameProject: [project: any];
+  deleteProject: [project: any];
+  deleteRequest: [request: any];
+  restoreRequest: [request: HttpRequest];
+  compare: [left: any, right: any];
+  viewDefinitionDocs: [definition: any];
+  generateDefinitionMocks: [definition: any];
+  reimportDefinition: [definition: any];
+  reorderFolders: [collectionId: string, folderUpdates: { id: string; parentFolderId: string | null; order: number }[]];
+  reorderRequests: [folderId: string, requestUpdates: { id: string; folderId: string; order: number }[]];
+  selectWorkspace: [workspaceId: string];
+  renameFolder: [folder: any];
+  importComplete: [];
 }>();
+
+const selectedWorkspaceId = ref<string | null>(null);
+const activeView = ref<'hierarchy' | 'mocks' | 'history' | 'definitions'>('mocks');
+const contextMenu = ref<{ x: number; y: number; type: string; data: any } | null>(null);
 
 const expandedCollections = ref<Set<string>>(new Set());
 const expandedGroups = ref<Set<string>>(new Set());
+const expandedWorkspaces = ref<Set<string>>(new Set());
+const expandedProjects = ref<Set<string>>(new Set());
+const expandedCollectionsHierarchy = ref<Set<string>>(new Set());
+const expandedFolders = ref<Set<string>>(new Set());
+
+const draggingFolderId = ref<string | null>(null);
+const draggingRequestId = ref<string | null>(null);
+const dropTarget = ref<{
+  type: 'folder' | 'request' | 'between';
+  id: string;
+  position: 'before' | 'after' | 'inside';
+} | null>(null);
+
+const localWorkspaces = ref<WorkspaceWithProjects[]>([]);
+
+const currentWorkspace = computed(() => {
+  if (!selectedWorkspaceId.value) return props.workspaces[0] || localWorkspaces.value[0];
+  return props.workspaces.find(w => w.id === selectedWorkspaceId.value) || localWorkspaces.value[0];
+});
+
+const currentProject = computed(() => {
+  return currentWorkspace.value?.projects?.[0];
+});
 
 // Build collections with their grouped mocks
 const collectionsWithGroups = computed((): CollectionWithGroups[] => {
+  if (!props.collections || !props.mocks) return [];
+  
   return props.collections.map(collection => {
-    const collectionMocks = props.mocks.filter(m => (m.collection || 'root') === collection.id);
-    
+    const collectionMocks = props.mocks!.filter(m => (m.collection || 'root') === collection.id);
+
     const groups: Record<string, Mock[]> = {};
-    
+
     collectionMocks.forEach((mock) => {
       const parts = mock.path.split('/').filter(Boolean);
       let key = 'General';
-      
+
       if (parts.length > 0) {
         if (parts[0] === 'api' && parts.length > 1) {
           key = parts[1];
@@ -72,7 +192,7 @@ const collectionsWithGroups = computed((): CollectionWithGroups[] => {
           key = parts[0];
         }
       }
-      
+
       if (!groups[key]) groups[key] = [];
       groups[key].push(mock);
     });
@@ -92,6 +212,27 @@ const collectionsWithGroups = computed((): CollectionWithGroups[] => {
   });
 });
 
+watch(() => props.workspaces, (newWorkspaces) => {
+  if (newWorkspaces.length > 0) {
+    // If selectedWorkspaceId is not set, try to load from localStorage
+    if (!selectedWorkspaceId.value) {
+      const savedWorkspaceId = typeof window !== 'undefined' ? localStorage.getItem('selectedWorkspaceId') : null;
+      if (savedWorkspaceId && newWorkspaces.find(w => w.id === savedWorkspaceId)) {
+        selectedWorkspaceId.value = savedWorkspaceId;
+      } else {
+        selectedWorkspaceId.value = newWorkspaces[0].id;
+      }
+    }
+  }
+}, { immediate: true });
+
+watch(selectedWorkspaceId, (newId) => {
+  if (newId && currentWorkspace.value) {
+    expandedWorkspaces.value.add(newId);
+    expandedProjects.value.add(currentWorkspace.value.projects[0]?.id);
+  }
+});
+
 // Expand all collections by default
 onMounted(() => {
   props.collections.forEach(c => {
@@ -103,6 +244,30 @@ onMounted(() => {
       });
     });
   });
+
+  // Load selected workspace from localStorage
+  const savedWorkspaceId = typeof window !== 'undefined' ? localStorage.getItem('selectedWorkspaceId') : null;
+  const savedActiveView = typeof window !== 'undefined' ? localStorage.getItem('activeView') as 'hierarchy' | 'mocks' | 'history' | 'definitions' | null : null;
+  
+  // Load active view from localStorage if valid
+  if (savedActiveView && ['hierarchy', 'mocks', 'history', 'definitions'].includes(savedActiveView)) {
+    activeView.value = savedActiveView;
+  }
+  
+  if (props.workspaces.length > 0) {
+    // If there's a saved workspace ID that still exists in the workspaces list, use it
+    if (savedWorkspaceId && props.workspaces.find(w => w.id === savedWorkspaceId)) {
+      selectedWorkspaceId.value = savedWorkspaceId;
+    } else {
+      // Otherwise use the first workspace
+      selectedWorkspaceId.value = props.workspaces[0].id;
+    }
+    expandedWorkspaces.value.add(selectedWorkspaceId.value);
+    const currentWs = props.workspaces.find(w => w.id === selectedWorkspaceId.value);
+    if (currentWs?.projects.length > 0) {
+      expandedProjects.value.add(currentWs.projects[0].id);
+    }
+  }
 });
 
 watch(() => props.collections, (newCollections) => {
@@ -134,225 +299,1067 @@ const toggleGroup = (collectionId: string, groupName: string) => {
   }
 };
 
+const toggleWorkspace = (workspaceId: string) => {
+  if (expandedWorkspaces.value.has(workspaceId)) {
+    expandedWorkspaces.value.delete(workspaceId);
+  } else {
+    expandedWorkspaces.value.add(workspaceId);
+  }
+};
+
+const toggleProject = (projectId: string) => {
+  if (expandedProjects.value.has(projectId)) {
+    expandedProjects.value.delete(projectId);
+  } else {
+    expandedProjects.value.add(projectId);
+  }
+};
+
+const toggleCollectionHierarchy = (collectionId: string) => {
+  if (expandedCollectionsHierarchy.value.has(collectionId)) {
+    expandedCollectionsHierarchy.value.delete(collectionId);
+  } else {
+    expandedCollectionsHierarchy.value.add(collectionId);
+  }
+};
+
+const toggleFolder = (folderId: string) => {
+  if (expandedFolders.value.has(folderId)) {
+    expandedFolders.value.delete(folderId);
+  } else {
+    expandedFolders.value.add(folderId);
+  }
+};
+
+const expandAll = () => {
+  if (currentWorkspace.value) {
+    currentWorkspace.value.projects.forEach(project => {
+      expandedProjects.value.add(project.id);
+      project.collections.forEach(collection => {
+        expandedCollectionsHierarchy.value.add(collection.id);
+        collectAllFolderIds(collection.folders).forEach(folderId => {
+          expandedFolders.value.add(folderId);
+        });
+      });
+    });
+  }
+};
+
+const collapseAll = () => {
+  expandedProjects.value.clear();
+  expandedCollectionsHierarchy.value.clear();
+  expandedFolders.value.clear();
+};
+
+const collectAllFolderIds = (folders: any[]): string[] => {
+  const ids: string[] = [];
+  folders.forEach(folder => {
+    ids.push(folder.id);
+    if (folder.children && folder.children.length > 0) {
+      ids.push(...collectAllFolderIds(folder.children));
+    }
+  });
+  return ids;
+};
+
+const isAnyProjectExpanded = computed(() => {
+  if (!currentWorkspace.value) return false;
+  return currentWorkspace.value.projects.some(p => expandedProjects.value.has(p.id));
+});
+
+const isAllExpanded = computed(() => {
+  if (!currentWorkspace.value || currentWorkspace.value.projects.length === 0) return false;
+  return currentWorkspace.value.projects.every(project => {
+    if (!expandedProjects.value.has(project.id)) return false;
+    return project.collections.every(collection => {
+      if (!expandedCollectionsHierarchy.value.has(collection.id)) return false;
+      const allFolderIds = collectAllFolderIds(collection.folders);
+      return allFolderIds.every(id => expandedFolders.value.has(id));
+    });
+  });
+});
+
 const isCollectionExpanded = (collectionId: string) => expandedCollections.value.has(collectionId);
 const isGroupExpanded = (collectionId: string, groupName: string) => expandedGroups.value.has(`${collectionId}:${groupName}`);
+const isWorkspaceExpanded = (workspaceId: string) => expandedWorkspaces.value.has(workspaceId);
+const isProjectExpanded = (projectId: string) => expandedProjects.value.has(projectId);
+const isCollectionHierarchyExpanded = (collectionId: string) => expandedCollectionsHierarchy.value.has(collectionId);
+const isFolderExpanded = (folderId: string) => expandedFolders.value.has(folderId);
+
+const handleDragStart = (type: 'folder' | 'request', id: string) => {
+  if (type === 'folder') {
+    draggingFolderId.value = id;
+    draggingRequestId.value = null;
+  } else {
+    draggingRequestId.value = id;
+    draggingFolderId.value = null;
+  }
+};
+
+const handleDragEnd = () => {
+  draggingFolderId.value = null;
+  draggingRequestId.value = null;
+  dropTarget.value = null;
+};
+
+const handleDragOver = (event: DragEvent, type: 'folder' | 'request', id: string, position: 'before' | 'after' | 'inside') => {
+  event.preventDefault();
+  
+  if (type === 'folder') {
+    const targetFolder = findFolderById(currentWorkspace.value, id);
+    if (!targetFolder) return;
+
+    if (draggingFolderId.value === id) {
+      dropTarget.value = null;
+      return;
+    }
+
+    if (draggingFolderId.value && isDescendant(draggingFolderId.value, id, currentWorkspace.value)) {
+      dropTarget.value = null;
+      return;
+    }
+
+    dropTarget.value = { type, id, position: position === 'inside' ? 'inside' : 'before' };
+  } else {
+    dropTarget.value = { type, id, position };
+  }
+};
+
+const handleDragLeave = () => {
+  if (!dropTarget.value) {
+    return;
+  }
+};
+
+const handleDrop = async (event: DragEvent, type: 'folder' | 'request', id: string, position: 'before' | 'after' | 'inside') => {
+  event.preventDefault();
+  
+  const sourceType = draggingFolderId.value ? 'folder' : 'request';
+  const sourceId = draggingFolderId.value || draggingRequestId.value;
+  
+  if (!sourceId) {
+    handleDragEnd();
+    return;
+  }
+
+  try {
+    if (sourceType === 'folder' && type === 'folder') {
+      await handleFolderDrop(sourceId as string, id, position);
+    } else if (sourceType === 'request' && type === 'folder') {
+      await handleRequestToFolderDrop(sourceId as string, id);
+    } else if (sourceType === 'request' && type === 'request') {
+      await handleRequestDrop(sourceId as string, id, position);
+    }
+  } catch (error: any) {
+    console.error('Drop error:', error);
+  } finally {
+    handleDragEnd();
+  }
+};
+
+const findFolderById = (workspace: WorkspaceWithProjects | undefined, folderId: string): FolderWithRequestsAndChildren | null => {
+  if (!workspace) return null;
+  
+  const searchInCollections = (collections: CollectionWithFolders[]): FolderWithRequestsAndChildren | null => {
+    for (const collection of collections) {
+      const found = findInFolders(collection.folders, folderId);
+      if (found) return found;
+    }
+    return null;
+  };
+  
+  const findInFolders = (folders: FolderWithRequestsAndChildren[], targetId: string): FolderWithRequestsAndChildren | null => {
+    for (const folder of folders) {
+      if (folder.id === targetId) return folder;
+      const found = findInFolders(folder.children, targetId);
+      if (found) return found;
+    }
+    return null;
+  };
+  
+  for (const project of workspace.projects) {
+    const found = searchInCollections(project.collections);
+    if (found) return found;
+  }
+  
+  return null;
+};
+
+const isDescendant = (ancestorId: string, descendantId: string, workspace: WorkspaceWithProjects | undefined): boolean => {
+  const folder = findFolderById(workspace, ancestorId);
+  if (!folder) return false;
+  
+  const checkInChildren = (folders: FolderWithRequestsAndChildren[]): boolean => {
+    for (const f of folders) {
+      if (f.id === descendantId) return true;
+      if (checkInChildren(f.children)) return true;
+    }
+    return false;
+  };
+  
+  return checkInChildren(folder.children);
+};
+
+const handleFolderDrop = async (sourceFolderId: string, targetFolderId: string, position: 'before' | 'after' | 'inside') => {
+  const sourceFolder = findFolderById(currentWorkspace.value, sourceFolderId);
+  const targetFolder = findFolderById(currentWorkspace.value, targetFolderId);
+  
+  if (!sourceFolder || !targetFolder) return;
+
+  let newParentId: string | null = null;
+  let newOrder: number = 0;
+
+  if (position === 'inside') {
+    newParentId = targetFolderId;
+    newOrder = targetFolder.children.length;
+  } else {
+    newParentId = targetFolder.parentFolderId;
+    const siblings = getSiblingFolders(targetFolder.parentFolderId);
+    const targetIndex = siblings.findIndex(f => f.id === targetFolderId);
+    newOrder = position === 'before' ? targetIndex : targetIndex + 1;
+  }
+
+  const folderUpdates = calculateFolderOrderUpdates(sourceFolderId, newParentId, newOrder, targetFolder.collectionId);
+  
+  emit('reorderFolders', targetFolder.collectionId, folderUpdates);
+};
+
+const handleRequestToFolderDrop = async (requestId: string, targetFolderId: string) => {
+  const targetFolder = findFolderById(currentWorkspace.value, targetFolderId);
+  if (!targetFolder) return;
+
+  const newOrder = targetFolder.requests.length;
+  
+  emit('reorderRequests', targetFolderId, [{ id: requestId, folderId: targetFolderId, order: newOrder }]);
+};
+
+const handleRequestDrop = async (sourceRequestId: string, targetRequestId: string, position: 'before' | 'after') => {
+  const targetFolder = findRequestFolder(targetRequestId, currentWorkspace.value);
+  if (!targetFolder) return;
+
+  const siblings = targetFolder.requests;
+  const targetIndex = siblings.findIndex(r => r.id === targetRequestId);
+  const newOrder = position === 'before' ? targetIndex : targetIndex + 1;
+
+  const updates = siblings
+    .filter(r => r.id !== sourceRequestId)
+    .map((r, idx) => ({
+      id: r.id,
+      folderId: targetFolder.id,
+      order: idx >= newOrder ? idx + 1 : idx
+    }));
+
+  if (siblings.find(r => r.id === sourceRequestId)) {
+    updates.push({ id: sourceRequestId, folderId: targetFolder.id, order: newOrder });
+  } else {
+    updates.unshift({ id: sourceRequestId, folderId: targetFolder.id, order: newOrder });
+  }
+
+  emit('reorderRequests', targetFolder.id, updates);
+};
+
+const findRequestFolder = (requestId: string, workspace: WorkspaceWithProjects | undefined): FolderWithRequestsAndChildren | null => {
+  if (!workspace) return null;
+  
+  const searchInCollections = (collections: CollectionWithFolders[]): FolderWithRequestsAndChildren | null => {
+    for (const collection of collections) {
+      const found = findInFolders(collection.folders, requestId);
+      if (found) return found;
+    }
+    return null;
+  };
+  
+  const findInFolders = (folders: FolderWithRequestsAndChildren[], targetRequestId: string): FolderWithRequestsAndChildren | null => {
+    for (const folder of folders) {
+      if (folder.requests.find(r => r.id === targetRequestId)) return folder;
+      const found = findInFolders(folder.children, targetRequestId);
+      if (found) return found;
+    }
+    return null;
+  };
+  
+  for (const project of workspace.projects) {
+    const found = searchInCollections(project.collections);
+    if (found) return found;
+  }
+  
+  return null;
+};
+
+const getSiblingFolders = (parentId: string | null): FolderWithRequestsAndChildren[] => {
+  if (!currentWorkspace.value) return [];
+  
+  const getFoldersAtLevel = (folders: FolderWithRequestsAndChildren[]): FolderWithRequestsAndChildren[] => {
+    return folders.filter(f => f.parentFolderId === parentId);
+  };
+  
+  for (const project of currentWorkspace.value.projects) {
+    for (const collection of project.collections) {
+      if (parentId === null) {
+        return collection.folders.filter(f => f.parentFolderId === null);
+      }
+      const allFolders: FolderWithRequestsAndChildren[] = [];
+      const collectFolders = (folders: FolderWithRequestsAndChildren[]) => {
+        for (const folder of folders) {
+          if (folder.parentFolderId === parentId) {
+            allFolders.push(folder);
+          }
+          collectFolders(folder.children);
+        }
+      };
+      collectFolders(collection.folders);
+      if (allFolders.length > 0) return allFolders;
+    }
+  }
+  
+  return [];
+};
+
+const calculateFolderOrderUpdates = (
+  sourceFolderId: string,
+  newParentId: string | null,
+  newOrder: number,
+  collectionId: string
+): { id: string; parentFolderId: string | null; order: number }[] => {
+  const updates: { id: string; parentFolderId: string | null; order: number }[] = [];
+  
+  const siblings = getSiblingFolders(newParentId).filter(f => f.id !== sourceFolderId);
+  
+  siblings.forEach((folder, idx) => {
+    if (idx >= newOrder) {
+      updates.push({ id: folder.id, parentFolderId: folder.parentFolderId, order: idx + 1 });
+    }
+  });
+  
+  updates.push({ id: sourceFolderId, parentFolderId: newParentId, order: newOrder });
+  
+  return updates;
+};
 
 const getCollectionColor = (color: string) => {
-  return { borderLeftColor: color };
+  return { borderLeftColor: color || '#6366f1' };
 };
+
+const getMethodColor = (method: string) => {
+  const colors: Record<string, string> = {
+    GET: '#22c55e',
+    POST: '#3b82f6',
+    PUT: '#f97316',
+    PATCH: '#eab308',
+    DELETE: '#ef4444',
+    HEAD: '#8b5cf6',
+    OPTIONS: '#64748b'
+  };
+  return colors[method] || '#64748b';
+};
+
+const handleContextMenu = (event: MouseEvent, type: string, data: any) => {
+  event.preventDefault();
+  event.stopPropagation();
+  contextMenu.value = { x: event.clientX, y: event.clientY, type, data };
+};
+
+const closeContextMenu = () => {
+  contextMenu.value = null;
+};
+
+const handleContextAction = (action: string) => {
+  if (!contextMenu.value) return;
+
+  const { type, data } = contextMenu.value;
+
+  switch (type) {
+    case 'workspace':
+      if (action === 'create-project') {
+        emit('createProject', data.id);
+      } else if (action === 'rename-workspace') {
+        emit('renameWorkspace', data);
+      }
+      break;
+    case 'project':
+      if (action === 'create-collection') {
+        emit('createCollection', contextMenu.value.data.id);
+      } else if (action === 'rename-project') {
+        emit('renameProject', data);
+      } else if (action === 'delete-project') {
+        emit('deleteProject', data);
+      }
+      break;
+    case 'collection':
+      if (action === 'create-folder') {
+        emit('createFolder', data.id);
+      } else if (action === 'rename-collection') {
+        emit('renameCollection', data);
+      } else if (action === 'delete-collection') {
+        emit('deleteCollection', data);
+      }
+      break;
+    case 'folder':
+      if (action === 'create-request') {
+        emit('createRequest', data.id);
+      } else if (action === 'rename-folder') {
+        emit('renameFolder', data);
+      } else if (action === 'delete-folder') {
+        emit('deleteFolder', data);
+      }
+      break;
+    case 'request':
+      if (action === 'delete-request') {
+        emit('deleteRequest', data);
+      }
+      break;
+  }
+
+  closeContextMenu();
+};
+
+const getMethodIcon = (method: string) => {
+  const icons: Record<string, string> = {
+    GET: '●',
+    POST: '◆',
+    PUT: '■',
+    PATCH: '▬',
+    DELETE: '✕',
+    HEAD: '○',
+    OPTIONS: '≡'
+  };
+  return icons[method] || '?';
+};
+
+onMounted(() => {
+  window.addEventListener('click', closeContextMenu);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('click', closeContextMenu);
+});
+
+watch(selectedWorkspaceId, (newId) => {
+  if (newId) {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('selectedWorkspaceId', newId);
+    }
+    emit('selectWorkspace', newId);
+  }
+});
+
+watch(() => props.selectedWorkspaceId, (newId) => {
+  if (newId) {
+    selectedWorkspaceId.value = newId;
+  }
+});
+
+watch(activeView, (newView) => {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('activeView', newView);
+  }
+});
 </script>
 
 <template>
   <aside class="w-[300px] h-full bg-bg-sidebar border-r border-border-default flex flex-col flex-shrink-0">
-    <!-- Sidebar Header -->
-    <div class="flex items-center justify-between py-3 px-3 border-b border-border-default">
-      <div class="flex items-center gap-2 text-text-primary text-[13px] font-semibold">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+    <!-- Main Navigation -->
+    <div class="flex flex-col border-b border-border-default p-2 gap-1">
+      <button
+        :class="['flex items-center gap-2 py-2 px-3 rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors text-[13px] font-medium', activeView === 'hierarchy' ? 'bg-bg-active text-text-primary' : '']"
+        @click="activeView = 'hierarchy'"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+          <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+          <line x1="12" y1="22.08" x2="12" y2="12"></line>
         </svg>
-        <span>Collections</span>
-      </div>
-      <div class="flex gap-1">
-        <button 
-          class="flex items-center justify-center w-7 h-7 bg-transparent border-none rounded text-text-secondary cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-orange" 
-          @click="emit('createMock')" 
-          title="New Mock"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-          </svg>
-        </button>
-        <button 
-          class="flex items-center justify-center w-7 h-7 bg-transparent border-none rounded text-text-secondary cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-orange" 
-          @click="emit('createResource')" 
-          title="New Resource (CRUD)"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
-            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
-            <path d="M3 5v14c0 1.66 4 3 9 3s 9-1.34 9-3V5"></path>
-          </svg>
-        </button>
-        <button 
-          class="flex items-center justify-center w-7 h-7 bg-transparent border-none rounded text-text-secondary cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-orange" 
-          @click="emit('createCollection')" 
-          title="New Collection"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-            <line x1="12" y1="11" x2="12" y2="17"></line>
-            <line x1="9" y1="14" x2="15" y2="14"></line>
-          </svg>
-        </button>
-      </div>
+        Workspace
+      </button>
+      <button
+        :class="['flex items-center gap-2 py-2 px-3 rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors text-[13px] font-medium', activeView === 'mocks' ? 'bg-bg-active text-text-primary' : '']"
+        @click="activeView = 'mocks'"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+          <polyline points="9 22 9 12 15 12 15 22"></polyline>
+        </svg>
+        Mocks
+      </button>
+      <button
+        :class="['flex items-center gap-2 py-2 px-3 rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors text-[13px] font-medium', activeView === 'definitions' ? 'bg-bg-active text-text-primary' : '']"
+        @click="activeView = 'definitions'"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <line x1="16" y1="13" x2="8" y2="13"></line>
+          <line x1="16" y1="17" x2="8" y2="17"></line>
+          <polyline points="10 9 9 9 8 9"></polyline>
+        </svg>
+        Definitions
+      </button>
+      <button
+        :class="['flex items-center gap-2 py-2 px-3 rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors text-[13px] font-medium', activeView === 'history' ? 'bg-bg-active text-text-primary' : '']"
+        @click="activeView = 'history'"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <polyline points="12 6 12 12 16 14"></polyline>
+        </svg>
+        History
+      </button>
     </div>
 
-    <!-- Tree View -->
-    <div class="flex-1 overflow-y-auto py-2">
-      <!-- Empty State -->
-      <div v-if="collectionsWithGroups.length === 0" class="flex flex-col items-center justify-center gap-3 py-10 px-5 text-text-muted text-center">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+    <!-- Workspace Switcher -->
+    <div
+      v-if="activeView === 'hierarchy' && workspaces.length > 0"
+      class="flex items-center justify-between py-3 px-3 border-b border-border-default"
+      @contextmenu.prevent="handleContextMenu($event, 'workspace', currentWorkspace)"
+    >
+      <div class="flex items-center gap-2 flex-1">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-text-secondary">
+          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
         </svg>
-        <p class="text-[13px] m-0">No collections yet</p>
-        <button class="btn btn-sm btn-secondary" @click="emit('createMock')">Create First Mock</button>
-      </div>
-
-      <!-- Collections -->
-      <div v-for="collection in collectionsWithGroups" :key="collection.id" class="mb-1">
-        <!-- Collection Header -->
-        <div 
-          class="flex items-center gap-2 py-2.5 px-3 text-text-primary text-[13px] font-semibold cursor-pointer transition-colors duration-fast border-l-[3px] border-l-transparent hover:bg-bg-hover group" 
-          :style="getCollectionColor(collection.color)"
-          @click="toggleCollection(collection.id)"
+        <select
+          v-model="selectedWorkspaceId"
+          class="flex-1 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-[13px] font-medium focus:outline-none focus:border-accent-blue cursor-pointer"
         >
-          <!-- Chevron -->
-          <svg 
-            :class="['text-text-muted transition-transform duration-fast', { 'rotate-90': isCollectionExpanded(collection.id) }]"
-            width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-          >
-            <polyline points="9 18 15 12 9 6"></polyline>
-          </svg>
+          <option v-for="workspace in workspaces" :key="workspace.id" :value="workspace.id">
+            {{ workspace.name }}
+          </option>
+        </select>
+      </div>
+      <button
+        class="flex items-center justify-center w-7 h-7 bg-transparent border-none rounded text-text-secondary cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-orange ml-2"
+        @click="emit('createWorkspace')"
+        title="New Workspace"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+      </button>
+    </div>
 
-          <!-- Collection Icon -->
-          <div 
-            class="flex items-center justify-center w-6 h-6 rounded-md"
-            :style="{ backgroundColor: collection.color + '20', color: collection.color }"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-            </svg>
-          </div>
-
-          <!-- Name -->
-          <span class="flex-1">{{ collection.name }}</span>
-
-          <!-- Count Badge -->
-          <span class="text-[11px] font-medium text-text-muted bg-bg-tertiary py-0.5 px-2 rounded-full">
-            {{ collection.mockCount }}
-          </span>
-          
-          <!-- Collection Actions (only for non-root) -->
-          <div v-if="collection.name !== 'root'" class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-fast" @click.stop>
-            <button 
-              class="flex items-center justify-center w-[22px] h-[22px] bg-transparent border-none rounded text-text-secondary cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-text-primary" 
-              @click="emit('editCollection', collection)" 
-              title="Edit Collection"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
-              </svg>
-            </button>
-            <button 
-              class="flex items-center justify-center w-[22px] h-[22px] bg-transparent border-none rounded text-text-secondary cursor-pointer transition-all duration-fast hover:bg-accent-red/15 hover:text-accent-red" 
-              @click="emit('deleteCollection', collection)" 
-              title="Delete Collection"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="3 6 5 6 21 6"></polyline>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-              </svg>
-            </button>
-          </div>
-
-          <!-- Add mock to collection button -->
-          <button 
-            class="flex items-center justify-center w-[22px] h-[22px] bg-transparent border-none rounded text-text-secondary cursor-pointer opacity-0 group-hover:opacity-100 transition-all duration-fast hover:bg-bg-hover hover:text-accent-green" 
-            @click.stop="emit('createMock', collection.id)" 
-            title="Add Mock to Collection"
+    <!-- Projects Header -->
+    <div v-if="activeView === 'hierarchy' && currentWorkspace" class="flex items-center justify-between py-2 px-4 border-b border-border-default">
+      <div class="flex items-center gap-2">
+        <span class="text-xs font-medium text-text-muted uppercase tracking-wide">Projects</span>
+        <div v-if="currentWorkspace.projects.length > 0" class="flex items-center gap-1 ml-2">
+          <button
+            v-if="!isAllExpanded"
+            class="flex items-center justify-center w-5 h-5 bg-transparent border-none rounded text-text-secondary cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-green"
+            @click="expandAll"
+            title="Expand All"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
+              <polyline points="15 3 21 3 21 9"></polyline>
+              <polyline points="9 21 3 21 3 15"></polyline>
+              <line x1="21" y1="3" x2="14" y2="10"></line>
+              <line x1="3" y1="21" x2="10" y2="14"></line>
+            </svg>
+          </button>
+          <button
+            v-if="isAnyProjectExpanded"
+            class="flex items-center justify-center w-5 h-5 bg-transparent border-none rounded text-text-secondary cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-orange"
+            @click="collapseAll"
+            title="Collapse All"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="4 14 10 14 10 20"></polyline>
+              <polyline points="20 10 14 10 14 4"></polyline>
+              <line x1="14" y1="10" x2="21" y2="3"></line>
+              <line x1="3" y1="21" x2="10" y2="14"></line>
             </svg>
           </button>
         </div>
+      </div>
+      <button
+        class="flex items-center justify-center w-6 h-6 bg-transparent border-none rounded text-text-secondary cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-orange"
+        @click="emit('createProject', currentWorkspace.id)"
+        title="New Project"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+      </button>
+    </div>
 
-        <!-- Collection Content (Groups) -->
-        <Transition name="expand">
-          <div v-show="isCollectionExpanded(collection.id)" class="pl-4">
-            <!-- Empty Collection -->
-            <div v-if="collection.groups.length === 0" class="py-3 px-4 text-xs text-text-muted italic">
-              No mocks in this collection
+    <!-- Hierarchy View -->
+    <div v-if="activeView === 'hierarchy'" class="flex-1 overflow-y-auto py-2">
+      <div v-if="currentWorkspace">
+        <!-- Empty State -->
+        <div v-if="currentWorkspace.projects.length === 0" class="flex flex-col items-center justify-center gap-3 py-10 px-5 text-text-muted text-center">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+          </svg>
+          <p class="text-[13px] m-0">No projects yet</p>
+          <button class="btn btn-sm btn-secondary" @click="emit('createProject', currentWorkspace.id)">Create First Project</button>
+        </div>
+
+        <!-- Projects -->
+        <div v-for="project in currentWorkspace.projects" :key="project.id">
+          <!-- Project Header -->
+          <div
+            class="flex items-center gap-2 py-2.5 px-3 text-text-primary text-[13px] font-semibold cursor-pointer transition-colors duration-fast hover:bg-bg-hover group"
+            @click="toggleProject(project.id)"
+            @contextmenu.prevent="handleContextMenu($event, 'project', project)"
+          >
+            <!-- Chevron -->
+            <svg
+              :class="['text-text-muted transition-transform duration-fast', { 'rotate-90': isProjectExpanded(project.id) }]"
+              width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+            >
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+
+            <!-- Project Icon -->
+            <div class="flex items-center justify-center w-6 h-6 rounded-md bg-accent-blue/20 text-accent-blue">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              </svg>
             </div>
-            
-            <!-- Groups -->
-            <div v-for="group in collection.groups" :key="`${collection.id}:${group.name}`" class="mb-0.5">
-              <!-- Group Header (Folder) -->
-              <div 
-                class="flex items-center gap-1.5 py-1.5 px-3 text-text-primary text-xs font-medium cursor-pointer transition-colors duration-fast hover:bg-bg-hover group/groupitem"
-                @click="toggleGroup(collection.id, group.name)"
-              >
-                <!-- Chevron -->
-                <svg 
-                  :class="['text-text-muted transition-transform duration-fast', { 'rotate-90': isGroupExpanded(collection.id, group.name) }]"
-                  width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                >
-                  <polyline points="9 18 15 12 9 6"></polyline>
-                </svg>
 
-                <!-- Folder Icon -->
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-                </svg>
+            <!-- Name -->
+            <span class="flex-1">{{ project.name }}</span>
 
-                <!-- Name -->
-                <span class="flex-1">{{ group.name }}</span>
+            <!-- Count Badge -->
+            <span class="text-[11px] font-medium text-text-muted bg-bg-tertiary py-0.5 px-2 rounded-full">
+              {{ project.collectionCount }}
+            </span>
 
-                <!-- Count -->
-                <span class="text-[10px] text-text-muted bg-bg-tertiary py-px px-1.5 rounded-lg mr-1.5">
-                  {{ group.items.length }}
-                </span>
+            <!-- Add collection button -->
+            <button
+              class="flex items-center justify-center w-[22px] h-[22px] bg-transparent border-none rounded text-text-secondary cursor-pointer opacity-0 group-hover:opacity-100 transition-all duration-fast hover:bg-bg-hover hover:text-accent-green"
+              @click.stop="emit('createCollection', project.id)"
+              title="Add Collection"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </button>
+          </div>
 
-                <!-- Delete Group -->
-                 <button 
-                  class="flex items-center justify-center w-[18px] h-[18px] bg-transparent border-none rounded text-text-secondary cursor-pointer opacity-0 group-hover/groupitem:opacity-100 transition-all duration-fast hover:bg-accent-red/15 hover:text-accent-red"
-                  @click.stop="emit('deleteGroup', collection.id, group.name, group.items)"
-                  title="Delete Folder"
-                >
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="3 6 5 6 21 6"></polyline>
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                  </svg>
-                </button>
+          <!-- Project Content (Collections) -->
+          <Transition name="expand">
+            <div v-show="isProjectExpanded(project.id)" class="pl-4">
+              <!-- Empty Project -->
+              <div v-if="project.collections.length === 0" class="py-3 px-4 text-xs text-text-muted italic">
+                No collections in this project
               </div>
 
-              <!-- Group Items (Endpoints) -->
-              <Transition name="expand">
-                <div v-show="isGroupExpanded(collection.id, group.name)" class="pl-4">
-                  <div 
-                    v-for="mock in group.items" 
-                    :key="mock.id"
-                    :class="[
-                      'flex items-center gap-2 py-1.5 px-3 mx-2 my-px rounded cursor-pointer border-l-2 border-l-transparent transition-all duration-fast hover:bg-bg-hover',
-                      selectedMockId === mock.id ? 'bg-bg-active border-l-accent-orange' : ''
-                    ]"
-                    @click="emit('selectMock', mock)"
+              <!-- Collections -->
+              <div v-for="collection in project.collections" :key="collection.id" class="mb-0.5">
+                <!-- Collection Header -->
+                <div
+                  class="flex items-center gap-2 py-2 px-3 text-text-primary text-xs font-medium cursor-pointer transition-colors duration-fast hover:bg-bg-hover group/groupitem"
+                  :class="{ 'border-l-[2px] border-l-accent-blue': isCollectionHierarchyExpanded(collection.id) }"
+                  @click="toggleCollectionHierarchy(collection.id)"
+                  @contextmenu.prevent="handleContextMenu($event, 'collection', collection)"
+                >
+                  <!-- Chevron -->
+                  <svg
+                    :class="['text-text-muted transition-transform duration-fast', { 'rotate-90': isCollectionHierarchyExpanded(collection.id) }]"
+                    width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
                   >
-                    <MethodBadge :method="mock.method" size="sm" />
-                    <span 
-                      :class="[
-                        'flex-1 text-[11px] font-mono truncate',
-                        selectedMockId === mock.id ? 'text-text-primary' : 'text-text-secondary'
-                      ]"
-                    >
-                      {{ mock.path }}
-                    </span>
-                    <span v-if="mock.secure" class="text-accent-orange" title="Protected">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                      </svg>
-                    </span>
-                  </div>
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
+
+                  <!-- Collection Icon -->
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                  </svg>
+
+                  <!-- Name -->
+                  <span class="flex-1">{{ collection.name }}</span>
+
+                  <!-- Count -->
+                  <span class="text-[10px] text-text-muted bg-bg-tertiary py-px px-1.5 rounded-lg mr-1.5">
+                    {{ collection.requestCount }}
+                  </span>
+
+                  <!-- Add folder button -->
+                  <button
+                    class="flex items-center justify-center w-[18px] h-[18px] bg-transparent border-none rounded text-text-secondary cursor-pointer opacity-0 group-hover/groupitem:opacity-100 transition-all duration-fast hover:bg-bg-hover hover:text-accent-green"
+                    @click.stop="emit('createFolder', collection.id)"
+                    title="Add Folder"
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="12" y1="5" x2="12" y2="19"></line>
+                      <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                  </button>
                 </div>
-              </Transition>
+
+                <!-- Collection Content (Folders) -->
+                <Transition name="expand">
+                  <div v-show="isCollectionHierarchyExpanded(collection.id)" class="pl-3">
+                    <!-- Folders Tree -->
+                    <template v-for="folder in collection.folders" :key="folder.id">
+                      <FolderTreeItem
+                        :folder="folder"
+                        :expanded-folder-ids="expandedFolders"
+                        :dragging-folder-id="draggingFolderId"
+                        :dragging-request-id="draggingRequestId"
+                        :drop-target="dropTarget"
+                        @toggle-folder="toggleFolder"
+                        @select-request="emit('selectRequest', $event)"
+                        @context-menu="handleContextMenu"
+                        @create-request="emit('createRequest', $event)"
+                        @drag-start="handleDragStart"
+                        @drag-end="handleDragEnd"
+                        @drag-over="handleDragOver"
+                        @drag-leave="handleDragLeave"
+                        @drop="handleDrop"
+                      />
+                    </template>
+
+                    <!-- Empty Collection -->
+                    <div v-if="collection.folders.length === 0" class="py-3 px-5 text-xs text-text-muted italic pl-4">
+                      No folders in this collection
+                    </div>
+                  </div>
+                </Transition>
+              </div>
             </div>
+            </Transition>
           </div>
-        </Transition>
+        </div>
       </div>
-    </div>
+
+      <!-- Mocks View -->
+      <div v-if="activeView === 'mocks'" class="flex-1 overflow-y-auto py-2">
+        <!-- Empty State -->
+        <div v-if="collectionsWithGroups.length === 0" class="flex flex-col items-center justify-center gap-3 py-10 px-5 text-text-muted text-center">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          </svg>
+          <p class="text-[13px] m-0">No collections yet</p>
+          <button class="btn btn-sm btn-secondary" @click="emit('createMock')">Create First Mock</button>
+        </div>
+
+        <!-- Collections -->
+        <div v-for="collection in collectionsWithGroups" :key="collection.id" class="mb-1">
+          <!-- Collection Header -->
+          <div 
+            class="flex items-center gap-2 py-2.5 px-3 text-text-primary text-[13px] font-semibold cursor-pointer transition-colors duration-fast border-l-[3px] border-l-transparent hover:bg-bg-hover group" 
+            :style="getCollectionColor(collection.color || '#6366f1')"
+            @click="toggleCollection(collection.id)"
+          >
+            <!-- Chevron -->
+            <svg 
+              :class="['text-text-muted transition-transform duration-fast', { 'rotate-90': isCollectionExpanded(collection.id) }]"
+              width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+            >
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+
+            <!-- Collection Icon -->
+            <div 
+              class="flex items-center justify-center w-6 h-6 rounded-md"
+              :style="{ backgroundColor: collection.color + '20', color: collection.color }"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              </svg>
+            </div>
+
+            <!-- Name -->
+            <span class="flex-1">{{ collection.name }}</span>
+
+            <!-- Count Badge -->
+            <span class="text-[11px] font-medium text-text-muted bg-bg-tertiary py-0.5 px-2 rounded-full">
+              {{ collection.mockCount }}
+            </span>
+            
+            <!-- Collection Actions (only for non-root) -->
+            <div v-if="collection.name !== 'root'" class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-fast" @click.stop>
+              <button 
+                class="flex items-center justify-center w-[22px] h-[22px] bg-transparent border-none rounded text-text-secondary cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-text-primary" 
+                @click="emit('editCollection', collection)" 
+                title="Edit Collection"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                </svg>
+              </button>
+              <button 
+                class="flex items-center justify-center w-[22px] h-[22px] bg-transparent border-none rounded text-text-secondary cursor-pointer transition-all duration-fast hover:bg-accent-red/15 hover:text-accent-red" 
+                @click="emit('deleteCollection', collection)" 
+                title="Delete Collection"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+              </button>
+            </div>
+
+            <!-- Add mock to collection button -->
+            <button 
+              class="flex items-center justify-center w-[22px] h-[22px] bg-transparent border-none rounded text-text-secondary cursor-pointer opacity-0 group-hover:opacity-100 transition-all duration-fast hover:bg-bg-hover hover:text-accent-green" 
+              @click.stop="emit('createMock', collection.id)" 
+              title="Add Mock to Collection"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </button>
+          </div>
+
+          <!-- Collection Content (Groups) -->
+          <Transition name="expand">
+            <div v-show="isCollectionExpanded(collection.id)" class="pl-4">
+              <!-- Empty Collection -->
+              <div v-if="collection.groups.length === 0" class="py-3 px-4 text-xs text-text-muted italic">
+                No mocks in this collection
+              </div>
+              
+              <!-- Groups -->
+              <div v-for="group in collection.groups" :key="`${collection.id}:${group.name}`" class="mb-0.5">
+                <!-- Group Header (Folder) -->
+                <div 
+                  class="flex items-center gap-1.5 py-1.5 px-3 text-text-primary text-xs font-medium cursor-pointer transition-colors duration-fast hover:bg-bg-hover group/groupitem"
+                  @click="toggleGroup(collection.id, group.name)"
+                >
+                  <!-- Chevron -->
+                  <svg 
+                    :class="['text-text-muted transition-transform duration-fast', { 'rotate-90': isGroupExpanded(collection.id, group.name) }]"
+                    width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                  >
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
+
+                  <!-- Folder Icon -->
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                  </svg>
+
+                  <!-- Name -->
+                  <span class="flex-1">{{ group.name }}</span>
+
+                  <!-- Count -->
+                  <span class="text-[10px] text-text-muted bg-bg-tertiary py-px px-1.5 rounded-lg mr-1.5">
+                    {{ group.items.length }}
+                  </span>
+
+                  <!-- Delete Group -->
+                   <button 
+                    class="flex items-center justify-center w-[18px] h-[18px] bg-transparent border-none rounded text-text-secondary cursor-pointer opacity-0 group-hover/groupitem:opacity-100 transition-all duration-fast hover:bg-accent-red/15 hover:text-accent-red"
+                    @click.stop="emit('deleteGroup', collection.id, group.name, group.items)"
+                    title="Delete Folder"
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="3 6 5 6 21 6"></polyline>
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                  </button>
+                </div>
+
+                <!-- Group Items (Endpoints) -->
+                <Transition name="expand">
+                  <div v-show="isGroupExpanded(collection.id, group.name)" class="pl-4">
+                    <div 
+                      v-for="mock in group.items" 
+                      :key="mock.id"
+                      :class="[
+                        'flex items-center gap-2 py-1.5 px-3 mx-2 my-px rounded cursor-pointer border-l-2 border-l-transparent transition-all duration-fast hover:bg-bg-hover',
+                        selectedMockId === mock.id ? 'bg-bg-active border-l-accent-orange' : ''
+                      ]"
+                      @click="emit('selectMock', mock)"
+                    >
+                      <MethodBadge :method="mock.method" size="sm" />
+                      <span 
+                        :class="[
+                          'flex-1 text-[11px] font-mono truncate',
+                          selectedMockId === mock.id ? 'text-text-primary' : 'text-text-secondary'
+                        ]"
+                      >
+                        {{ mock.path }}
+                      </span>
+                      <span v-if="mock.secure" class="text-accent-orange" title="Protected">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                        </svg>
+                      </span>
+                    </div>
+                  </div>
+                </Transition>
+              </div>
+            </div>
+          </Transition>
+        </div>
+      </div>
+
+      <!-- Definitions Panel -->
+      <div v-if="activeView === 'definitions'" class="flex flex-col flex-1 overflow-hidden">
+        <ApiDefinitionsPanel
+          :workspace-id="selectedWorkspaceId || workspaces[0]?.id"
+          :refresh-trigger="refreshTrigger"
+          @view-docs="emit('viewDefinitionDocs', $event)"
+          @generate-mocks="emit('generateDefinitionMocks', $event)"
+          @reimport="emit('reimportDefinition', $event)"
+          @delete-definition="(def) => {}"
+        />
+      </div>
+
+      <!-- History Panel -->
+      <div v-if="activeView === 'history'" class="flex flex-col flex-1 overflow-hidden">
+        <RequestHistoryPanel
+          :workspace-id="selectedWorkspaceId || workspaces[0]?.id"
+          @restore-request="emit('restoreRequest', $event)"
+          @compare="emit('compare', $event[0], $event[1])"
+        />
+      </div>
+
+    <!-- Context Menu -->
+    <Teleport to="body">
+      <div
+        v-if="contextMenu"
+        class="fixed z-50 bg-bg-secondary border border-border-default rounded-lg shadow-lg min-w-[180px]"
+        :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
+        @click="closeContextMenu"
+      >
+        <div class="py-1">
+          <template v-if="contextMenu.type === 'project'">
+            <button
+              class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              @click.stop="handleContextAction('create-collection')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                <line x1="12" y1="11" x2="12" y2="17"></line>
+                <line x1="9" y1="14" x2="15" y2="14"></line>
+              </svg>
+              New Collection
+            </button>
+            <button
+              class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              @click.stop="handleContextAction('rename-project')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
+                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+              </svg>
+              Rename
+            </button>
+            <button
+              class="flex items-center w-full px-3 py-2 text-xs text-accent-red hover:bg-bg-hover transition-colors"
+              @click.stop="handleContextAction('delete-project')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+              Delete Project
+            </button>
+          </template>
+          <template v-if="contextMenu.type === 'collection'">
+            <button
+              class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              @click.stop="handleContextAction('create-folder')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                <line x1="12" y1="11" x2="12" y2="17"></line>
+                <line x1="9" y1="14" x2="15" y2="14"></line>
+              </svg>
+              New Folder
+            </button>
+            <button
+              class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              @click.stop="handleContextAction('rename-collection')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
+                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+              </svg>
+              Rename
+            </button>
+            <button
+              class="flex items-center w-full px-3 py-2 text-xs text-accent-red hover:bg-bg-hover transition-colors"
+              @click.stop="handleContextAction('delete-collection')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+              Delete Collection
+            </button>
+          </template>
+          <template v-if="contextMenu.type === 'folder'">
+            <button
+              class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              @click.stop="handleContextAction('create-request')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              New Request
+            </button>
+            <button
+              class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              @click.stop="handleContextAction('rename-folder')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
+                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+              </svg>
+              Rename
+            </button>
+            <button
+              class="flex items-center w-full px-3 py-2 text-xs text-accent-red hover:bg-bg-hover transition-colors"
+              @click.stop="handleContextAction('delete-folder')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+              Delete Folder
+            </button>
+          </template>
+          <template v-if="contextMenu.type === 'request'">
+            <button
+              class="flex items-center w-full px-3 py-2 text-xs text-accent-red hover:bg-bg-hover transition-colors"
+              @click.stop="handleContextAction('delete-request')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+              Delete Request
+            </button>
+          </template>
+          <template v-if="contextMenu.type === 'workspace'">
+            <button
+              class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              @click.stop="handleContextAction('rename-workspace')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
+                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+              </svg>
+              Rename
+            </button>
+            <button
+              class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              @click.stop="handleContextAction('create-project')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                <line x1="12" y1="11" x2="12" y2="17"></line>
+                <line x1="9" y1="14" x2="15" y2="14"></line>
+              </svg>
+              New Project
+            </button>
+          </template>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Click outside to close context menu -->
+    <div
+      v-if="contextMenu"
+      class="fixed inset-0 z-40"
+      @click="closeContextMenu"
+    ></div>
   </aside>
 </template>
 

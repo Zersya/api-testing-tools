@@ -27,3 +27,4 @@ collections
 mocks
 
 *.db
+*.db-journal

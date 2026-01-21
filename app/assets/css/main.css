@@ -2,6 +2,9 @@
    MOCK SERVICE - TAILWINDCSS DESIGN SYSTEM
    ============================================ */
 
+/* Speed-Highlight CSS for syntax highlighting */
+@import '@speed-highlight/core/themes/atom-dark.css';
+
 /* Tailwind Directives */
 @tailwind base;
 @tailwind components;
@@ -155,6 +158,10 @@
 
   code, pre {
     font-family: var(--font-mono);
+  }
+
+  .shj-lang-js, .shj-lang-ts, .shj-lang-json, .shj-lang-python, .shj-lang-html, .shj-lang-css, .shj-lang-bash, .shj-lang-shell {
+    font-size: 13px;
   }
 }
 

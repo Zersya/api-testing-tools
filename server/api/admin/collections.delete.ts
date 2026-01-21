@@ -1,3 +1,7 @@
+import { db } from '../../db';
+import { collections, folders, savedRequests } from '../../db/schema';
+import { eq, inArray } from 'drizzle-orm';
+
 interface Collection {
     id: string;
     name: string;
@@ -50,8 +54,28 @@ export default defineEventHandler(async (event) => {
         }
     }
 
-    // Delete the collection
+    // Delete all folders in this collection from database (cascade will delete requests)
+    const collectionFolders = db
+        .select()
+        .from(folders)
+        .where(eq(folders.collectionId, id))
+        .all();
+
+    if (collectionFolders.length > 0) {
+        // Delete all saved requests in these folders (cascade should handle this, but let's be explicit)
+        const folderIds = collectionFolders.map(f => f.id);
+        await db.delete(savedRequests)
+            .where(inArray(savedRequests.folderId, folderIds))
+            .run();
+
+        // Delete all folders (child folders will be deleted by cascade)
+        await db.delete(folders)
+            .where(eq(folders.collectionId, id))
+            .run();
+    }
+
+    // Delete the collection from storage
     await storage.removeItem(id);
 
-    return { success: true, message: `Collection deleted. ${mockKeys.length > 0 ? 'Associated mocks moved to root collection.' : ''}` };
+    return { success: true, message: `Collection deleted. ${mockKeys.length > 0 ? 'Associated mocks moved to root collection.' : ''}${collectionFolders.length > 0 ? ` ${collectionFolders.length} folder(s) and their requests deleted.` : ''}` };
 });

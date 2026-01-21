@@ -3,6 +3,13 @@ definePageMeta({
   layout: 'empty'
 });
 
+interface KeycloakConfig {
+  enabled: boolean;
+  realm: string;
+  clientId: string;
+  authUrl: string;
+}
+
 const form = ref({
   email: '',
   password: ''
@@ -10,17 +17,38 @@ const form = ref({
 
 const isLoading = ref(false);
 const errorMessage = ref('');
+const keycloakConfig = ref<KeycloakConfig | null>(null);
+
+const fetchKeycloakConfig = async () => {
+  try {
+    const settings = await $fetch<any>('/api/admin/settings');
+    if (settings.keycloak?.enabled) {
+      keycloakConfig.value = {
+        enabled: true,
+        realm: settings.keycloak.realm || '',
+        clientId: settings.keycloak.clientId || '',
+        authUrl: settings.keycloak.authUrl || ''
+      };
+    }
+  } catch (e) {
+    keycloakConfig.value = null;
+  }
+};
+
+const loginWithKeycloak = async () => {
+  window.location.href = '/api/auth/keycloak/login';
+};
 
 const login = async () => {
   isLoading.value = true;
   errorMessage.value = '';
-  
+
   try {
     await $fetch('/api/auth/login', {
       method: 'POST',
       body: form.value
     });
-    await navigateTo('/admin', { external: true }); 
+    await navigateTo('/admin', { external: true });
   } catch (e: any) {
     console.error('Login error:', e);
     errorMessage.value = e.response?._data?.statusMessage || e.message || 'Login failed';
@@ -28,6 +56,10 @@ const login = async () => {
     isLoading.value = false;
   }
 };
+
+onMounted(() => {
+  fetchKeycloakConfig();
+});
 </script>
 
 <template>
@@ -61,6 +93,29 @@ const login = async () => {
             <line x1="12" y1="16" x2="12.01" y2="16"></line>
           </svg>
           <span>{{ errorMessage }}</span>
+        </div>
+
+        <!-- Keycloak SSO Button -->
+        <div v-if="keycloakConfig?.enabled" class="mb-4">
+          <button
+            type="button"
+            @click="loginWithKeycloak"
+            class="w-full flex items-center justify-center gap-3 py-3.5 px-4 bg-[#005786] hover:bg-[#00456a] text-white rounded-[10px] text-[15px] font-semibold cursor-pointer transition-all duration-normal hover:not-disabled:-translate-y-px hover:not-disabled:shadow-[0_6px_20px_rgba(0,87,134,0.35)] active:not-disabled:translate-y-0 disabled:opacity-70 disabled:cursor-not-allowed"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M20.5 10.5C20.5 15.6 16.4 19.7 11.3 19.7C6.2 19.7 2.1 15.6 2.1 10.5C2.1 5.4 6.2 1.3 11.3 1.3C16.4 1.3 20.5 5.4 20.5 10.5Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M12 6.5V10.5L15 11.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M9 13C9 13 10.5 15 12 15C13.5 15 15 13 15 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>Sign in with Keycloak</span>
+          </button>
+        </div>
+
+        <!-- Divider -->
+        <div v-if="keycloakConfig?.enabled" class="flex items-center gap-4 my-4">
+          <div class="flex-1 h-px bg-border-default"></div>
+          <span class="text-xs text-text-muted uppercase tracking-wide">or continue with email</span>
+          <div class="flex-1 h-px bg-border-default"></div>
         </div>
 
         <!-- Form -->

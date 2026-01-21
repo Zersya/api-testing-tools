@@ -1,0 +1,115 @@
+import { db } from '../../../../db';
+import { workspaces, projects } from '../../../../db/schema';
+import { eq } from 'drizzle-orm';
+
+interface CreateProjectBody {
+  name: string;
+  baseUrl?: string;
+}
+
+export default defineEventHandler(async (event) => {
+  const workspaceId = getRouterParam(event, 'id');
+
+  if (!workspaceId) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Workspace ID is required'
+    });
+  }
+
+  const body = await readBody<CreateProjectBody>(event);
+
+  // Validate required fields
+  if (!body.name || typeof body.name !== 'string') {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Project name is required'
+    });
+  }
+
+  const trimmedName = body.name.trim();
+
+  if (trimmedName.length === 0) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Project name cannot be empty'
+    });
+  }
+
+  if (trimmedName.length > 100) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Project name cannot exceed 100 characters'
+    });
+  }
+
+  // Validate baseUrl if provided
+  let baseUrl: string | null = null;
+  if (body.baseUrl !== undefined && body.baseUrl !== null) {
+    if (typeof body.baseUrl !== 'string') {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Base URL must be a string'
+      });
+    }
+    baseUrl = body.baseUrl.trim() || null;
+  }
+
+  try {
+    // Verify workspace exists
+    const workspace = db
+      .select()
+      .from(workspaces)
+      .where(eq(workspaces.id, workspaceId))
+      .get();
+
+    if (!workspace) {
+      throw createError({
+        statusCode: 404,
+        statusMessage: 'Workspace not found'
+      });
+    }
+
+    // Check for duplicate project names within the workspace (case-insensitive)
+    const existingProjects = db
+      .select()
+      .from(projects)
+      .where(eq(projects.workspaceId, workspaceId))
+      .all();
+
+    const duplicate = existingProjects.find(
+      p => p.name.toLowerCase() === trimmedName.toLowerCase()
+    );
+
+    if (duplicate) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: `Project "${trimmedName}" already exists in this workspace`
+      });
+    }
+
+    // Create the project
+    const newProject = db
+      .insert(projects)
+      .values({
+        workspaceId,
+        name: trimmedName,
+        baseUrl
+      })
+      .returning()
+      .get();
+
+    return newProject;
+  } catch (error: any) {
+    // Re-throw if it's already an H3 error
+    if (error.statusCode) {
+      throw error;
+    }
+
+    console.error('Error creating project:', error);
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Failed to create project'
+    });
+  }
+});
