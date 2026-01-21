@@ -3,10 +3,10 @@
   "sessionId": "3ea6938a-5c6d-4fb8-8909-5878247a7ed8",
   "status": "running",
   "startedAt": "2026-01-21T00:26:24.313Z",
-  "updatedAt": "2026-01-21T00:26:27.669Z",
-  "currentIteration": 0,
+  "updatedAt": "2026-01-21T00:33:04.730Z",
+  "currentIteration": 1,
   "maxIterations": 10,
-  "tasksCompleted": 0,
+  "tasksCompleted": 1,
   "isPaused": false,
   "agentPlugin": "opencode",
   "model": "minimax/MiniMax-M2.1",
@@ -258,8 +258,8 @@
       {
         "id": "US-041",
         "title": "Response comparison UI",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-042",
@@ -305,11 +305,22 @@
       }
     ]
   },
-  "iterations": [],
+  "iterations": [
+    {
+      "iteration": 1,
+      "status": "completed",
+      "taskId": "US-041",
+      "taskTitle": "Response comparison UI",
+      "taskCompleted": true,
+      "durationMs": 396006,
+      "startedAt": "2026-01-21T00:26:27.644Z",
+      "endedAt": "2026-01-21T00:33:03.650Z"
+    }
+  ],
   "skippedTaskIds": [],
   "cwd": "/Users/zeinersyad/Playground/mock-service",
   "activeTaskIds": [
-    "US-041"
+    "US-042"
   ],
   "subagentPanelVisible": false
 }

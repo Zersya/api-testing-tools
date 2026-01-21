@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ParsedOpenAPISpec, OpenAPIEndpoint, OpenAPISchema } from '~/server/utils/openapi-parser';
+import { ParsedOpenAPISpec, OpenAPIEndpoint, OpenAPISchema } from '~/types/openapi';
 import MethodBadge from '~/components/MethodBadge.vue';
 
 interface Props {
@@ -372,10 +372,6 @@ Content-Type: application/json${authHeader}`;
   }
 });
 
-const copyCode = () => {
-  navigator.clipboard.writeText(getCodeExample.value);
-};
-
 watch([activeLanguage, selectedEndpoint], () => {
   nextTick(() => {
     applySyntaxHighlighting();
@@ -514,8 +510,10 @@ onMounted(() => {
                                 stroke-width="2" 
                                 stroke-linecap="round" 
                                 stroke-linejoin="round"
-                                :class="{ 'rotate-90': isTagExpanded(tag) }"
-                                class="transition-transform duration-fast"
+                                :class="[
+                                  'transition-transform duration-fast',
+                                  { 'rotate-90': isTagExpanded(tag) }
+                                ]"
                               >
                                 <polyline points="9 18 15 12 9 6"></polyline>
                               </svg>
@@ -743,17 +741,6 @@ onMounted(() => {
                     </div>
                   </div>
                   
-                  <div v-else class="flex-1 flex items-center justify-center text-text-muted">
-                    <div class="text-center">
-                      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" class="opacity-30 mx-auto mb-3">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <polygon points="10 8 16 12 10 16 10 8"></polygon>
-                      </svg>
-                      <p class="text-sm">Select an endpoint from the sidebar to view documentation</p>
-                    </div>
-                  </div>
-                </div>
-                  
                   <div v-else-if="selectedSchema" class="flex-1 flex overflow-y-auto">
                     <div class="flex-1 p-5 overflow-y-auto">
                       <div class="mb-4 pb-3 border-b border-border-default">
@@ -815,8 +802,10 @@ onMounted(() => {
                                         stroke-width="2" 
                                         stroke-linecap="round" 
                                         stroke-linejoin="round"
-                                        :class="{ 'rotate-90': isPropertyExpanded(`${selectedSchema}.${propName}`) }"
-                                        class="transition-transform duration-fast text-text-secondary"
+                                        :class="[
+                                          'transition-transform duration-fast text-text-secondary',
+                                          { 'rotate-90': isPropertyExpanded(`${selectedSchema}.${propName}`) }
+                                        ]"
                                       >
                                         <polyline points="9 18 15 12 9 6"></polyline>
                                       </svg>
@@ -868,8 +857,10 @@ onMounted(() => {
                                               stroke-width="2" 
                                               stroke-linecap="round" 
                                               stroke-linejoin="round"
-                                              :class="{ 'rotate-90': isPropertyExpanded(`${selectedSchema}.${propName}.${nestedName}`) }"
-                                              class="transition-transform duration-fast text-text-muted"
+                                              :class="[
+                                                'transition-transform duration-fast text-text-muted',
+                                                { 'rotate-90': isPropertyExpanded(`${selectedSchema}.${propName}.${nestedName}`) }
+                                              ]"
                                             >
                                               <polyline points="9 18 15 12 9 6"></polyline>
                                             </svg>

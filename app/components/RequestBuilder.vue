@@ -183,7 +183,7 @@ const rawBody = ref('');
 const rawContentType = ref('text/plain');
 const binaryFile = ref<File | null>(null);
 
-type AuthType = 'none' | 'basic' | 'bearer' | 'api-key';
+type AuthType = 'none' | 'basic' | 'bearer' | 'api-key' | 'oauth2';
 const authType = ref<AuthType>('none');
 const apiKey = ref({
   key: '',
@@ -195,6 +195,22 @@ const basicAuth = ref({
   username: '',
   password: ''
 });
+const oauth2 = ref({
+  authUrl: '',
+  tokenUrl: '',
+  clientId: '',
+  clientSecret: '',
+  scopes: '',
+  callbackUrl: '',
+  accessToken: '',
+  refreshToken: '',
+  expiresAt: null as number | null,
+  tokenType: 'Bearer',
+  grantType: 'authorization_code' as 'authorization_code' | 'client_credentials',
+  PKCE: false
+});
+const isGettingToken = ref(false);
+const tokenError = ref('');
 const inheritFromParent = ref(false);
 
 const parseUrlQuery = (url: string) => {
@@ -453,6 +469,8 @@ const buildAuthHeaders = (): Record<string, string> => {
   } else if (authType.value === 'basic' && basicAuth.value.username) {
     const credentials = btoa(`${basicAuth.value.username}:${basicAuth.value.password}`);
     authHeaders['Authorization'] = `Basic ${credentials}`;
+  } else if (authType.value === 'oauth2' && oauth2.value.accessToken) {
+    authHeaders['Authorization'] = `${oauth2.value.tokenType} ${oauth2.value.accessToken}`;
   }
 
   return authHeaders;
@@ -486,6 +504,325 @@ const parseAuthFromRequest = (authConfig: any) => {
   } else if (type === 'basic' && authConfig.credentials) {
     basicAuth.value.username = authConfig.credentials.username || '';
     basicAuth.value.password = authConfig.credentials.password || '';
+  } else if (type === 'oauth2' && authConfig.credentials) {
+    oauth2.value.authUrl = authConfig.credentials.authUrl || '';
+    oauth2.value.tokenUrl = authConfig.credentials.tokenUrl || '';
+    oauth2.value.clientId = authConfig.credentials.clientId || '';
+    oauth2.value.clientSecret = authConfig.credentials.clientSecret || '';
+    oauth2.value.scopes = authConfig.credentials.scopes || '';
+    oauth2.value.callbackUrl = authConfig.credentials.callbackUrl || '';
+    oauth2.value.accessToken = authConfig.credentials.accessToken || '';
+    oauth2.value.refreshToken = authConfig.credentials.refreshToken || '';
+    oauth2.value.expiresAt = authConfig.credentials.expiresAt || null;
+    oauth2.value.tokenType = authConfig.credentials.tokenType || 'Bearer';
+    oauth2.value.grantType = authConfig.credentials.grantType || 'authorization_code';
+    oauth2.value.PKCE = authConfig.credentials.PKCE || false;
+  }
+};
+
+const isTokenExpired = computed(() => {
+  if (!oauth2.value.expiresAt) return false;
+  return Date.now() > oauth2.value.expiresAt * 1000;
+});
+
+const getTokenTimeRemaining = computed(() => {
+  if (!oauth2.value.expiresAt) return null;
+  const remaining = oauth2.value.expiresAt * 1000 - Date.now();
+  if (remaining <= 0) return 'Expired';
+  const minutes = Math.floor(remaining / 60000);
+  const seconds = Math.floor((remaining % 60000) / 1000);
+  return `${minutes}m ${seconds}s`;
+});
+
+const initiateOAuthFlow = async () => {
+  if (!oauth2.value.authUrl || !oauth2.value.clientId) {
+    tokenError.value = 'Please configure Auth URL and Client ID';
+    return;
+  }
+
+  isGettingToken.value = true;
+  tokenError.value = '';
+
+  try {
+    const callbackUrl = oauth2.value.callbackUrl || `${window.location.origin}/api/oauth/callback`;
+    const state = crypto.randomUUID();
+    const scope = oauth2.value.scopes || 'openid profile email';
+
+    let authUrl = `${oauth2.value.authUrl}?response_type=code&client_id=${encodeURIComponent(oauth2.value.clientId)}&redirect_uri=${encodeURIComponent(callbackUrl)}&scope=${encodeURIComponent(scope)}&state=${state}`;
+
+    if (oauth2.value.PKCE) {
+      const codeVerifier = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '').substring(0, 32);
+      const codeChallenge = await generateCodeChallenge(codeVerifier);
+      sessionStorage.setItem('oauth2_code_verifier', codeVerifier);
+      authUrl += `&code_challenge=${codeChallenge}&code_challenge_method=S256`;
+    }
+
+    sessionStorage.setItem('oauth2_state', state);
+    sessionStorage.setItem('oauth2_callback_params', JSON.stringify({
+      authUrl: oauth2.value.authUrl,
+      tokenUrl: oauth2.value.tokenUrl,
+      clientId: oauth2.value.clientId,
+      clientSecret: oauth2.value.clientSecret,
+      callbackUrl,
+      scopes: scope,
+      tokenType: oauth2.value.tokenType,
+      grantType: oauth2.value.grantType,
+      PKCE: oauth2.value.PKCE
+    }));
+
+    const width = 600;
+    const height = 700;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+
+    const popup = window.open(
+      authUrl,
+      'oauth2authorize',
+      `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`
+    );
+
+    if (!popup) {
+      tokenError.value = 'Popup was blocked. Please allow popups for this site.';
+      isGettingToken.value = false;
+      return;
+    }
+
+    const checkClosed = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(checkClosed);
+        isGettingToken.value = false;
+        checkForOAuthCallback();
+      }
+    }, 500);
+
+  } catch (error: any) {
+    tokenError.value = error.message || 'Failed to initiate OAuth flow';
+    isGettingToken.value = false;
+  }
+};
+
+const generateCodeChallenge = async (codeVerifier: string): Promise<string> => {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(codeVerifier);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return btoa(String.fromCharCode(...new Uint8Array(digest)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
+};
+
+const checkForOAuthCallback = async () => {
+  const hash = window.location.hash;
+  const search = window.location.search;
+
+  if (hash.includes('code=') || search.includes('code=')) {
+    await handleOAuthCallback();
+  } else if (hash.includes('error=') || search.includes('error=')) {
+    const urlParams = new URLSearchParams(hash.substring(1) || search.substring(1));
+    tokenError.value = urlParams.get('error_description') || urlParams.get('error') || 'OAuth authorization failed';
+  }
+};
+
+const handleOAuthCallback = async () => {
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code');
+    const state = urlParams.get('state');
+    const storedState = sessionStorage.getItem('oauth2_state');
+    const storedParams = sessionStorage.getItem('oauth2_callback_params');
+
+    if (!code) {
+      tokenError.value = 'No authorization code received';
+      return;
+    }
+
+    if (state !== storedState) {
+      tokenError.value = 'State mismatch - potential CSRF attack';
+      return;
+    }
+
+    if (!storedParams) {
+      tokenError.value = 'OAuth session expired. Please try again.';
+      return;
+    }
+
+    const callbackParams = JSON.parse(storedParams);
+    let tokenUrl = callbackParams.tokenUrl;
+
+    if (!tokenUrl) {
+      tokenError.value = 'Token URL not configured';
+      return;
+    }
+
+    const body: Record<string, string> = {
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: callbackParams.callbackUrl,
+      client_id: callbackParams.clientId
+    };
+
+    if (callbackParams.clientSecret) {
+      body.client_secret = callbackParams.clientSecret;
+    }
+
+    if (callbackParams.PKCE) {
+      const codeVerifier = sessionStorage.getItem('oauth2_code_verifier');
+      if (codeVerifier) {
+        body.code_verifier = codeVerifier;
+      }
+    }
+
+    const response = await $fetch<{
+      access_token: string;
+      refresh_token?: string;
+      expires_in: number;
+      token_type?: string;
+      error?: string;
+      error_description?: string;
+    }>(tokenUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+      },
+      body: new URLSearchParams(body).toString()
+    });
+
+    if (response.error) {
+      tokenError.value = response.error_description || response.error;
+      return;
+    }
+
+    oauth2.value.accessToken = response.access_token;
+    oauth2.value.refreshToken = response.refresh_token || '';
+    oauth2.value.tokenType = response.token_type || 'Bearer';
+    oauth2.value.expiresAt = response.expires_in ? Math.floor(Date.now() / 1000) + response.expires_in : null;
+
+    tokenError.value = '';
+
+    clearOAuthSession();
+    window.history.replaceState({}, document.title, window.location.pathname);
+
+  } catch (error: any) {
+    tokenError.value = error.data?.error_description || error.data?.error || error.message || 'Token exchange failed';
+  }
+};
+
+const refreshAccessToken = async () => {
+  if (!oauth2.value.refreshToken || !oauth2.value.tokenUrl) {
+    tokenError.value = 'No refresh token or token URL configured';
+    return;
+  }
+
+  isGettingToken.value = true;
+  tokenError.value = '';
+
+  try {
+    const body: Record<string, string> = {
+      grant_type: 'refresh_token',
+      refresh_token: oauth2.value.refreshToken,
+      client_id: oauth2.value.clientId
+    };
+
+    if (oauth2.value.clientSecret) {
+      body.client_secret = oauth2.value.clientSecret;
+    }
+
+    const response = await $fetch<{
+      access_token: string;
+      refresh_token?: string;
+      expires_in: number;
+      token_type?: string;
+      error?: string;
+      error_description?: string;
+    }>(oauth2.value.tokenUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+      },
+      body: new URLSearchParams(body).toString()
+    });
+
+    if (response.error) {
+      tokenError.value = response.error_description || response.error;
+      return;
+    }
+
+    oauth2.value.accessToken = response.access_token;
+    oauth2.value.refreshToken = response.refresh_token || oauth2.value.refreshToken;
+    oauth2.value.tokenType = response.token_type || 'Bearer';
+    oauth2.value.expiresAt = response.expires_in ? Math.floor(Date.now() / 1000) + response.expires_in : null;
+
+    tokenError.value = '';
+
+  } catch (error: any) {
+    tokenError.value = error.data?.error_description || error.data?.error || error.message || 'Token refresh failed';
+  } finally {
+    isGettingToken.value = false;
+  }
+};
+
+const clearOAuthSession = () => {
+  sessionStorage.removeItem('oauth2_state');
+  sessionStorage.removeItem('oauth2_callback_params');
+  sessionStorage.removeItem('oauth2_code_verifier');
+};
+
+const clearTokens = () => {
+  oauth2.value.accessToken = '';
+  oauth2.value.refreshToken = '';
+  oauth2.value.expiresAt = null;
+  tokenError.value = '';
+};
+
+const autoRefreshToken = async () => {
+  if (oauth2.value.refreshToken && oauth2.value.expiresAt) {
+    const timeUntilExpiry = oauth2.value.expiresAt * 1000 - Date.now();
+    const refreshThreshold = 5 * 60 * 1000;
+
+    if (timeUntilExpiry < refreshThreshold && timeUntilExpiry > 0) {
+      await refreshAccessToken();
+    }
+  }
+};
+
+const storeTokensInEnvironment = async () => {
+  if (!environmentId.value || !oauth2.value.accessToken) return;
+
+  const tokenVariableName = `OAUTH_ACCESS_TOKEN`;
+  const refreshVariableName = `OAUTH_REFRESH_TOKEN`;
+  const expiresVariableName = `OAUTH_TOKEN_EXPIRES_AT`;
+
+  try {
+    await $fetch('/api/oauth/store-tokens', {
+      method: 'POST',
+      body: {
+        environmentId: environmentId.value,
+        accessTokenKey: tokenVariableName,
+        refreshTokenKey: refreshVariableName,
+        expiresAtKey: expiresVariableName,
+        accessToken: oauth2.value.accessToken,
+        refreshToken: oauth2.value.refreshToken,
+        expiresAt: oauth2.value.expiresAt
+      }
+    });
+
+    await fetchEnvironmentVariables();
+  } catch (error: any) {
+    console.error('Failed to store tokens:', error);
+    tokenError.value = 'Failed to store tokens in environment';
+  }
+};
+
+const fetchEnvironmentVariables = async () => {
+  if (environmentId.value) {
+    try {
+      const variables = await $fetch<Variable[]>(`/api/admin/environments/${environmentId.value}/variables`);
+      environmentVariables.value = variables;
+    } catch (error) {
+      console.error('Failed to fetch environment variables:', error);
+    }
   }
 };
 
@@ -813,6 +1150,19 @@ const openSaveDialog = () => {
         : authType.value === 'basic' ? {
           username: basicAuth.value.username,
           password: basicAuth.value.password
+        } : authType.value === 'oauth2' ? {
+          authUrl: oauth2.value.authUrl,
+          tokenUrl: oauth2.value.tokenUrl,
+          clientId: oauth2.value.clientId,
+          clientSecret: oauth2.value.clientSecret,
+          scopes: oauth2.value.scopes,
+          callbackUrl: oauth2.value.callbackUrl,
+          accessToken: oauth2.value.accessToken,
+          refreshToken: oauth2.value.refreshToken,
+          expiresAt: oauth2.value.expiresAt,
+          tokenType: oauth2.value.tokenType,
+          grantType: oauth2.value.grantType,
+          PKCE: oauth2.value.PKCE
         } : undefined
     } || null,
     order: props.request.order,
@@ -840,6 +1190,19 @@ const openSaveAsDialog = () => {
         : authType.value === 'basic' ? {
           username: basicAuth.value.username,
           password: basicAuth.value.password
+        } : authType.value === 'oauth2' ? {
+          authUrl: oauth2.value.authUrl,
+          tokenUrl: oauth2.value.tokenUrl,
+          clientId: oauth2.value.clientId,
+          clientSecret: oauth2.value.clientSecret,
+          scopes: oauth2.value.scopes,
+          callbackUrl: oauth2.value.callbackUrl,
+          accessToken: oauth2.value.accessToken,
+          refreshToken: oauth2.value.refreshToken,
+          expiresAt: oauth2.value.expiresAt,
+          tokenType: oauth2.value.tokenType,
+          grantType: oauth2.value.grantType,
+          PKCE: oauth2.value.PKCE
         } : undefined
     } || null,
     order: props.request.order,
@@ -875,10 +1238,15 @@ watch(hasUnsavedChanges, (newValue) => {
 onMounted(() => {
   headers.value = parseHeadersFromRequest(props.request.headers);
   parseAuthFromRequest(props.request.auth);
+  checkForOAuthCallback();
 });
 
 const sendRequest = async () => {
   if (!form.value.url) return;
+
+  if (authType.value === 'oauth2' && oauth2.value.accessToken) {
+    await autoRefreshToken();
+  }
 
   isLoading.value = true;
   response.value = null;
@@ -1406,6 +1774,7 @@ onUnmounted(() => {
                   <option value="basic">Basic Auth</option>
                   <option value="bearer">Bearer Token</option>
                   <option value="api-key">API Key</option>
+                  <option value="oauth2">OAuth 2.0</option>
                 </select>
               </div>
 
@@ -1505,6 +1874,266 @@ onUnmounted(() => {
                 </div>
                 <div class="text-xs text-text-muted">
                   This will be sent as an Authorization header in the format: <span class="font-mono text-text-secondary">Basic &lt;base64(username:password)&gt;</span>
+                </div>
+              </div>
+
+              <div v-if="authType === 'oauth2'" class="space-y-4">
+                <div class="flex items-center justify-between">
+                  <h4 class="text-xs font-semibold text-text-primary">OAuth 2.0 Configuration</h4>
+                  <div class="flex items-center gap-2">
+                    <button
+                      @click="oauth2.grantType = oauth2.grantType === 'authorization_code' ? 'client_credentials' : 'authorization_code'"
+                      class="text-xs text-accent-blue hover:text-accent-blue/80"
+                    >
+                      Switch to {{ oauth2.grantType === 'authorization_code' ? 'Client Credentials' : 'Authorization Code' }}
+                    </button>
+                  </div>
+                </div>
+
+                <div class="space-y-3 p-3 bg-bg-tertiary rounded border border-border-default">
+                  <div class="space-y-2">
+                    <label class="text-xs font-medium text-text-secondary">Grant Type</label>
+                    <select
+                      v-model="oauth2.grantType"
+                      class="w-full py-2 px-3 bg-bg-input border border-border-default rounded text-text-primary text-sm focus:outline-none focus:border-accent-blue"
+                    >
+                      <option value="authorization_code">Authorization Code</option>
+                      <option value="client_credentials">Client Credentials</option>
+                    </select>
+                  </div>
+
+                  <div class="space-y-2">
+                    <label class="text-xs font-medium text-text-secondary">Auth URL</label>
+                    <VariableInput
+                      v-model="oauth2.authUrl"
+                      :variables="environmentVariables"
+                      placeholder="https://example.com/oauth/authorize"
+                      class="w-full"
+                    />
+                  </div>
+
+                  <div class="space-y-2">
+                    <label class="text-xs font-medium text-text-secondary">Access Token URL</label>
+                    <VariableInput
+                      v-model="oauth2.tokenUrl"
+                      :variables="environmentVariables"
+                      placeholder="https://example.com/oauth/token"
+                      class="w-full"
+                    />
+                  </div>
+
+                  <div class="grid grid-cols-2 gap-3">
+                    <div class="space-y-2">
+                      <label class="text-xs font-medium text-text-secondary">Client ID</label>
+                      <VariableInput
+                        v-model="oauth2.clientId"
+                        :variables="environmentVariables"
+                        placeholder="Enter client ID"
+                        class="w-full"
+                      />
+                    </div>
+                    <div class="space-y-2">
+                      <label class="text-xs font-medium text-text-secondary">Client Secret</label>
+                      <VariableInput
+                        v-model="oauth2.clientSecret"
+                        :variables="environmentVariables"
+                        type="password"
+                        placeholder="Enter client secret"
+                        class="w-full"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="space-y-2">
+                    <label class="text-xs font-medium text-text-secondary">Scopes</label>
+                    <VariableInput
+                      v-model="oauth2.scopes"
+                      :variables="environmentVariables"
+                      placeholder="openid profile email"
+                      class="w-full"
+                    />
+                    <p class="text-[10px] text-text-muted">Space-separated list of scopes</p>
+                  </div>
+
+                  <div class="space-y-2">
+                    <label class="text-xs font-medium text-text-secondary">Callback URL</label>
+                    <VariableInput
+                      v-model="oauth2.callbackUrl"
+                      :variables="environmentVariables"
+                      :placeholder="`${window.location.origin}/api/oauth/callback`"
+                      class="w-full"
+                    />
+                    <p class="text-[10px] text-text-muted">Must match the callback URL configured in your OAuth provider</p>
+                  </div>
+
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      v-model="oauth2.PKCE"
+                      class="w-4 h-4 rounded border-border-default bg-bg-input text-accent-blue focus:ring-accent-blue focus:ring-offset-bg-secondary cursor-pointer"
+                    />
+                    <span class="text-xs text-text-secondary">Enable PKCE</span>
+                  </label>
+                </div>
+
+                <div v-if="oauth2.grantType === 'authorization_code'" class="space-y-3">
+                  <button
+                    @click="initiateOAuthFlow"
+                    :disabled="isGettingToken || !oauth2.authUrl || !oauth2.tokenUrl || !oauth2.clientId"
+                    class="w-full py-2.5 px-4 bg-accent-blue text-white rounded font-medium text-sm transition-all duration-fast hover:bg-[#1976D2] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    <svg v-if="isGettingToken" class="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+                    </svg>
+                    <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+                      <polyline points="10 17 15 12 10 7"></polyline>
+                      <line x1="15" y1="12" x2="3" y2="12"></line>
+                    </svg>
+                    {{ isGettingToken ? 'Authenticating...' : 'Get New Access Token' }}
+                  </button>
+
+                  <div v-if="tokenError" class="p-3 bg-accent-red/10 border border-accent-red/30 rounded text-xs text-accent-red">
+                    {{ tokenError }}
+                  </div>
+
+                  <div v-if="oauth2.accessToken" class="space-y-3 p-3 bg-bg-tertiary rounded border border-border-default">
+                    <div class="flex items-center justify-between">
+                      <span class="text-xs font-medium text-text-primary">Token Status</span>
+                      <div class="flex items-center gap-2">
+                        <span
+                          class="px-2 py-0.5 rounded text-[10px] font-semibold"
+                          :class="isTokenExpired ? 'bg-accent-red/15 text-accent-red' : 'bg-accent-green/15 text-accent-green'"
+                        >
+                          {{ isTokenExpired ? 'Expired' : 'Active' }}
+                        </span>
+                        <span v-if="getTokenTimeRemaining" class="text-xs text-text-muted">{{ getTokenTimeRemaining }}</span>
+                      </div>
+                    </div>
+
+                    <div class="space-y-2">
+                      <label class="text-xs font-medium text-text-secondary">Access Token</label>
+                      <VariableInput
+                        v-model="oauth2.accessToken"
+                        :variables="environmentVariables"
+                        type="password"
+                        placeholder="Access token"
+                        class="w-full"
+                      />
+                    </div>
+
+                    <div v-if="oauth2.refreshToken" class="space-y-2">
+                      <label class="text-xs font-medium text-text-secondary">Refresh Token</label>
+                      <VariableInput
+                        v-model="oauth2.refreshToken"
+                        :variables="environmentVariables"
+                        type="password"
+                        placeholder="Refresh token"
+                        class="w-full"
+                      />
+                    </div>
+
+                    <div class="flex gap-2">
+                      <button
+                        @click="refreshAccessToken"
+                        :disabled="isGettingToken || !oauth2.refreshToken || !oauth2.tokenUrl"
+                        class="flex-1 py-2 px-3 bg-bg-input border border-border-default rounded text-xs font-medium text-text-secondary hover:border-accent-blue transition-colors duration-fast disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Refresh Token
+                      </button>
+                      <button
+                        @click="storeTokensInEnvironment"
+                        :disabled="!environmentId"
+                        class="flex-1 py-2 px-3 bg-bg-input border border-border-default rounded text-xs font-medium text-text-secondary hover:border-accent-green hover:text-accent-green transition-colors duration-fast disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Store tokens in environment variables"
+                      >
+                        Store in Env
+                      </button>
+                      <button
+                        @click="clearTokens"
+                        class="flex-1 py-2 px-3 bg-bg-input border border-border-default rounded text-xs font-medium text-text-secondary hover:text-accent-red hover:border-accent-red transition-colors duration-fast"
+                      >
+                        Clear Tokens
+                      </button>
+                    </div>
+                  </div>
+
+                  <div v-if="!oauth2.accessToken" class="p-4 text-center text-text-muted text-sm">
+                    <p class="mb-2">Click "Get New Access Token" to initiate the OAuth 2.0 authorization flow</p>
+                    <p class="text-xs">A popup window will open for authentication with the OAuth provider</p>
+                  </div>
+                </div>
+
+                <div v-else-if="oauth2.grantType === 'client_credentials'" class="space-y-3">
+                  <button
+                    @click="refreshAccessToken"
+                    :disabled="isGettingToken || !oauth2.tokenUrl || !oauth2.clientId"
+                    class="w-full py-2.5 px-4 bg-accent-blue text-white rounded font-medium text-sm transition-all duration-fast hover:bg-[#1976D2] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    <svg v-if="isGettingToken" class="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+                    </svg>
+                    <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+                      <polyline points="10 17 15 12 10 7"></polyline>
+                      <line x1="15" y1="12" x2="3" y2="12"></line>
+                    </svg>
+                    {{ isGettingToken ? 'Getting Token...' : 'Get Access Token' }}
+                  </button>
+
+                  <div v-if="tokenError" class="p-3 bg-accent-red/10 border border-accent-red/30 rounded text-xs text-accent-red">
+                    {{ tokenError }}
+                  </div>
+
+                  <div v-if="oauth2.accessToken" class="space-y-3 p-3 bg-bg-tertiary rounded border border-border-default">
+                    <div class="flex items-center justify-between">
+                      <span class="text-xs font-medium text-text-primary">Token Status</span>
+                      <div class="flex items-center gap-2">
+                        <span
+                          class="px-2 py-0.5 rounded text-[10px] font-semibold"
+                          :class="isTokenExpired ? 'bg-accent-red/15 text-accent-red' : 'bg-accent-green/15 text-accent-green'"
+                        >
+                          {{ isTokenExpired ? 'Expired' : 'Active' }}
+                        </span>
+                        <span v-if="getTokenTimeRemaining" class="text-xs text-text-muted">{{ getTokenTimeRemaining }}</span>
+                      </div>
+                    </div>
+
+                    <div class="space-y-2">
+                      <label class="text-xs font-medium text-text-secondary">Access Token</label>
+                      <VariableInput
+                        v-model="oauth2.accessToken"
+                        :variables="environmentVariables"
+                        type="password"
+                        placeholder="Access token"
+                        class="w-full"
+                      />
+                    </div>
+
+                    <div class="flex gap-2">
+                      <button
+                        @click="refreshAccessToken"
+                        :disabled="isGettingToken || !oauth2.tokenUrl || !oauth2.clientId"
+                        class="flex-1 py-2 px-3 bg-bg-input border border-border-default rounded text-xs font-medium text-text-secondary hover:border-accent-blue transition-colors duration-fast disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Refresh Token
+                      </button>
+                      <button
+                        @click="storeTokensInEnvironment"
+                        :disabled="!environmentId"
+                        class="flex-1 py-2 px-3 bg-bg-input border border-border-default rounded text-xs font-medium text-text-secondary hover:border-accent-green hover:text-accent-green transition-colors duration-fast disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Store token in environment variables"
+                      >
+                        Store in Env
+                      </button>
+                      <button
+                        @click="clearTokens"
+                        class="flex-1 py-2 px-3 bg-bg-input border border-border-default rounded text-xs font-medium text-text-secondary hover:text-accent-red hover:border-accent-red transition-colors duration-fast"
+                      >
+                        Clear Token
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
 

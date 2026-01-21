@@ -3,7 +3,7 @@
    ============================================ */
 
 /* Speed-Highlight CSS for syntax highlighting */
-@import '@speed-highlight/core/dist/themes/default.css';
+@import '@speed-highlight/core/themes/default.css';
 
 /* Tailwind Directives */
 @tailwind base;

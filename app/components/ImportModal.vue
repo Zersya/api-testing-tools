@@ -676,7 +676,7 @@ const resetFileState = () => {
           <label>{{ activeImportType === 'openapi' ? 'Paste OpenAPI Specification' : 'Paste Postman Collection' }}</label>
           <textarea 
             v-model="pasteContent"
-            :placeholder="activeImportType === 'openapi' ? '{\"openapi\": \"3.0.0\", ...}' : '{\"info\": {\"name\": \"My API\"}, \"item\": [...]}'"
+            :placeholder="activeImportType === 'openapi' ? '{&quot;openapi&quot;: &quot;3.0.0&quot;, ...}' : '{&quot;info&quot;: {&quot;name&quot;: &quot;My API&quot;}, &quot;item&quot;: [...]}'"
             class="w-full h-48 font-mono text-xs"
           />
           <p class="text-xs text-text-muted mt-2">

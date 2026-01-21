@@ -66,8 +66,10 @@ const handleMiddleClick = (event: MouseEvent, key: string) => {
 
 const handleDragStart = (event: DragEvent, index: number) => {
   draggedIndex.value = index;
-  event.dataTransfer?.setData('text/plain', String(index));
-  event.dataTransfer?.effectAllowed = 'move';
+  if (event.dataTransfer) {
+    event.dataTransfer.setData('text/plain', String(index));
+    event.dataTransfer.effectAllowed = 'move';
+  }
 };
 
 const handleDragOver = (event: DragEvent) => {

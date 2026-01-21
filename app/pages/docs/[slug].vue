@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ParsedOpenAPISpec } from '~/server/utils/openapi-parser';
+import { ParsedOpenAPISpec } from '~/types/openapi';
 import MethodBadge from '~/components/MethodBadge.vue';
 
 const slug = useRoute().params.slug as string;
