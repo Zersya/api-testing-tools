@@ -1,27 +1,38 @@
-# Dockerfile
-FROM node:23.4.0
+# Build stage - install dependencies and build
+FROM node:23-alpine AS builder
 
-# Install Bun
+WORKDIR /app
+
+RUN apk add --no-cache curl
+
 RUN curl -fsSL https://bun.sh/install | bash && \
-    mv /root/.bun/bin/bun /usr/local/bin/bun
+    mv /root/.bun/bin/bun /usr/local/bin/bun && \
+    rm -rf /root/.bun/install
 
-# create destination directory
-RUN mkdir -p /home/node/app
-WORKDIR /home/node/app
+COPY package.json bun.lockb ./
+RUN bun install --frozen-lockfile
 
-# update and install dependency
-# RUN apk update && apk upgrade
-# RUN apk add git
-
-# copy the app, note .dockerignore
-COPY . /home/node/app
-RUN bun install
+COPY . .
 RUN bun run build
+
+# Production stage - minimal runtime
+FROM node:23-alpine
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
+
+COPY --from=builder /app/.output /app/.output
+COPY --from=builder /app/node_modules /app/node_modules
+
+USER nodejs
 
 EXPOSE 3000
 
 ENV NUXT_HOST=0.0.0.0
-
 ENV NUXT_PORT=3000
 
-CMD [ "bun", ".output/server/index.mjs" ]
+CMD ["bun", ".output/server/index.mjs"]
