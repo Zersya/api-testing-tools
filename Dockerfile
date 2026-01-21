@@ -3,11 +3,9 @@ FROM node:23-alpine AS builder
 
 WORKDIR /app
 
-RUN apk add --no-cache curl
+RUN apk add --no-cache bash curl
 
-RUN curl -fsSL https://bun.sh/install | bash && \
-    mv /root/.bun/bin/bun /usr/local/bin/bun && \
-    rm -rf /root/.bun/install
+RUN curl -fsSL https://bun.sh/install | bash
 
 COPY package.json bun.lockb ./
 RUN bun install --frozen-lockfile
@@ -22,11 +20,14 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
+RUN apk add --no-cache bash
+
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
 
 COPY --from=builder /app/.output /app/.output
 COPY --from=builder /app/node_modules /app/node_modules
+COPY --from=builder /usr/local/bin/bun /usr/local/bin/bun
 
 USER nodejs
 
