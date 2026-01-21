@@ -6,6 +6,63 @@ import { generateMockData } from '../../../utils/schema-generator';
 import { parseYAML } from '../../../utils/yaml-parser';
 import { v4 as uuidv4 } from 'uuid';
 
+function findResponse(endpoint: any, responseType: 'success' | 'error', schemas: Record<string, any>): { status: number; response: any } {
+    const responses = endpoint.responses || {};
+    
+    if (responseType === 'success') {
+        // Find first 2xx response
+        const successKey = Object.keys(responses).find(k => k.startsWith('2'));
+        if (successKey) {
+            const responseObj = responses[successKey];
+            let responseData = {};
+            
+            if (responseObj.content && responseObj.content['application/json']) {
+                const mediaType = responseObj.content['application/json'];
+                
+                if (mediaType.example) {
+                    responseData = mediaType.example;
+                } else if (mediaType.examples) {
+                    const firstExample = Object.values(mediaType.examples)[0];
+                    responseData = firstExample.value || {};
+                } else if (mediaType.schema) {
+                    responseData = generateMockData(mediaType.schema, schemas);
+                }
+            }
+            
+            return { status: parseInt(successKey), response: responseData };
+        }
+    } else {
+        // Find first 4xx or 5xx response
+        const errorKey = Object.keys(responses).find(k => k.startsWith('4') || k.startsWith('5'));
+        if (errorKey) {
+            const responseObj = responses[errorKey];
+            let responseData = {};
+            
+            if (responseObj.content && responseObj.content['application/json']) {
+                const mediaType = responseObj.content['application/json'];
+                
+                if (mediaType.example) {
+                    responseData = mediaType.example;
+                } else if (mediaType.examples) {
+                    const firstExample = Object.values(mediaType.examples)[0];
+                    responseData = firstExample.value || {};
+                } else if (mediaType.schema) {
+                    responseData = generateMockData(mediaType.schema, schemas);
+                }
+            }
+            
+            return { status: parseInt(errorKey), response: responseData };
+        }
+    }
+    
+    // Fallback: generate a default response
+    if (responseType === 'success') {
+        return { status: 200, response: { message: 'Success' } };
+    } else {
+        return { status: 500, response: { error: 'Internal Server Error' } };
+    }
+}
+
 export default defineEventHandler(async (event) => {
     const id = getRouterParam(event, 'id');
     const body = await readBody(event);
@@ -17,6 +74,7 @@ export default defineEventHandler(async (event) => {
     const selectedEndpoints = body.endpoints as string[] || [];
     const targetCollection = body.collection || 'root';
     const delay = body.delay || 0;
+    const responseType = (body.responseType || 'success') as 'success' | 'error';
 
     if (!id) {
         throw createError({ statusCode: 400, statusMessage: 'Definition ID is required' });
@@ -63,29 +121,8 @@ export default defineEventHandler(async (event) => {
             continue;
         }
 
-        // Determine status code and response
-        let status = 200;
-        let responseData = {};
-        
-        // Find first success response
-        const successResponseKey = Object.keys(endpoint.responses || {}).find(k => k.startsWith('2'));
-        if (successResponseKey) {
-            status = parseInt(successResponseKey);
-            const responseObj = endpoint.responses![successResponseKey];
-            
-            if (responseObj.content && responseObj.content['application/json']) {
-                const mediaType = responseObj.content['application/json'];
-                
-                if (mediaType.example) {
-                    responseData = mediaType.example;
-                } else if (mediaType.examples) {
-                     const firstExample = Object.values(mediaType.examples)[0];
-                     responseData = firstExample.value || {};
-                } else if (mediaType.schema) {
-                    responseData = generateMockData(mediaType.schema, parseResult.data.schemas);
-                }
-            }
-        }
+        // Determine status code and response based on responseType
+        const { status, response: responseData } = findResponse(endpoint, responseType, parseResult.data.schemas);
 
         // Check if mock already exists in the same collection
         // To do this efficiently without reading all keys, we might just overwrite or create new ID.

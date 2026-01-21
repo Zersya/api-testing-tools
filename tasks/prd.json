@@ -719,11 +719,12 @@
         "Verify in browser - navigation renders correctly"
       ],
       "priority": 35,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-034"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-036",
@@ -739,11 +740,12 @@
         "Verify in browser - endpoint details render"
       ],
       "priority": 36,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-035"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-037",
@@ -758,11 +760,12 @@
         "Verify in browser - code samples render correctly"
       ],
       "priority": 37,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-036"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-038",
@@ -778,11 +781,12 @@
         "Verify in browser - schemas render correctly"
       ],
       "priority": 38,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-036"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-039",
@@ -797,11 +801,12 @@
         "Verify in browser - public docs URL works"
       ],
       "priority": 39,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-038"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-040",
@@ -817,12 +822,13 @@
         "Verify in browser - can generate mocks"
       ],
       "priority": 40,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-016",
         "US-034"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-041",
@@ -986,6 +992,6 @@
     }
   ],
   "metadata": {
-    "updatedAt": "2026-01-20T23:59:56.573Z"
+    "updatedAt": "2026-01-21T00:26:27.644Z"
   }
 }

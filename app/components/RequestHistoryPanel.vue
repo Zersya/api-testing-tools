@@ -57,9 +57,11 @@ const props = defineProps<Props>();
 
 const emit = defineEmits<{
   restoreRequest: [request: HttpRequest];
+  compare: [left: RequestHistoryEntry, right: RequestHistoryEntry];
 }>();
 
-const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const;
+const selectedForCompare = ref<Set<string>>(new Set());
+const showComparePanel = ref(false);
 
 const history = ref<RequestHistoryEntry[]>([]);
 const isLoading = ref(false);
@@ -136,10 +138,39 @@ const clearHistory = async () => {
     history.value = [];
     total.value = 0;
     page.value = 1;
+    selectedForCompare.value.clear();
   } catch (e: any) {
     error.value = e.message || 'Failed to clear history';
     console.error('Error clearing history:', e);
   }
+};
+
+const toggleCompareSelection = (entry: RequestHistoryEntry) => {
+  if (selectedForCompare.value.has(entry.id)) {
+    selectedForCompare.value.delete(entry.id);
+  } else {
+    if (selectedForCompare.value.size >= 2) {
+      const first = selectedForCompare.value.values().next().value;
+      selectedForCompare.value.delete(first);
+    }
+    selectedForCompare.value.add(entry.id);
+  }
+};
+
+const canCompare = computed(() => selectedForCompare.value.size === 2);
+
+const handleCompare = () => {
+  if (!canCompare.value) return;
+  
+  const entries = history.value.filter(e => selectedForCompare.value.has(e.id));
+  if (entries.length === 2) {
+    emit('compare', entries[0], entries[1]);
+    selectedForCompare.value.clear();
+  }
+};
+
+const clearSelection = () => {
+  selectedForCompare.value.clear();
 };
 
 const getMethodColor = (method: string) => {
@@ -217,16 +248,42 @@ watch(() => props.workspaceId, () => {
           {{ total }}
         </span>
       </div>
-      <button
-        @click="clearHistory"
-        class="flex items-center justify-center w-7 h-7 bg-transparent border-none rounded text-text-secondary cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-red"
-        title="Clear History"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="3 6 5 6 21 6"></polyline>
-          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-        </svg>
-      </button>
+      <div class="flex items-center gap-2">
+        <button
+          v-if="selectedForCompare.size > 0"
+          @click="clearSelection"
+          class="flex items-center justify-center w-7 h-7 bg-transparent border-none rounded text-text-secondary cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-text-primary"
+          title="Clear Selection"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+        <button
+          v-if="canCompare"
+          @click="handleCompare"
+          class="flex items-center justify-center gap-1.5 py-1.5 px-3 bg-accent-blue text-white rounded text-[11px] font-medium border-none cursor-pointer transition-all duration-fast hover:bg-[#1976D2]"
+          title="Compare Selected"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 3h5v5"></path>
+            <path d="M21 3l-7 7"></path>
+            <path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"></path>
+          </svg>
+          Compare ({{ selectedForCompare.size }})
+        </button>
+        <button
+          @click="clearHistory"
+          class="flex items-center justify-center w-7 h-7 bg-transparent border-none rounded text-text-secondary cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-red"
+          title="Clear History"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+        </button>
+      </div>
     </div>
 
     <div class="p-3 border-b border-border-default bg-bg-secondary">
@@ -279,17 +336,35 @@ watch(() => props.workspaceId, () => {
         <div
           v-for="entry in history"
           :key="entry.id"
-          class="p-3 rounded border border-border-default bg-bg-secondary hover:bg-bg-hover cursor-pointer transition-all duration-fast group"
-          @click="restoreToBuilder(entry)"
+          :class="[
+            'p-3 rounded border transition-all duration-fast group',
+            selectedForCompare.has(entry.id)
+              ? 'border-accent-blue bg-accent-blue/5'
+              : 'border-border-default bg-bg-secondary hover:bg-bg-hover',
+            selectedForCompare.size >= 2 && !selectedForCompare.has(entry.id) ? 'opacity-50' : ''
+          ]"
+          @click="(e) => {
+            if (!(e.target as HTMLElement).closest('input[type=checkbox]') && !(e.target as HTMLElement).closest('button')) {
+              restoreToBuilder(entry);
+            }
+          }"
         >
           <div class="flex items-start gap-3">
-            <span
-              :class="['text-[11px] font-bold uppercase py-0.5 px-1.5 rounded bg-bg-tertiary shrink-0', getMethodColor(entry.method)]"
-            >
-              {{ entry.method }}
-            </span>
+            <input
+              type="checkbox"
+              :checked="selectedForCompare.has(entry.id)"
+              @change="toggleCompareSelection(entry)"
+              class="w-4 h-4 mt-1 rounded border-border-default bg-bg-input text-accent-blue focus:ring-accent-blue focus:ring-offset-bg-secondary cursor-pointer shrink-0"
+              :class="{ 'opacity-50 cursor-not-allowed': selectedForCompare.size >= 2 && !selectedForCompare.has(entry.id) }"
+              :disabled="selectedForCompare.size >= 2 && !selectedForCompare.has(entry.id)"
+            />
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2 mb-1">
+                <span
+                  :class="['text-[11px] font-bold uppercase py-0.5 px-1.5 rounded bg-bg-tertiary shrink-0', getMethodColor(entry.method)]"
+                >
+                  {{ entry.method }}
+                </span>
                 <span 
                   :class="['py-0.5 px-1.5 rounded text-[10px] font-bold', getStatusColorClass(entry.statusCode)]"
                 >
@@ -309,6 +384,7 @@ watch(() => props.workspaceId, () => {
             <button
               class="p-1.5 text-text-secondary hover:text-accent-green opacity-0 group-hover:opacity-100 transition-all duration-fast shrink-0"
               title="Restore to Builder"
+              @click.stop="restoreToBuilder(entry)"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M1 4v6h6"></path>

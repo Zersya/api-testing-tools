@@ -5,6 +5,7 @@ import RequestTabs, { type OpenTab } from '~/components/RequestTabs.vue';
 import ImportModal from '~/components/ImportModal.vue';
 import MethodBadge from '~/components/MethodBadge.vue';
 import ApiDocumentationViewer from '~/components/ApiDocumentationViewer.vue';
+import ResponseComparison from '~/components/ResponseComparison.vue';
 interface Collection {
   id: string;
   name: string;
@@ -144,6 +145,43 @@ const collectionForm = ref({
 });
 const collectionToDelete = ref<Collection | null>(null);
 const groupToDelete = ref<{ collectionId: string, name: string, mocks: Mock[] } | null>(null);
+
+// Response comparison state
+const showComparison = ref(false);
+const comparisonLeft = ref<any>(null);
+const comparisonRight = ref<any>(null);
+
+interface RequestHistoryEntry {
+  id: string;
+  workspaceId: string;
+  method: string;
+  url: string;
+  requestData: {
+    headers?: Record<string, string>;
+    body?: any;
+    queryParams?: Record<string, string>;
+    auth?: any;
+  } | null;
+  responseData: {
+    headers?: Record<string, string>;
+    body?: any;
+  } | null;
+  statusCode: number | null;
+  responseTimeMs: number | null;
+  timestamp: Date;
+}
+
+const handleCompareResponses = (left: RequestHistoryEntry, right: RequestHistoryEntry) => {
+  comparisonLeft.value = left;
+  comparisonRight.value = right;
+  showComparison.value = true;
+};
+
+const closeComparison = () => {
+  showComparison.value = false;
+  comparisonLeft.value = null;
+  comparisonRight.value = null;
+};
 
 const collectionColors = [
   '#6366f1', // Indigo
@@ -744,6 +782,7 @@ const selectedDefinition = ref<any>(null);
 const selectedEndpoints = ref<string[]>([]);
 const targetCollection = ref('root');
 const responseDelay = ref(0);
+const responseType = ref<'success' | 'error'>('success');
 const isGenerating = ref(false);
 const showDefinitionDocs = ref(false);
 const definitionDocs = ref<any>(null);
@@ -759,6 +798,7 @@ const handleGenerateDefinitionMocks = (definition: any) => {
     selectedEndpoints.value = definition.parsedInfo.endpoints.map((ep: any) => `${ep.method}:${ep.path}`);
   }
   targetCollection.value = 'root';
+  responseType.value = 'success';
   showGenerateModal.value = true;
 };
 
@@ -775,6 +815,88 @@ const toggleEndpoint = (method: string, path: string) => {
   }
 };
 
+const getPreviewForEndpoint = (method: string, path: string) => {
+  if (!selectedDefinition.value?.parsedInfo) return null;
+  
+  const endpoint = selectedDefinition.value.parsedInfo.endpoints.find(
+    (ep: any) => ep.method === method && ep.path === path
+  );
+  
+  if (!endpoint) return null;
+  
+  const responses = endpoint.responses || {};
+  let status = 200;
+  let responseData = {};
+  
+  if (responseType.value === 'success') {
+    const successKey = Object.keys(responses).find(k => k.startsWith('2'));
+    if (successKey) {
+      status = parseInt(successKey);
+      const responseObj = responses[successKey];
+      if (responseObj?.content?.['application/json']) {
+        const mediaType = responseObj.content['application/json'];
+        responseData = mediaType.example || 
+          (mediaType.examples ? Object.values(mediaType.examples)[0]?.value : {}) || 
+          (mediaType.schema ? generateMockDataFromSchema(mediaType.schema) : {});
+      }
+    }
+  } else {
+    const errorKey = Object.keys(responses).find(k => k.startsWith('4') || k.startsWith('5'));
+    if (errorKey) {
+      status = parseInt(errorKey);
+      const responseObj = responses[errorKey];
+      if (responseObj?.content?.['application/json']) {
+        const mediaType = responseObj.content['application/json'];
+        responseData = mediaType.example || 
+          (mediaType.examples ? Object.values(mediaType.examples)[0]?.value : {}) || 
+          (mediaType.schema ? generateMockDataFromSchema(mediaType.schema) : {});
+      }
+    }
+  }
+  
+  return { status, response: responseData };
+};
+
+const generateMockDataFromSchema = (schema: any): any => {
+  if (!schema) return {};
+  
+  if (schema.type === 'object' && schema.properties) {
+    const result: any = {};
+    for (const [key, prop] of Object.entries(schema.properties as any)) {
+      result[key] = generateMockDataFromSchema(prop);
+    }
+    return result;
+  }
+  
+  if (schema.type === 'array' && schema.items) {
+    return [generateMockDataFromSchema(schema.items)];
+  }
+  
+  if (schema.type === 'string') {
+    if (schema.enum) return schema.enum[0];
+    if (schema.format === 'email') return 'user@example.com';
+    if (schema.format === 'date-time') return new Date().toISOString();
+    if (schema.example) return schema.example;
+    return 'string';
+  }
+  
+  if (schema.type === 'number' || schema.type === 'integer') {
+    if (schema.enum) return schema.enum[0];
+    if (schema.example) return schema.example;
+    return schema.minimum || 0;
+  }
+  
+  if (schema.type === 'boolean') {
+    if (schema.example !== undefined) return schema.example;
+    return true;
+  }
+  
+  if (schema.example) return schema.example;
+  if (schema.default) return schema.default;
+  
+  return {};
+};
+
 const generateMocks = async () => {
   if (!selectedDefinition.value) return;
 
@@ -785,7 +907,8 @@ const generateMocks = async () => {
       body: {
         endpoints: selectedEndpoints.value,
         collection: targetCollection.value,
-        delay: responseDelay.value
+        delay: responseDelay.value,
+        responseType: responseType.value
       }
     });
     showGenerateModal.value = false;
@@ -923,6 +1046,7 @@ const deleteGroup = async () => {
         @delete-collection="confirmDeleteCollection"
         @delete-group="confirmDeleteGroup"
         @restore-request="handleRestoreRequest"
+        @compare="handleCompareResponses"
         @view-definition-docs="handleViewDefinitionDocs"
         @generate-definition-mocks="handleGenerateDefinitionMocks"
         @reimport-definition="handleReimportDefinition"
@@ -1399,6 +1523,20 @@ const deleteGroup = async () => {
         </div>
 
         <div class="mb-4">
+          <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide mb-2">Response Type</label>
+          <div class="flex gap-4">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="radio" v-model="responseType" value="success" class="w-4 h-4" />
+              <span class="text-sm text-text-primary">Success (2xx)</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="radio" v-model="responseType" value="error" class="w-4 h-4" />
+              <span class="text-sm text-text-primary">Error (4xx/5xx)</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="mb-4">
           <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide mb-2">Response Delay (ms)</label>
           <input type="number" v-model.number="responseDelay" class="w-full py-2 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue" min="0" />
         </div>
@@ -1425,6 +1563,27 @@ const deleteGroup = async () => {
           </div>
           <p class="text-xs text-text-muted mt-2">{{ selectedEndpoints.length }} selected</p>
         </div>
+
+        <div v-if="selectedEndpoints.length === 1" class="mb-4">
+          <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide mb-2">Preview Mock Response</label>
+          <div class="bg-bg-tertiary border border-border-default rounded-md p-3">
+            <div v-if="getPreviewForEndpoint(parseInt(selectedEndpoints[0].split(':')[0]), selectedEndpoints[0].split(':')[1])" class="space-y-2">
+              <div class="flex items-center gap-2">
+                <span :class="[
+                  'px-2 py-1 rounded text-xs font-semibold',
+                  responseType === 'success' ? 'bg-accent-green/15 text-accent-green' : 'bg-accent-red/15 text-accent-red'
+                ]">
+                  {{ getPreviewForEndpoint(parseInt(selectedEndpoints[0].split(':')[0]), selectedEndpoints[0].split(':')[1])?.status }}
+                </span>
+                <span class="text-xs text-text-muted">{{ responseType === 'success' ? 'Success' : 'Error' }} Response</span>
+              </div>
+              <pre class="text-xs font-mono text-text-primary overflow-auto max-h-[200px] whitespace-pre-wrap break-words">{{ JSON.stringify(getPreviewForEndpoint(parseInt(selectedEndpoints[0].split(':')[0]), selectedEndpoints[0].split(':')[1])?.response, null, 2) }}</pre>
+            </div>
+            <div v-else class="text-xs text-text-muted">
+              No response available for selected endpoint
+            </div>
+          </div>
+        </div>
       </div>
       <div v-else class="py-8 text-center text-text-muted">
         Loading definition details...
@@ -1437,5 +1596,13 @@ const deleteGroup = async () => {
         </button>
       </template>
     </Modal>
+
+    <!-- Response Comparison Modal -->
+    <ResponseComparison
+      v-if="showComparison && comparisonLeft && comparisonRight"
+      :left-response="comparisonLeft"
+      :right-response="comparisonRight"
+      @close="closeComparison"
+    />
   </div>
 </template>

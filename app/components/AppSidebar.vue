@@ -121,6 +121,7 @@ const emit = defineEmits<{
   createProject: [workspaceId?: string];
   createWorkspace: [];
   restoreRequest: [request: HttpRequest];
+  compare: [left: any, right: any];
   viewDefinitionDocs: [definition: any];
   generateDefinitionMocks: [definition: any];
   reimportDefinition: [definition: any];
@@ -441,6 +442,7 @@ onUnmounted(() => {
       <RequestHistoryPanel
         :workspace-id="currentWorkspace?.id"
         @restore-request="emit('restoreRequest', $event)"
+        @compare="emit('compare', $event[0], $event[1])"
       />
     </div>
 

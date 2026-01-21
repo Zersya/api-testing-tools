@@ -1,15 +1,15 @@
 {
   "version": 1,
-  "sessionId": "cd68ab27-67ee-4314-a5c5-6f6d929b781c",
+  "sessionId": "3ea6938a-5c6d-4fb8-8909-5878247a7ed8",
   "status": "running",
-  "startedAt": "2026-01-20T23:40:21.803Z",
-  "updatedAt": "2026-01-20T23:59:56.594Z",
-  "currentIteration": 6,
+  "startedAt": "2026-01-21T00:26:24.313Z",
+  "updatedAt": "2026-01-21T00:26:27.669Z",
+  "currentIteration": 0,
   "maxIterations": 10,
-  "tasksCompleted": 6,
+  "tasksCompleted": 0,
   "isPaused": false,
   "agentPlugin": "opencode",
-  "model": "fireworks-ai/accounts/fireworks/models/glm-4p7",
+  "model": "minimax/MiniMax-M2.1",
   "trackerState": {
     "plugin": "json",
     "prdPath": "tasks/prd.json",
@@ -187,72 +187,72 @@
         "id": "US-029",
         "title": "Save request dialog",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-030",
         "title": "Request tabs UI",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-031",
         "title": "Request history panel",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-032",
         "title": "OpenAPI import UI",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-033",
         "title": "Postman import UI",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-034",
         "title": "API Definition list and management UI",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "US-035",
         "title": "Redocly-style API documentation - Navigation",
-        "status": "open",
+        "status": "completed",
         "completedInSession": false
       },
       {
         "id": "US-036",
         "title": "Redocly-style API documentation - Endpoint details",
-        "status": "open",
+        "status": "completed",
         "completedInSession": false
       },
       {
         "id": "US-037",
         "title": "Redocly-style API documentation - Code samples",
-        "status": "open",
+        "status": "completed",
         "completedInSession": false
       },
       {
         "id": "US-038",
         "title": "Redocly-style API documentation - Schema viewer",
-        "status": "open",
+        "status": "completed",
         "completedInSession": false
       },
       {
         "id": "US-039",
         "title": "Public documentation sharing",
-        "status": "open",
+        "status": "completed",
         "completedInSession": false
       },
       {
         "id": "US-040",
         "title": "Mock generation UI",
-        "status": "open",
+        "status": "completed",
         "completedInSession": false
       },
       {
@@ -305,72 +305,11 @@
       }
     ]
   },
-  "iterations": [
-    {
-      "iteration": 1,
-      "status": "completed",
-      "taskId": "US-029",
-      "taskTitle": "Save request dialog",
-      "taskCompleted": true,
-      "durationMs": 158700,
-      "startedAt": "2026-01-20T23:40:26.975Z",
-      "endedAt": "2026-01-20T23:43:05.675Z"
-    },
-    {
-      "iteration": 2,
-      "status": "completed",
-      "taskId": "US-030",
-      "taskTitle": "Request tabs UI",
-      "taskCompleted": true,
-      "durationMs": 187006,
-      "startedAt": "2026-01-20T23:43:06.724Z",
-      "endedAt": "2026-01-20T23:46:13.730Z"
-    },
-    {
-      "iteration": 3,
-      "status": "completed",
-      "taskId": "US-031",
-      "taskTitle": "Request history panel",
-      "taskCompleted": true,
-      "durationMs": 154454,
-      "startedAt": "2026-01-20T23:46:14.760Z",
-      "endedAt": "2026-01-20T23:48:49.214Z"
-    },
-    {
-      "iteration": 4,
-      "status": "completed",
-      "taskId": "US-032",
-      "taskTitle": "OpenAPI import UI",
-      "taskCompleted": true,
-      "durationMs": 176879,
-      "startedAt": "2026-01-20T23:48:50.236Z",
-      "endedAt": "2026-01-20T23:51:47.115Z"
-    },
-    {
-      "iteration": 5,
-      "status": "completed",
-      "taskId": "US-033",
-      "taskTitle": "Postman import UI",
-      "taskCompleted": true,
-      "durationMs": 167681,
-      "startedAt": "2026-01-20T23:51:48.146Z",
-      "endedAt": "2026-01-20T23:54:35.827Z"
-    },
-    {
-      "iteration": 6,
-      "status": "completed",
-      "taskId": "US-034",
-      "taskTitle": "API Definition list and management UI",
-      "taskCompleted": true,
-      "durationMs": 318679,
-      "startedAt": "2026-01-20T23:54:36.851Z",
-      "endedAt": "2026-01-20T23:59:55.530Z"
-    }
-  ],
+  "iterations": [],
   "skippedTaskIds": [],
   "cwd": "/Users/zeinersyad/Playground/mock-service",
   "activeTaskIds": [
-    "US-035"
+    "US-041"
   ],
   "subagentPanelVisible": false
 }
