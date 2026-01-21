@@ -3,10 +3,12 @@ import { ref, onMounted, onUnmounted } from 'vue';
 
 interface Props {
   title?: string;
+  showActions?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  title: 'Mock Services'
+  title: 'Mock Services',
+  showActions: true
 });
 
 const emit = defineEmits<{
@@ -244,6 +246,7 @@ onUnmounted(() => {
     <div class="flex items-center gap-2">
       <!-- Import Button -->
       <button
+        v-if="showActions"
         class="inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 bg-bg-tertiary text-text-secondary border border-border-default rounded-md cursor-pointer text-[13px] font-medium transition-all duration-fast hover:bg-bg-hover hover:text-text-primary hover:border-accent-orange"
         @click="emit('importOpenAPI')"
         title="Import OpenAPI"
@@ -258,6 +261,7 @@ onUnmounted(() => {
 
       <!-- Export Button -->
       <button
+        v-if="showActions"
         class="inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 bg-bg-tertiary text-text-secondary border border-border-default rounded-md cursor-pointer text-[13px] font-medium transition-all duration-fast hover:bg-bg-hover hover:text-text-primary hover:border-accent-orange"
         @click="emit('exportOpenAPI')"
         title="Export OpenAPI"
@@ -272,6 +276,7 @@ onUnmounted(() => {
 
       <!-- Settings Button -->
       <button
+        v-if="showActions"
         class="inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 bg-transparent text-text-secondary border-none rounded-md cursor-pointer text-[13px] font-medium transition-all duration-fast hover:bg-bg-hover hover:text-text-primary"
         @click="emit('openSettings')"
         title="Settings"
