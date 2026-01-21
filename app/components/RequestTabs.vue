@@ -129,16 +129,20 @@ const handleDragEnd = () => {
         title="Unsaved changes"
       ></span>
       
-      <button
-        @click="handleCloseTab($event, tab.key)"
-        class="flex items-center justify-center w-4 h-4 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-fast hover:bg-bg-tertiary flex-shrink-0"
-        title="Close tab"
-      >
+       <span
+         @click="handleCloseTab($event, tab.key)"
+         @keydown.enter="handleCloseTab($event, tab.key)"
+         @keydown.space="handleCloseTab($event, tab.key)"
+         role="button"
+         tabindex="0"
+         class="flex items-center justify-center w-4 h-4 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-fast hover:bg-bg-tertiary flex-shrink-0 cursor-pointer"
+         title="Close tab"
+       >
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="18" y1="6" x2="6" y2="18"></line>
           <line x1="6" y1="6" x2="18" y2="18"></line>
         </svg>
-      </button>
+       </span>
     </button>
 
     <button

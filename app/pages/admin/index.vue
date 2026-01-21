@@ -1123,9 +1123,6 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
         @reorder-folders="handleReorderFolders"
         @reorder-requests="handleReorderRequests"
       />
-        @generate-definition-mocks="handleGenerateDefinitionMocks"
-        @reimport-definition="handleReimportDefinition"
-      />
 
       <!-- Main Content -->
       <main class="flex flex-col flex-1 overflow-hidden bg-bg-primary">

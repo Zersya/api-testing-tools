@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ParsedOpenAPISpec, OpenAPIEndpoint, OpenAPISchema } from '~/types/openapi';
+import type { ParsedOpenAPISpec, OpenAPIEndpoint, OpenAPISchema } from '~types/openapi';
 import MethodBadge from '~/components/MethodBadge.vue';
 
 interface Props {

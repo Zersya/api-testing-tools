@@ -24,6 +24,11 @@ after each iteration and included in agent prompts for context.
 - Optimistic UI updates for drag-and-drop should refresh data after server confirmation to ensure consistency
 - Migration scripts should store rollback data in persistent storage (useStorage) for recovery capability
 - Preserve original data by embedding it in new schema's JSON fields for traceability and rollback
+- UI status indicators should use computed properties for reactive state updates
+- Polling intervals must be properly cleaned up in onUnmounted to prevent memory leaks
+- Header components can show real-time status with proper state management and computed properties
+- Dropdown menus can include navigation links to configuration pages for quick access
+- Sync configuration should be stored in settings storage for persistence across sessions
 
 ---
 
@@ -296,5 +301,58 @@ help modal |\n| Escape | Close help modal |\n\n**Key Implementation Details:**\n
 **Notes:**
 sessionID":"ses_421d6bc86ffekPU4Yc2wXdP0B0","part":{"id":"prt_bde2d34ef0014K0tYiCGWMKfAp","sessionID":"ses_421d6bc86ffekPU4Yc2wXdP0B0","messageID":"msg_bde2d2a81001EncpfoWtz0tM0x","type":"step-start","snapshot":"d99bd8362a27c9d6d4c050db37575d194b0c8164"}}
 {"type":"text","timestamp":1768959063601,"sessionID":"ses_421d6bc86ffekPU4Yc2wXdP0B0","part":{"id":"prt_bde2d3627001KioTBPWCqG3c2q","sessionID":"ses_421d6bc86ffekPU4Yc2wXdP0B0","messageID":"msg_bde2d2a81001EncpfoWtz0tM0x","type":"text","text":"
+
+---
+
+## 2026-01-21 - US-048
+
+**What was implemented:**
+- Created sync configuration page at `/admin/sync` with server URL, API key, auto-sync toggle, sync interval, and conflict resolution options
+- Created `useSync` composable at `app/composables/useSync.ts` for managing sync state across components
+- Created API endpoints:
+  - `GET/POST /api/admin/sync` - Sync configuration management
+  - `POST /api/admin/sync/status` - Get current sync status
+  - `POST /api/admin/sync/trigger` - Manually trigger sync
+  - `POST /api/admin/sync/test` - Test connection to sync server
+  - `POST /api/admin/sync/resolve-conflict` - Resolve sync conflicts
+- Updated AppHeader to show sync status indicator with real-time updates
+- Added manual sync trigger button in header
+- Added conflict notification badge when conflicts exist
+- Created comprehensive self-hosted sync server documentation at `docs/SELF_HOSTED_SYNC.md`
+
+**Files changed:**
+- `app/pages/admin/sync.vue` (new) - Cloud sync configuration page
+- `app/composables/useSync.ts` (new) - Sync state management composable
+- `app/components/AppHeader.vue` - Added sync status indicator and manual sync button
+- `server/api/admin/sync/index.ts` (new) - Sync configuration endpoint
+- `server/api/admin/sync/status.post.ts` (new) - Sync status endpoint
+- `server/api/admin/sync/trigger.post.ts` (new) - Manual sync trigger endpoint
+- `server/api/admin/sync/test.post.ts` (new) - Connection test endpoint
+- `server/api/admin/sync/resolve-conflict.post.ts` (new) - Conflict resolution endpoint
+- `docs/SELF_HOSTED_SYNC.md` (new) - Self-hosted sync server documentation
+
+**Learnings:**
+- Sync configuration should be stored in settings storage for persistence
+- UI status indicators should use computed properties for reactive state updates
+- Polling intervals should respect the configured sync interval
+- Conflict resolution requires tracking both local and remote timestamps
+- Dropdown menus can include links to configuration pages
+- Header icons can show real-time status with proper state management
+
+**Gotchas:**
+- Server build errors in `server/api/definitions/[id].put.ts` are pre-existing and unrelated to sync implementation
+- Sync state needs proper cleanup in onUnmounted to prevent memory leaks from interval timers
+- Computed properties with dynamic keys need careful type handling
+- Conflict count badges should be positioned absolutely relative to their parent button
+
+**Build Status:** ✅ Client build successful (pre-existing server-side error in `../../../db` imports)
+## ✓ Iteration 8 - US-048: Cloud sync infrastructure (optional)
+*2026-01-21T01:37:51.016Z (406s)*
+
+**Status:** Completed
+
+**Notes:**
+sessionID":"ses_421d2bc9bffeG9AxPRPcoJ1j2F","part":{"id":"prt_bde335c9e001ijxzp2FTMD0T4o","sessionID":"ses_421d2bc9bffeG9AxPRPcoJ1j2F","messageID":"msg_bde33507800164KbXz9acmWz3Q","type":"step-start","snapshot":"317af808a91e0b8af9c5062369414ce11754d6a3"}}
+{"type":"text","timestamp":1768959470854,"sessionID":"ses_421d2bc9bffeG9AxPRPcoJ1j2F","part":{"id":"prt_bde335e41001VnYaqvez5fCH4O","sessionID":"ses_421d2bc9bffeG9AxPRPcoJ1j2F","messageID":"msg_bde33507800164KbXz9acmWz3Q","type":"text","text":"
 
 ---

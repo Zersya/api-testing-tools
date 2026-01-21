@@ -3,10 +3,10 @@
   "sessionId": "3ea6938a-5c6d-4fb8-8909-5878247a7ed8",
   "status": "running",
   "startedAt": "2026-01-21T00:26:24.313Z",
-  "updatedAt": "2026-01-21T01:31:04.895Z",
-  "currentIteration": 7,
+  "updatedAt": "2026-01-21T01:37:51.020Z",
+  "currentIteration": 8,
   "maxIterations": 10,
-  "tasksCompleted": 7,
+  "tasksCompleted": 8,
   "isPaused": false,
   "agentPlugin": "opencode",
   "model": "minimax/MiniMax-M2.1",
@@ -300,8 +300,8 @@
       {
         "id": "US-048",
         "title": "Cloud sync infrastructure (optional)",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       }
     ]
   },
@@ -375,12 +375,20 @@
       "durationMs": 261714,
       "startedAt": "2026-01-21T01:26:42.070Z",
       "endedAt": "2026-01-21T01:31:03.784Z"
+    },
+    {
+      "iteration": 8,
+      "status": "completed",
+      "taskId": "US-048",
+      "taskTitle": "Cloud sync infrastructure (optional)",
+      "taskCompleted": true,
+      "durationMs": 406111,
+      "startedAt": "2026-01-21T01:31:04.859Z",
+      "endedAt": "2026-01-21T01:37:50.970Z"
     }
   ],
   "skippedTaskIds": [],
   "cwd": "/Users/zeinersyad/Playground/mock-service",
-  "activeTaskIds": [
-    "US-048"
-  ],
+  "activeTaskIds": [],
   "subagentPanelVisible": false
 }
