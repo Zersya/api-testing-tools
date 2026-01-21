@@ -6,18 +6,25 @@ export default defineEventHandler(async (event) => {
     const config = useRuntimeConfig();
 
     if (email === config.adminEmail && password === config.adminPassword) {
-        // Generate JWT
         const token = jwt.sign({ email }, config.jwtSecret, { expiresIn: '24h' });
 
-        // Set secure cookie
         setCookie(event, 'auth_token', token, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'strict',
-            maxAge: 60 * 60 * 24 // 1 day
+            maxAge: 60 * 60 * 24
         });
 
-        return { success: true };
+        return {
+            success: true,
+            token,
+            user: {
+                id: 'admin',
+                email,
+                name: 'Administrator',
+                workspaceId: 'default'
+            }
+        };
     }
 
     throw createError({

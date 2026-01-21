@@ -7,7 +7,13 @@ interface KeycloakConfig {
   enabled: boolean;
   realm: string;
   clientId: string;
-  authUrl: string;
+  authURL: string;
+}
+
+interface DesktopUser {
+  id: string;
+  email: string;
+  name?: string;
 }
 
 const form = ref({
@@ -18,6 +24,12 @@ const form = ref({
 const isLoading = ref(false);
 const errorMessage = ref('');
 const keycloakConfig = ref<KeycloakConfig | null>(null);
+const isSyncing = ref(false);
+
+const isDesktop = computed(() => {
+  if (typeof window === 'undefined') return false;
+  return !!(window as any).__TAURI__;
+});
 
 const fetchKeycloakConfig = async () => {
   try {
@@ -27,7 +39,7 @@ const fetchKeycloakConfig = async () => {
         enabled: true,
         realm: settings.keycloak.realm || '',
         clientId: settings.keycloak.clientId || '',
-        authUrl: settings.keycloak.authUrl || ''
+        authURL: settings.keycloak.authURL || ''
       };
     }
   } catch (e) {
@@ -39,16 +51,56 @@ const loginWithKeycloak = async () => {
   window.location.href = '/api/auth/keycloak/login';
 };
 
+const performInitialSync = async (token: string): Promise<boolean> => {
+  try {
+    const { triggerSync } = await import('~/composables/useSync');
+    const result = await triggerSync();
+    return result.success || result.errors.length === 0;
+  } catch (e) {
+    console.error('Initial sync failed:', e);
+    return true;
+  }
+};
+
+const handleSuccessfulLogin = async (token?: string) => {
+  if (isDesktop.value && token) {
+    isSyncing.value = true;
+    try {
+      await performInitialSync(token);
+    } finally {
+      isSyncing.value = false;
+    }
+  }
+  await navigateTo('/admin');
+};
+
 const login = async () => {
   isLoading.value = true;
   errorMessage.value = '';
 
   try {
-    await $fetch('/api/auth/login', {
-      method: 'POST',
-      body: form.value
-    });
-    await navigateTo('/admin', { external: true });
+    if (isDesktop.value) {
+      const { login: desktopLogin } = await import('~/composables/useAuth');
+      const success = await desktopLogin(form.value.email, form.value.password);
+      
+      if (success) {
+        const { getToken } = await import('~/composables/useAuth');
+        const token = getToken();
+        await handleSuccessfulLogin(token || undefined);
+      } else {
+        const { error } = await import('~/composables/useAuth');
+        errorMessage.value = error.value || 'Login failed';
+      }
+    } else {
+      const response = await $fetch<any>('/api/auth/login', {
+        method: 'POST',
+        body: form.value
+      });
+      
+      if (response.success) {
+        await handleSuccessfulLogin(response.token);
+      }
+    }
   } catch (e: any) {
     console.error('Login error:', e);
     errorMessage.value = e.response?._data?.statusMessage || e.message || 'Login failed';
@@ -170,12 +222,13 @@ onMounted(() => {
           <button 
             type="submit" 
             class="flex items-center justify-center gap-2.5 w-full py-3.5 bg-gradient-to-br from-accent-orange to-[#FF8C5A] border-none rounded-[10px] text-white text-[15px] font-semibold cursor-pointer transition-all duration-normal mt-2 hover:not-disabled:-translate-y-px hover:not-disabled:shadow-[0_6px_20px_rgba(255,108,55,0.35)] active:not-disabled:translate-y-0 disabled:opacity-70 disabled:cursor-not-allowed"
-            :disabled="isLoading"
+            :disabled="isLoading || isSyncing"
           >
-            <svg v-if="isLoading" class="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg v-if="isLoading || isSyncing" class="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
             </svg>
             <span v-if="isLoading">Signing in...</span>
+            <span v-else-if="isSyncing">Syncing...</span>
             <span v-else>Sign In</span>
           </button>
         </form>

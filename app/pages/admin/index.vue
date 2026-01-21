@@ -50,12 +50,19 @@ const { data: collections, refresh: refreshCollections } = await useFetch<Collec
 const { data: workspaces, refresh: refreshWorkspaces } = await useFetch<any[]>('/api/admin/tree');
 const { data: definitions, refresh: refreshDefinitions } = await useFetch<any[]>('/api/definitions');
 
+// Safe array getters - ensures child components always receive arrays, never error objects
+const safeMocks = computed(() => Array.isArray(mocks.value) ? mocks.value : []);
+const safeCollections = computed(() => Array.isArray(collections.value) ? collections.value : []);
+const safeWorkspaces = computed(() => Array.isArray(workspaces.value) ? workspaces.value : []);
+const safeDefinitions = computed(() => Array.isArray(definitions.value) ? definitions.value : []);
+const safeEnvironments = computed(() => Array.isArray(environments.value) ? environments.value : []);
+
 const currentWorkspaceId = computed(() => {
-  return workspaces.value?.[0]?.id;
+  return safeWorkspaces.value?.[0]?.id;
 });
 
 const currentProjectId = computed(() => {
-  return workspaces.value?.[0]?.projects?.[0]?.id;
+  return safeWorkspaces.value?.[0]?.projects?.[0]?.id;
 });
 
 interface Environment {
@@ -74,7 +81,8 @@ const { data: environments, refresh: refreshEnvironments } = await useFetch<Envi
 );
 
 const activeEnvironment = computed(() => {
-  return environments.value?.find(env => env.isActive) || null;
+  if (!Array.isArray(environments.value)) return null;
+  return environments.value.find(env => env.isActive) || null;
 });
 
 const activateEnvironment = async (environmentId: string | null) => {
@@ -1440,7 +1448,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
     <!-- Header -->
     <AppHeader 
       title="Mock Services"
-      :environments="environments || []"
+      :environments="safeEnvironments"
       :active-environment="activeEnvironment"
       @open-settings="openSettings"
       @export-open-a-p-i="exportOpenAPI"
@@ -1451,10 +1459,10 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
     <div class="flex flex-1 overflow-hidden">
       <!-- Sidebar -->
       <AppSidebar
-        :collections="collections || []"
-        :mocks="mocks || []"
+        :collections="safeCollections"
+        :mocks="safeMocks"
         :selected-mock-id="selectedMock?.id"
-        :workspaces="workspaces || []"
+        :workspaces="safeWorkspaces"
         :selected-workspace-id="selectedWorkspaceId"
         :refresh-trigger="definitionsRefreshTrigger"
         @select-mock="handleSelectMock"

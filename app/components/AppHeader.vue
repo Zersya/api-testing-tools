@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, computed } from 'vue';
 
 interface Props {
   title?: string;
@@ -18,6 +18,11 @@ const emit = defineEmits<{
   activateEnvironment: [id: string | null];
 }>();
 
+const isDesktop = computed(() => {
+  if (typeof window === 'undefined') return false;
+  return !!(window as any).__TAURI__;
+});
+
 interface UserInfo {
   sub: string;
   email: string;
@@ -28,6 +33,12 @@ interface UserInfo {
   picture: string;
 }
 
+interface DesktopUser {
+  id: string;
+  email: string;
+  name?: string;
+}
+
 interface AuthState {
   status: string;
   user: UserInfo | null;
@@ -35,47 +46,33 @@ interface AuthState {
   tokenExpiry: number | null;
 }
 
-interface SyncStatus {
-  isOnline: boolean;
-  lastSyncAt: string | null;
-  nextSyncAt: string | null;
-  pendingChanges: number;
-  status: 'idle' | 'syncing' | 'error' | 'conflict';
-  errorMessage: string | null;
-  conflicts: Array<{
-    id: string;
-    type: string;
-    localUpdatedAt: string;
-    remoteUpdatedAt: string;
-  }>;
-}
-
-interface SyncConfig {
-  enabled: boolean;
-  serverUrl: string;
-  apiKey: string;
-  syncInterval: number;
-  autoSync: boolean;
-  conflictResolution: string;
-}
+const desktopUser = ref<DesktopUser | null>(null);
 
 const authState = ref<AuthState | null>(null);
 const isCheckingAuth = ref(true);
 const showUserMenu = ref(false);
 const isLoggingOut = ref(false);
-const syncStatus = ref<SyncStatus | null>(null);
-const syncConfig = ref<SyncConfig | null>(null);
 const isSyncing = ref(false);
+const pendingChanges = ref(0);
+const lastSyncStatus = ref<'idle' | 'syncing' | 'success' | 'error'>('idle');
 
 const checkAuth = async () => {
   try {
-    const data = await $fetch<AuthState>('/api/auth/check');
-    authState.value = data;
+    if (isDesktop.value) {
+      const { initAuth, getUser } = await import('~/services/auth-store');
+      await initAuth();
+      desktopUser.value = getUser();
+      isCheckingAuth.value = false;
+    } else {
+      const data = await $fetch<AuthState>('/api/auth/check');
+      authState.value = data;
+      isCheckingAuth.value = false;
+    }
   } catch (e: any) {
     if (e.statusCode === 401) {
       authState.value = null;
+      desktopUser.value = null;
     }
-  } finally {
     isCheckingAuth.value = false;
   }
 };
@@ -83,8 +80,14 @@ const checkAuth = async () => {
 const logout = async () => {
   isLoggingOut.value = true;
   try {
-    await $fetch('/api/auth/logout', { method: 'POST' });
-    await navigateTo('/login');
+    if (isDesktop.value) {
+      const { logout: desktopLogout } = await import('~/composables/useAuth');
+      await desktopLogout();
+      await navigateTo('/login');
+    } else {
+      await $fetch('/api/auth/logout', { method: 'POST' });
+      await navigateTo('/login');
+    }
   } catch (e) {
     console.error('Logout error:', e);
   } finally {
@@ -110,91 +113,73 @@ const getTimeUntilExpiry = (): string => {
   return `${minutes}m ${seconds}s`;
 };
 
-const fetchSyncStatus = async () => {
-  try {
-    const data = await $fetch<SyncStatus>('/api/admin/sync/status');
-    syncStatus.value = data;
-  } catch (e) {
-    console.error('Failed to fetch sync status:', e);
-  }
-};
-
-const fetchSyncConfig = async () => {
-  try {
-    const data = await $fetch<{ config: SyncConfig }>('/api/admin/sync');
-    syncConfig.value = data.config;
-  } catch (e) {
-    console.error('Failed to fetch sync config:', e);
-  }
-};
-
 const triggerSync = async () => {
   if (isSyncing.value) return;
 
   isSyncing.value = true;
+  lastSyncStatus.value = 'syncing';
   try {
-    await $fetch('/api/admin/sync/trigger', { method: 'POST' });
-    await fetchSyncStatus();
+    if (isDesktop.value) {
+      const { triggerSync: desktopSync } = await import('~/composables/useSync');
+      await desktopSync();
+      const { pendingChanges: count } = await import('~/composables/useSync');
+      pendingChanges.value = await count();
+      lastSyncStatus.value = 'success';
+    } else {
+      await $fetch('/api/admin/sync/trigger', { method: 'POST' });
+      lastSyncStatus.value = 'success';
+    }
   } catch (e) {
     console.error('Sync trigger failed:', e);
+    lastSyncStatus.value = 'error';
   } finally {
     isSyncing.value = false;
   }
 };
 
 const getSyncStatusColor = (): string => {
-  if (!syncConfig.value?.enabled) return 'text-text-muted';
-  if (!syncStatus.value) return 'text-text-muted';
-
-  switch (syncStatus.value.status) {
+  switch (lastSyncStatus.value) {
     case 'syncing': return 'text-accent-blue';
     case 'error': return 'text-accent-red';
-    case 'conflict': return 'text-accent-yellow';
-    default: return 'text-accent-green';
+    case 'success': return 'text-accent-green';
+    default: return 'text-text-muted';
   }
 };
 
 const getSyncStatusIcon = (): string => {
-  if (!syncConfig.value?.enabled) {
-    return '<path d="M21 12a9 9 0 1 1-6.219-8.56"></path>';
-  }
-
-  switch (syncStatus.value?.status) {
+  switch (lastSyncStatus.value) {
     case 'syncing':
       return '<path d="M21 12a9 9 0 1 1-6.219-8.56"></path>';
     case 'error':
       return '<circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line>';
-    case 'conflict':
-      return '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line>';
     default:
       return '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline>';
   }
 };
 
-const hasConflicts = computed(() => (syncStatus.value?.conflicts?.length || 0) > 0);
-
 let authCheckInterval: ReturnType<typeof setInterval> | null = null;
 let syncStatusInterval: ReturnType<typeof setInterval> | null = null;
 
 onMounted(async () => {
-  checkAuth();
-  await fetchSyncConfig();
-  await fetchSyncStatus();
+  await checkAuth();
 
-  authCheckInterval = setInterval(() => {
-    if (authState.value?.tokenExpiry) {
-      const remaining = authState.value.tokenExpiry * 1000 - Date.now();
-      if (remaining < 5 * 60 * 1000 && remaining > 0) {
-        checkAuth();
+  if (isDesktop.value) {
+    try {
+      const { pendingChanges: count } = await import('~/composables/useSync');
+      pendingChanges.value = await count();
+    } catch (e) {
+      console.error('Failed to load sync status:', e);
+    }
+  } else {
+    authCheckInterval = setInterval(() => {
+      if (authState.value?.tokenExpiry) {
+        const remaining = authState.value.tokenExpiry * 1000 - Date.now();
+        if (remaining < 5 * 60 * 1000 && remaining > 0) {
+          checkAuth();
+        }
       }
-    }
-  }, 60000);
-
-  syncStatusInterval = setInterval(() => {
-    if (syncConfig.value?.enabled && syncConfig.value?.autoSync) {
-      fetchSyncStatus();
-    }
-  }, 30000);
+    }, 60000);
+  }
 });
 
 onUnmounted(() => {
@@ -274,10 +259,29 @@ onUnmounted(() => {
         <span>Export</span>
       </button>
 
+      <!-- Desktop Sync Button -->
+      <button
+        v-if="isDesktop && showActions"
+        @click="triggerSync"
+        :disabled="isSyncing"
+        class="inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 bg-transparent text-text-secondary border border-border-default rounded-md cursor-pointer text-[13px] font-medium transition-all duration-fast hover:bg-bg-hover hover:text-text-primary disabled:opacity-50"
+        title="Sync changes"
+      >
+        <svg v-if="isSyncing" class="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+        </svg>
+        <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="getSyncStatusColor()">
+          <path v-html="getSyncStatusIcon()"></path>
+        </svg>
+        <span v-if="pendingChanges > 0" class="text-[10px] font-semibold text-accent-yellow">
+          {{ pendingChanges }}
+        </span>
+      </button>
+
       <!-- Settings Button -->
       <button
         v-if="showActions"
-        class="inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 bg-transparent text-text-secondary border-none rounded-md cursor-pointer text-[13px] font-medium transition-all duration-fast hover:bg-bg-hover hover:text-text-primary"
+        class="inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 bg-transparent text-text-secondary border border-none rounded-md cursor-pointer text-[13px] font-medium transition-all duration-fast hover:bg-bg-hover hover:text-text-primary"
         @click="emit('openSettings')"
         title="Settings"
       >
@@ -287,31 +291,8 @@ onUnmounted(() => {
         </svg>
       </button>
 
-      <!-- Sync Status Button -->
-      <div v-if="syncConfig?.enabled" class="relative">
-        <button
-          @click="triggerSync"
-          :disabled="isSyncing"
-          class="inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 bg-transparent text-text-secondary border border-border-default rounded-md cursor-pointer text-[13px] font-medium transition-all duration-fast hover:bg-bg-hover hover:text-text-primary disabled:opacity-50"
-          :title="syncStatus?.status === 'conflict' ? `${syncStatus?.conflicts?.length || 0} conflicts to resolve` : `Sync status: ${syncStatus?.status || 'unknown'}`"
-        >
-          <svg v-if="isSyncing" class="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
-          </svg>
-          <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="getSyncStatusColor()">
-            <path v-html="getSyncStatusIcon()"></path>
-          </svg>
-          <span v-if="syncStatus?.pendingChanges && syncStatus.status !== 'syncing'" class="text-[10px] font-semibold text-accent-yellow">
-            {{ syncStatus.pendingChanges }}
-          </span>
-          <span v-if="hasConflicts" class="absolute -top-1 -right-1 w-3 h-3 bg-accent-yellow rounded-full flex items-center justify-center">
-            <span class="w-1.5 h-1.5 bg-bg-primary rounded-full"></span>
-          </span>
-        </button>
-      </div>
-
-      <!-- User Menu -->
-      <div v-if="!isCheckingAuth && authState?.user" class="relative user-menu-container">
+      <!-- User Menu (Web) -->
+      <div v-if="!isDesktop && !isCheckingAuth && authState?.user" class="relative user-menu-container">
         <button
           @click="showUserMenu = !showUserMenu"
           class="flex items-center gap-2 py-1 px-2 bg-bg-tertiary hover:bg-bg-hover border border-border-default rounded-md cursor-pointer transition-all duration-fast"
@@ -330,22 +311,11 @@ onUnmounted(() => {
           v-if="showUserMenu"
           class="absolute right-0 top-full mt-1 w-56 bg-bg-secondary border border-border-default rounded-lg shadow-lg py-1 z-50"
         >
-          <!-- User Info -->
           <div class="px-3 py-2 border-b border-border-default">
             <p class="text-xs font-medium text-text-primary truncate">{{ authState.user.name || 'User' }}</p>
             <p class="text-xs text-text-muted truncate">{{ authState.user.email }}</p>
-            <div v-if="authState.tokenExpiry" class="mt-1 flex items-center gap-1">
-              <span
-                :class="[
-                  'w-2 h-2 rounded-full',
-                  authState.isTokenExpiringSoon ? 'bg-accent-yellow' : 'bg-accent-green'
-                ]"
-              ></span>
-              <span class="text-[10px] text-text-muted">Session expires in {{ getTimeUntilExpiry() }}</span>
-            </div>
           </div>
 
-          <!-- Menu Items -->
           <a
             href="/admin/keycloak"
             class="flex items-center gap-2 px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors duration-fast"
@@ -362,12 +332,57 @@ onUnmounted(() => {
             class="flex items-center gap-2 px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors duration-fast"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path v-html="getSyncStatusIcon()"></path>
+              <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
             </svg>
             Cloud Sync Settings
-            <span v-if="hasConflicts" class="ml-auto px-1.5 py-0.5 text-[10px] font-semibold bg-accent-yellow text-bg-primary rounded">
-              {{ syncStatus?.conflicts?.length || 0 }}
-            </span>
+          </a>
+
+          <button
+            @click="logout"
+            :disabled="isLoggingOut"
+            class="w-full flex items-center gap-2 px-3 py-2 text-xs text-accent-red hover:bg-accent-red/10 transition-colors duration-fast"
+          >
+            <svg v-if="isLoggingOut" class="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+            </svg>
+            <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+              <polyline points="16 17 21 12 16 7"></polyline>
+              <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+            {{ isLoggingOut ? 'Signing out...' : 'Sign Out' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- User Menu (Desktop) -->
+      <div v-if="isDesktop && !isCheckingAuth && desktopUser" class="relative user-menu-container">
+        <button
+          @click="showUserMenu = !showUserMenu"
+          class="flex items-center gap-2 py-1 px-2 bg-bg-tertiary hover:bg-bg-hover border border-border-default rounded-md cursor-pointer transition-all duration-fast"
+        >
+          <div class="w-6 h-6 rounded-full bg-accent-orange flex items-center justify-center text-white text-xs font-semibold">
+            {{ getInitials(desktopUser.name || desktopUser.email) }}
+          </div>
+          <span class="text-xs text-text-primary max-w-[120px] truncate">{{ desktopUser.name || desktopUser.email }}</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" :class="['transition-transform duration-fast', showUserMenu ? 'rotate-180' : '']">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </button>
+
+        <div
+          v-if="showUserMenu"
+          class="absolute right-0 top-full mt-1 w-56 bg-bg-secondary border border-border-default rounded-lg shadow-lg py-1 z-50"
+        >
+          <a
+            href="/admin/settings"
+            class="flex items-center gap-2 px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors duration-fast"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0-.33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+            Settings
           </a>
 
           <button

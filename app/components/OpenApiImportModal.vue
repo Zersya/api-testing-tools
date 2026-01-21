@@ -50,9 +50,12 @@ const success = ref<{
   warnings: Array<{ path: string; message: string }>;
 } | null>(null);
 
+// Safe workspaces getter - ensures we always have an array
+const safeWorkspaces = computed(() => Array.isArray(props.workspaces) ? props.workspaces : []);
+
 const currentWorkspace = computed(() => {
-  if (!selectedWorkspaceId.value) return props.workspaces[0];
-  return props.workspaces.find(w => w.id === selectedWorkspaceId.value) || props.workspaces[0];
+  if (!selectedWorkspaceId.value) return safeWorkspaces.value[0];
+  return safeWorkspaces.value.find(w => w.id === selectedWorkspaceId.value) || safeWorkspaces.value[0];
 });
 
 const currentProject = computed(() => {
@@ -63,10 +66,10 @@ const currentProject = computed(() => {
 });
 
 onMounted(() => {
-  if (props.workspaces.length > 0) {
-    selectedWorkspaceId.value = props.workspaces[0].id;
-    if (props.workspaces[0].projects.length > 0) {
-      selectedProjectId.value = props.workspaces[0].projects[0].id;
+  if (safeWorkspaces.value.length > 0) {
+    selectedWorkspaceId.value = safeWorkspaces.value[0].id;
+    if (safeWorkspaces.value[0].projects.length > 0) {
+      selectedProjectId.value = safeWorkspaces.value[0].projects[0].id;
     }
   }
 });
@@ -283,7 +286,7 @@ const getFileIcon = () => {
             <select 
               v-model="selectedWorkspaceId" 
               class="w-full"
-              @change="selectedProjectId = workspaces.find(w => w.id === selectedWorkspaceId)?.projects[0]?.id || null"
+              @change="selectedProjectId = safeWorkspaces.find(w => w.id === selectedWorkspaceId)?.projects[0]?.id || null"
             >
               <option v-for="workspace in workspaces" :key="workspace.id" :value="workspace.id">
                 {{ workspace.name }}

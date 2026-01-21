@@ -73,6 +73,9 @@ const emit = defineEmits<{
   save: [data: { name: string; folderId: string; collectionId: string; isNewFolder: boolean; newFolderName?: string }];
 }>();
 
+// Safe workspaces getter - ensures we always have an array
+const safeWorkspaces = computed(() => Array.isArray(props.workspaces) ? props.workspaces : []);
+
 const form = ref({
   name: '',
   collectionId: '',
@@ -101,12 +104,12 @@ watch(() => [props.show, props.defaultCollectionId, props.defaultFolderId], asyn
   }
 });
 
-const selectedWorkspace = computed(() => props.workspaces[0]);
+const selectedWorkspace = computed(() => safeWorkspaces.value[0]);
 const selectedProject = computed(() => selectedWorkspace.value?.projects[0]);
 
 const findAllCollections = (): Array<CollectionItem & { projectName: string }> => {
   const result: Array<CollectionItem & { projectName: string }> = [];
-  props.workspaces.forEach(workspace => {
+  safeWorkspaces.value.forEach(workspace => {
     workspace.projects.forEach(project => {
       project.collections.forEach(collection => {
         result.push({
@@ -134,7 +137,7 @@ interface CollectionOption {
 const collectionOptions = computed((): CollectionOption[] => {
   const options: CollectionOption[] = [];
   
-  props.workspaces.forEach(workspace => {
+  safeWorkspaces.value.forEach(workspace => {
     (workspace.projects || []).forEach(project => {
       options.push({
         type: 'project-header',

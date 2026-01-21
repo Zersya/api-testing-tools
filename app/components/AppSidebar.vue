@@ -163,9 +163,12 @@ const dropTarget = ref<{
 
 const localWorkspaces = ref<WorkspaceWithProjects[]>([]);
 
+// Safe workspaces getter - ensures we always have an array
+const safeWorkspaces = computed(() => Array.isArray(props.workspaces) ? props.workspaces : []);
+
 const currentWorkspace = computed(() => {
-  if (!selectedWorkspaceId.value) return props.workspaces[0] || localWorkspaces.value[0];
-  return props.workspaces.find(w => w.id === selectedWorkspaceId.value) || localWorkspaces.value[0];
+  if (!selectedWorkspaceId.value) return safeWorkspaces.value[0] || localWorkspaces.value[0];
+  return safeWorkspaces.value.find(w => w.id === selectedWorkspaceId.value) || localWorkspaces.value[0];
 });
 
 const currentProject = computed(() => {
@@ -174,7 +177,7 @@ const currentProject = computed(() => {
 
 // Build collections with their grouped mocks
 const collectionsWithGroups = computed((): CollectionWithGroups[] => {
-  if (!props.collections || !props.mocks) return [];
+  if (!Array.isArray(props.collections) || !Array.isArray(props.mocks)) return [];
   
   return props.collections.map(collection => {
     const collectionMocks = props.mocks!.filter(m => (m.collection || 'root') === collection.id);
@@ -213,7 +216,7 @@ const collectionsWithGroups = computed((): CollectionWithGroups[] => {
 });
 
 watch(() => props.workspaces, (newWorkspaces) => {
-  if (newWorkspaces.length > 0) {
+  if (Array.isArray(newWorkspaces) && newWorkspaces.length > 0) {
     // If selectedWorkspaceId is not set, try to load from localStorage
     if (!selectedWorkspaceId.value) {
       const savedWorkspaceId = typeof window !== 'undefined' ? localStorage.getItem('selectedWorkspaceId') : null;
@@ -235,13 +238,15 @@ watch(selectedWorkspaceId, (newId) => {
 
 // Expand all collections by default
 onMounted(() => {
-  props.collections.forEach(c => {
-    expandedCollections.value.add(c.id);
-    // Also expand all groups within
-    collectionsWithGroups.value.forEach(coll => {
-      coll.groups.forEach(g => {
-        expandedGroups.value.add(`${coll.id}:${g.name}`);
-      });
+  if (Array.isArray(props.collections)) {
+    props.collections.forEach(c => {
+      expandedCollections.value.add(c.id);
+    });
+  }
+  // Also expand all groups within
+  collectionsWithGroups.value.forEach(coll => {
+    coll.groups.forEach(g => {
+      expandedGroups.value.add(`${coll.id}:${g.name}`);
     });
   });
 
@@ -254,16 +259,16 @@ onMounted(() => {
     activeView.value = savedActiveView;
   }
   
-  if (props.workspaces.length > 0) {
+  if (safeWorkspaces.value.length > 0) {
     // If there's a saved workspace ID that still exists in the workspaces list, use it
-    if (savedWorkspaceId && props.workspaces.find(w => w.id === savedWorkspaceId)) {
+    if (savedWorkspaceId && safeWorkspaces.value.find(w => w.id === savedWorkspaceId)) {
       selectedWorkspaceId.value = savedWorkspaceId;
     } else {
       // Otherwise use the first workspace
-      selectedWorkspaceId.value = props.workspaces[0].id;
+      selectedWorkspaceId.value = safeWorkspaces.value[0].id;
     }
     expandedWorkspaces.value.add(selectedWorkspaceId.value);
-    const currentWs = props.workspaces.find(w => w.id === selectedWorkspaceId.value);
+    const currentWs = safeWorkspaces.value.find(w => w.id === selectedWorkspaceId.value);
     if (currentWs?.projects.length > 0) {
       expandedProjects.value.add(currentWs.projects[0].id);
     }
@@ -271,7 +276,9 @@ onMounted(() => {
 });
 
 watch(() => props.collections, (newCollections) => {
-  newCollections.forEach(c => expandedCollections.value.add(c.id));
+  if (Array.isArray(newCollections)) {
+    newCollections.forEach(c => expandedCollections.value.add(c.id));
+  }
 }, { deep: true });
 
 watch(() => collectionsWithGroups.value, (newCollections) => {

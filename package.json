@@ -1,5 +1,5 @@
 {
-  "name": "nuxt-app",
+  "name": "mock-service",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,10 +12,14 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:seed": "tsx server/db/seed.ts"
+    "db:seed": "tsx server/db/seed.ts",
+    "tauri": "tauri",
+    "lint": "grep -rn '\\.workspaces\\.\\(find\\|forEach\\|length\\|map\\)' app/ --include='*.vue' --include='*.ts' | grep -v 'safeWorkspaces' && echo '⚠️  Found unsafe array patterns!' || echo '✅ No unsafe array patterns found'"
   },
   "dependencies": {
     "@nuxtjs/tailwindcss": "^6.14.0",
+    "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/plugin-store": "^2.4.2",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/uuid": "^10.0.0",
     "@vercel/kv": "^1.0.1",
@@ -31,8 +35,15 @@
     "vue": "latest"
   },
   "devDependencies": {
+    "@nuxt/eslint": "^1.12.1",
+    "@tauri-apps/cli": "^2.0.0",
     "@types/better-sqlite3": "^7.6.12",
+    "@typescript-eslint/parser": "^8.53.1",
     "drizzle-kit": "^0.30.1",
-    "tsx": "^4.19.2"
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-vue": "^10.7.0",
+    "tsx": "^4.19.2",
+    "typescript-eslint": "^8.53.1"
   }
 }
