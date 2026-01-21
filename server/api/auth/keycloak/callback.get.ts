@@ -164,7 +164,15 @@ export default defineEventHandler(async (event) => {
     realm: sessionData.realm
   };
 
-  const token = jwt.sign(jwtPayload, keycloakConfig.clientSecret || process.env.JWT_SECRET || 'fallback-secret', {
+  const jwtSecret = keycloakConfig.clientSecret || process.env.JWT_SECRET;
+  if (!jwtSecret) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'JWT_SECRET or clientSecret must be configured for Keycloak authentication'
+    });
+  }
+
+  const token = jwt.sign(jwtPayload, jwtSecret, {
     expiresIn: tokenResponse.expires_in || 3600
   });
 

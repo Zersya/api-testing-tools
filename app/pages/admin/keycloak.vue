@@ -9,6 +9,7 @@ interface KeycloakConfig {
   userInfoUrl: string;
   logoutUrl: string;
   callbackUrl: string;
+  baseUrl: string;
 }
 
 const settingsForm = ref<KeycloakConfig>({
@@ -20,7 +21,8 @@ const settingsForm = ref<KeycloakConfig>({
   tokenUrl: '',
   userInfoUrl: '',
   logoutUrl: '',
-  callbackUrl: ''
+  callbackUrl: '',
+  baseUrl: ''
 });
 
 const isLoading = ref(false);
@@ -40,7 +42,8 @@ const fetchSettings = async () => {
       tokenUrl: keycloakSettings.tokenUrl || '',
       userInfoUrl: keycloakSettings.userInfoUrl || '',
       logoutUrl: keycloakSettings.logoutUrl || '',
-      callbackUrl: keycloakSettings.callbackUrl || ''
+      callbackUrl: keycloakSettings.callbackUrl || '',
+      baseUrl: keycloakSettings.baseUrl || ''
     };
   } catch (e: any) {
     console.error('Failed to fetch settings:', e);
@@ -66,7 +69,8 @@ const saveSettings = async () => {
           tokenUrl: settingsForm.value.tokenUrl,
           userInfoUrl: settingsForm.value.userInfoUrl,
           logoutUrl: settingsForm.value.logoutUrl,
-          callbackUrl: settingsForm.value.callbackUrl
+          callbackUrl: settingsForm.value.callbackUrl,
+          baseUrl: settingsForm.value.baseUrl
         }
       }
     });
@@ -90,7 +94,7 @@ const generateDefaultUrls = () => {
     return;
   }
 
-  const baseUrl = settingsForm.value.authUrl.split('/realms/')[0] || 'https://your-keycloak-domain.com';
+  const baseUrl = settingsForm.value.baseUrl || 'https://your-keycloak-domain.com';
   const realm = settingsForm.value.realm;
 
   settingsForm.value.authUrl = `${baseUrl}/realms/${realm}/protocol/openid-connect/auth`;
@@ -115,10 +119,24 @@ onMounted(() => {
 
 <template>
   <div class="flex flex-col h-screen overflow-hidden">
-    <AppHeader title="Keycloak SSO Configuration" />
+    <AppHeader title="Keycloak SSO Configuration" :show-actions="false" />
 
     <main class="flex-1 overflow-hidden bg-bg-primary">
       <div class="h-full flex flex-col max-w-4xl mx-auto p-6 overflow-y-auto">
+        <div class="flex items-center gap-2 mb-4 text-sm">
+          <NuxtLink to="/" class="flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+              <polyline points="9 22 9 12 15 12 15 22"></polyline>
+            </svg>
+            Home
+          </NuxtLink>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-text-muted">
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+          <span class="text-text-primary font-medium">Keycloak SSO</span>
+        </div>
+
         <div class="mb-6">
           <h1 class="text-2xl font-semibold text-text-primary mb-1">Keycloak SSO Configuration</h1>
           <p class="text-sm text-text-secondary">Configure Keycloak Single Sign-On for enterprise authentication</p>
@@ -184,6 +202,17 @@ onMounted(() => {
                   class="w-full py-2.5 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(59,130,246,0.2)]"
                 />
                 <p class="text-xs text-text-muted mt-1.5">The client secret (leave empty for public clients)</p>
+              </div>
+
+              <div class="mb-4">
+                <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide mb-1.5">Keycloak Base URL</label>
+                <input
+                  v-model="settingsForm.baseUrl"
+                  type="text"
+                  placeholder="https://keycloak.example.com"
+                  class="w-full py-2.5 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm font-mono text-xs focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(59,130,246,0.2)]"
+                />
+                <p class="text-xs text-text-muted mt-1.5">Base URL of your Keycloak server (used for auto-generating endpoints)</p>
               </div>
 
               <div class="mb-4">

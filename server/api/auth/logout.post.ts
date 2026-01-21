@@ -10,7 +10,7 @@ export default defineEventHandler(async (event) => {
     const query = getQuery(event);
     const redirectTo = query.redirect || '/login';
     const logoutUrl = new URL(keycloakConfig.logoutUrl);
-    logoutUrl.searchParams.set('post_logout_redirect_uri', typeof window !== 'undefined' ? window.location.origin + redirectTo : redirectTo as string);
+    logoutUrl.searchParams.set('post_logout_redirect_uri', getRequestURL(event).origin + redirectTo);
 
     return sendRedirect(event, logoutUrl.toString());
   }

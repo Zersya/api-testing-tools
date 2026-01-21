@@ -184,10 +184,24 @@ onMounted(() => {
 
 <template>
   <div class="flex flex-col h-screen overflow-hidden">
-    <AppHeader title="Cloud Sync Configuration" />
+    <AppHeader title="Cloud Sync Configuration" :show-actions="false" />
 
     <main class="flex-1 overflow-hidden bg-bg-primary">
       <div class="h-full flex flex-col max-w-4xl mx-auto p-6 overflow-y-auto">
+        <div class="flex items-center gap-2 mb-4 text-sm">
+          <NuxtLink to="/" class="flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+              <polyline points="9 22 9 12 15 12 15 22"></polyline>
+            </svg>
+            Home
+          </NuxtLink>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-text-muted">
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+          <span class="text-text-primary font-medium">Cloud Sync</span>
+        </div>
+
         <div class="mb-6">
           <h1 class="text-2xl font-semibold text-text-primary mb-1">Cloud Sync Configuration</h1>
           <p class="text-sm text-text-secondary">Configure optional cloud sync for your mock services data</p>
@@ -496,7 +510,7 @@ onMounted(() => {
             Enable cloud sync above to sync your mock services data across devices and keep backups in the cloud.
           </p>
           <a
-            href="/docs/self-hosted-sync"
+            href="/docs-static/self-hosted-sync"
             target="_blank"
             class="inline-flex items-center gap-2 py-2 px-4 bg-bg-input text-text-secondary border border-border-default rounded-md cursor-pointer text-sm font-medium transition-all duration-fast hover:bg-bg-hover hover:text-text-primary"
           >
