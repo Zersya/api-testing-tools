@@ -7,6 +7,7 @@ import MethodBadge from '~/components/MethodBadge.vue';
 import ApiDocumentationViewer from '~/components/ApiDocumentationViewer.vue';
 import ResponseComparison from '~/components/ResponseComparison.vue';
 import KeyboardShortcutsHelpModal from '~/components/KeyboardShortcutsHelpModal.vue';
+import RenameWorkspaceModal from '~/components/RenameWorkspaceModal.vue';
 import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
 interface Collection {
   id: string;
@@ -47,6 +48,7 @@ interface HttpRequest {
 const { data: mocks, refresh: refreshMocks, error } = await useFetch<Mock[]>('/api/admin/mocks');
 const { data: collections, refresh: refreshCollections } = await useFetch<Collection[]>('/api/admin/collections');
 const { data: workspaces, refresh: refreshWorkspaces } = await useFetch<any[]>('/api/admin/tree');
+const { data: definitions, refresh: refreshDefinitions } = await useFetch<any[]>('/api/definitions');
 
 const currentWorkspaceId = computed(() => {
   return workspaces.value?.[0]?.id;
@@ -122,6 +124,56 @@ const findFolderInWorkspaces = (folderId: string): any => {
   return null;
 };
 
+const findCollectionByFolderId = (folderId: string): { collectionId: string; folderId: string } | null => {
+  if (!workspaces.value) return null;
+  for (const workspace of workspaces.value) {
+    for (const project of workspace.projects) {
+      for (const collection of project.collections) {
+        const findInFolder = (folders: any[]): string | null => {
+          for (const folder of folders) {
+            if (folder.id === folderId) return folder.id;
+            if (folder.children?.length) {
+              const found = findInFolder(folder.children);
+              if (found) return found;
+            }
+          }
+          return null;
+        };
+        const found = findInFolder(collection.folders);
+        if (found) {
+          return { collectionId: collection.id, folderId: found };
+        }
+      }
+    }
+  }
+  return null;
+};
+
+const findFolderIdByRequestId = (requestId: string): string | null => {
+  if (!workspaces.value) return null;
+  for (const workspace of workspaces.value) {
+    for (const project of workspace.projects) {
+      for (const collection of project.collections) {
+        const findInFolder = (folders: any[]): string | null => {
+          for (const folder of folders) {
+            if (folder.requests?.some((r: any) => r.id === requestId)) {
+              return folder.id;
+            }
+            if (folder.children?.length) {
+              const found = findInFolder(folder.children);
+              if (found) return found;
+            }
+          }
+          return null;
+        };
+        const found = findInFolder(collection.folders);
+        if (found) return found;
+      }
+    }
+  }
+  return null;
+};
+
 if (error.value && error.value.statusCode === 401) {
     await navigateTo('/login');
 }
@@ -137,9 +189,12 @@ const showDeleteGroupConfirm = ref(false);
 const showSaveDialog = ref(false);
 const showSaveAsDialog = ref(false);
 const showImportModal = ref(false);
+const definitionsRefreshTrigger = ref(0);
 const showProjectModal = ref(false);
 const projectWorkspaceId = ref<string | null>(null);
 const showWorkspaceModal = ref(false);
+const showRenameWorkspaceModal = ref(false);
+const workspaceToRename = ref<{ id: string; name: string } | null>(null);
 const selectedWorkspaceId = ref<string | null>(null);
 const showFolderModal = ref(false);
 const folderCollectionId = ref<string | null>(null);
@@ -147,6 +202,8 @@ const folderCollectionName = ref<string>('');
 const showRequestModal = ref(false);
 const requestFolderId = ref<string | null>(null);
 const requestFolderName = ref<string>('');
+const saveDialogDefaultCollectionId = ref('');
+const saveDialogDefaultFolderId = ref('');
 
 // State
 const previewContent = ref('');
@@ -247,6 +304,8 @@ const collectionColors = [
 const refresh = () => {
   refreshMocks();
   refreshCollections();
+  refreshWorkspaces();
+  refreshDefinitions();
 };
 
 // Helper to build full API URL with collection prefix
@@ -622,13 +681,85 @@ const updateTabUnsavedStatus = (request: HttpRequest, hasUnsavedChanges: boolean
   }
 };
 
-const handleSaveRequest = (request: any) => {
+const handleSaveRequest = async (request: any) => {
   requestToSave.value = request;
+  
+  // If request already has an ID (existing request), save directly without dialog
+  if (request.id && request.id !== '') {
+    try {
+      await $fetch(`/api/admin/requests/${request.id}`, {
+        method: 'PUT',
+        body: {
+          name: request.name,
+          method: request.method,
+          url: request.url,
+          headers: request.headers,
+          body: request.body,
+          auth: request.auth
+        }
+      });
+      
+      // Update selectedRequest if it matches
+      if (selectedRequest.value && selectedRequest.value.id === request.id) {
+        selectedRequest.value = { ...request };
+      }
+      
+      // Reset unsaved flag on the tab
+      updateTabUnsavedStatus(request, false);
+      
+      return;
+    } catch (e: any) {
+      alert('Error saving request: ' + (e.data?.message || e.message));
+      return;
+    }
+  }
+  
+  // For new requests, open the dialog with defaults
+  let folderId = request.folderId;
+  if (!folderId && request.id) {
+    folderId = findFolderIdByRequestId(request.id);
+  }
+  
+  if (folderId) {
+    const parentInfo = findCollectionByFolderId(folderId);
+    if (parentInfo) {
+      saveDialogDefaultCollectionId.value = parentInfo.collectionId;
+      saveDialogDefaultFolderId.value = parentInfo.folderId;
+    } else {
+      saveDialogDefaultCollectionId.value = '';
+      saveDialogDefaultFolderId.value = '';
+    }
+  } else {
+    saveDialogDefaultCollectionId.value = '';
+    saveDialogDefaultFolderId.value = '';
+  }
+  
   showSaveDialog.value = true;
 };
 
 const handleSaveAsRequest = (request: any) => {
   requestToSaveAs.value = request;
+  
+  // Set defaults from current request's parent
+  let folderId = request.folderId;
+  if (!folderId && request.id) {
+    folderId = findFolderIdByRequestId(request.id);
+  }
+  
+  if (folderId) {
+    const parentInfo = findCollectionByFolderId(folderId);
+    if (parentInfo) {
+      saveDialogDefaultCollectionId.value = parentInfo.collectionId;
+      saveDialogDefaultFolderId.value = parentInfo.folderId;
+    } else {
+      saveDialogDefaultCollectionId.value = '';
+      saveDialogDefaultFolderId.value = '';
+    }
+  } else {
+    saveDialogDefaultCollectionId.value = '';
+    saveDialogDefaultFolderId.value = '';
+  }
+  
   showSaveAsDialog.value = true;
 };
 
@@ -829,6 +960,11 @@ const openCreateProject = (workspaceId?: string) => {
 
 const openCreateWorkspace = () => {
   showWorkspaceModal.value = true;
+};
+
+const openRenameWorkspace = (workspace: { id: string; name: string }) => {
+  workspaceToRename.value = workspace;
+  showRenameWorkspaceModal.value = true;
 };
 
 const handleRestoreRequest = (request: any) => {
@@ -1062,12 +1198,7 @@ const confirmDeleteCollection = (collection: Collection) => {
 const deleteCollection = async () => {
     if (!collectionToDelete.value) return;
     try {
-        const hasProjectId = 'projectId' in collectionToDelete.value && collectionToDelete.value.projectId;
-        if (hasProjectId) {
-            await $fetch(`/api/admin/projects/${collectionToDelete.value.projectId}/collections/${collectionToDelete.value.id}`, { method: 'DELETE' });
-        } else {
-            await $fetch(`/api/admin/collections?id=${collectionToDelete.value.id}`, { method: 'DELETE' });
-        }
+        await $fetch(`/api/admin/collections/${collectionToDelete.value.id}`, { method: 'DELETE' });
         showDeleteCollectionConfirm.value = false;
         collectionToDelete.value = null;
         refreshWorkspaces();
@@ -1325,6 +1456,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
         :selected-mock-id="selectedMock?.id"
         :workspaces="workspaces || []"
         :selected-workspace-id="selectedWorkspaceId"
+        :refresh-trigger="definitionsRefreshTrigger"
         @select-mock="handleSelectMock"
         @select-request="handleSelectRequest"
         @create-mock="goToCreate"
@@ -1334,6 +1466,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
         @create-folder="openCreateFolder"
         @create-project="openCreateProject"
         @create-workspace="openCreateWorkspace"
+        @rename-workspace="openRenameWorkspace"
         @rename-project="openRenameProject"
         @delete-project="confirmDeleteProject"
         @edit-collection="openEditCollection"
@@ -1351,6 +1484,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
         @reorder-folders="handleReorderFolders"
         @reorder-requests="handleReorderRequests"
         @select-workspace="selectedWorkspaceId = $event"
+        @import-complete="definitionsRefreshTrigger++"
       />
 
       <!-- Main Content -->
@@ -1869,7 +2003,9 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
       :request="showSaveDialog ? requestToSave : requestToSaveAs"
       :workspaces="workspaces || []"
       :is-save-as="showSaveAsDialog"
-      @close="showSaveDialog = false; showSaveAsDialog = false; requestToSave = null; requestToSaveAs = null"
+      :default-collection-id="saveDialogDefaultCollectionId"
+      :default-folder-id="saveDialogDefaultFolderId"
+      @close="showSaveDialog = false; showSaveAsDialog = false; requestToSave = null; requestToSaveAs = null; saveDialogDefaultCollectionId = ''; saveDialogDefaultFolderId = ''"
       @save="showSaveDialog ? handleSave($event) : handleSaveAs($event)"
     />
 
@@ -1878,7 +2014,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
       :show="showImportModal"
       :workspaces="workspaces || []"
       @close="showImportModal = false"
-      @import-complete="refresh"
+      @import-complete="() => { refresh(); definitionsRefreshTrigger++; }"
     />
 
     <!-- API Documentation Viewer Modal -->
@@ -1988,6 +2124,14 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
       :show="showWorkspaceModal"
       @close="showWorkspaceModal = false"
       @created="(workspace) => { refreshWorkspaces(); selectedWorkspaceId = workspace.id; }"
+    />
+
+    <!-- Rename Workspace Modal -->
+    <RenameWorkspaceModal
+      :show="showRenameWorkspaceModal"
+      :workspace="workspaceToRename"
+      @close="showRenameWorkspaceModal = false; workspaceToRename = null"
+      @renamed="refreshWorkspaces"
     />
 
     <!-- Create Project Modal -->

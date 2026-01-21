@@ -20,7 +20,6 @@ const selectedSchema = ref<string | null>(null);
 const expandedTags = ref<Set<string>>(new Set());
 const expandedProperties = ref<Set<string>>(new Set());
 const activeLanguage = ref<'curl' | 'javascript' | 'python' | 'go' | 'ruby' | 'http'>('curl');
-const isDarkMode = ref(true);
 const activeSection = ref<'endpoints' | 'schemas'>('endpoints');
 
 let highlightModule: any = null;
@@ -414,10 +413,7 @@ onMounted(() => {
         @click.self="emit('close')"
       >
         <div 
-          :class="[
-            'bg-bg-secondary border border-border-default rounded-xl shadow-modal w-[calc(100%-32px)] max-h-[90vh] overflow-hidden flex flex-col',
-            isDarkMode ? 'dark-theme' : 'light-theme'
-          ]"
+          class="bg-bg-secondary border border-border-default rounded-xl shadow-modal w-[calc(100%-32px)] max-h-[90vh] overflow-hidden flex flex-col"
           style="width: 1200px; max-width: 95vw;"
         >
           <div class="flex-1 flex overflow-hidden min-h-[600px]">
@@ -680,38 +676,18 @@ onMounted(() => {
                       </div>
                     </div>
                     
-                    <div class="w-80 border-l border-border-default bg-bg-sidebar flex flex-col">
+                    <div class="w-80 border-l border-border-default bg-[#1e1e2e] flex flex-col">
                       <div class="p-3 border-b border-border-default flex items-center justify-between">
-                        <span class="text-xs font-semibold text-text-primary uppercase tracking-wide">Code Examples</span>
-                        <button 
-                          @click="toggleTheme"
-                          class="text-text-secondary bg-transparent border-none cursor-pointer p-1 flex items-center justify-center rounded transition-all duration-fast hover:text-text-primary hover:bg-bg-hover"
-                          title="Toggle theme"
-                        >
-                          <svg v-if="isDarkMode" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="12" cy="12" r="5"></circle>
-                            <line x1="12" y1="1" x2="12" y2="3"></line>
-                            <line x1="12" y1="21" x2="12" y2="23"></line>
-                            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-                            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-                            <line x1="1" y1="12" x2="3" y2="12"></line>
-                            <line x1="21" y1="12" x2="23" y2="12"></line>
-                            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-                            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
-                          </svg>
-                          <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-                          </svg>
-                        </button>
+                        <span class="text-xs font-semibold text-[#cdd6f4] uppercase tracking-wide">Code Examples</span>
                       </div>
                       
-                      <div class="flex border-b border-border-default overflow-x-auto">
+                      <div class="flex border-b border-[#313244] overflow-x-auto">
                         <button 
                           v-for="lang in ['curl', 'javascript', 'python', 'go', 'ruby', 'http']"
                           :key="lang"
                           :class="[
-                            'flex-shrink-0 py-2 px-3 bg-transparent border-none border-b-2 text-[11px] font-medium cursor-pointer -mb-px transition-all duration-fast whitespace-nowrap',
-                            activeLanguage === lang ? 'text-accent-orange border-b-accent-orange' : 'text-text-secondary border-b-transparent hover:text-text-primary hover:bg-bg-hover'
+                            'flex-shrink-0 py-2 px-3 bg-transparent border-none border-b-2 text-[10px] font-medium cursor-pointer -mb-px transition-all duration-fast whitespace-nowrap',
+                            activeLanguage === lang ? 'text-accent-orange border-b-accent-orange' : 'text-[#a6adc8] border-b-transparent hover:text-[#cdd6f4] hover:bg-[#313244]'
                           ]"
                           @click="activeLanguage = lang"
                         >
@@ -719,14 +695,14 @@ onMounted(() => {
                         </button>
                       </div>
                       
-                      <div class="flex-1 overflow-auto p-3 bg-bg-tertiary">
-                        <div v-if="getCodeExample" class="code-highlight-block font-mono text-[10px] leading-normal text-text-primary m-0 whitespace-pre-wrap break-words">{{ getCodeExample }}</div>
-                        <div v-else class="text-xs text-text-muted h-full flex items-center justify-center">
+                      <div class="flex-1 overflow-auto p-3 bg-[#1e1e2e]">
+                        <div v-if="getCodeExample" class="code-highlight-block font-mono text-[10px] leading-tight text-[#ffffff] m-0 whitespace-pre-wrap break-all">{{ getCodeExample }}</div>
+                        <div v-else class="text-xs text-[#a6adc8] h-full flex items-center justify-center">
                           Select an endpoint to see code examples
                         </div>
                       </div>
                       
-                      <div v-if="getCodeExample" class="p-3 border-t border-border-default">
+                      <div v-if="getCodeExample" class="p-3 border-t border-[#313244]">
                         <button 
                           @click="copyCode"
                           class="btn btn-secondary btn-sm w-full"
@@ -951,5 +927,17 @@ onMounted(() => {
 .modal-leave-to > div {
   opacity: 0;
   transform: scale(0.95) translateY(-10px);
+}
+
+.code-highlight-block {
+  font-size: 10px !important;
+  line-height: 1.4 !important;
+  overflow-wrap: break-all;
+  word-break: break-all;
+  white-space: pre-wrap;
+  color: #ffffff !important;
+  background-color: transparent !important;
+  padding: 0 !important;
+  border: none !important;
 }
 </style>

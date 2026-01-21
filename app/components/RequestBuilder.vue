@@ -1390,6 +1390,9 @@ const sendRequest = async () => {
     });
 
     response.value = result;
+    if (responseViewType.value === 'pretty') {
+      expandAll();
+    }
   } catch (error: any) {
     response.value = {
       success: false,

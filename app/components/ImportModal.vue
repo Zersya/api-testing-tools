@@ -463,6 +463,17 @@ const resetFileState = () => {
   envPasteContent.value = '';
   error.value = null;
 };
+
+const fileInputRef = ref<HTMLElement | null>(null);
+const envFileInputRef = ref<HTMLElement | null>(null);
+
+const triggerFileInput = () => {
+  fileInputRef.value?.querySelector('input')?.click();
+};
+
+const triggerEnvFileInput = () => {
+  envFileInputRef.value?.querySelector('input')?.click();
+};
 </script>
 
 <template>
@@ -556,6 +567,7 @@ const resetFileState = () => {
         <div v-if="activeTab === 'file'" class="mb-4">
           <label>{{ activeImportType === 'openapi' ? 'Upload OpenAPI Spec' : 'Upload Postman Collection' }}</label>
           <div
+            ref="fileInputRef"
             :class="[
               'relative border-2 border-dashed rounded-lg p-8 text-center transition-all duration-fast',
               isDragging 
@@ -590,7 +602,7 @@ const resetFileState = () => {
               </svg>
               <div class="text-sm text-text-secondary">
                 Drag & Drop your file here, or 
-                <button class="text-accent-orange hover:underline" @click="($el as HTMLElement).querySelector('input')?.click()">browse</button>
+                <button class="text-accent-orange hover:underline" @click="triggerFileInput">browse</button>
               </div>
               <div class="text-xs text-text-muted">
                 {{ activeImportType === 'openapi' ? 'Supports JSON and YAML formats' : 'Supports Postman Collection v2.x (JSON)' }}
@@ -602,6 +614,7 @@ const resetFileState = () => {
           <div v-if="activeImportType === 'postman' && importEnvironments" class="mt-4">
             <label class="text-xs text-text-muted">Postman Environment JSON (optional)</label>
             <div
+              ref="envFileInputRef"
               :class="[
                 'relative border-2 border-dashed rounded-lg p-6 text-center transition-all duration-fast mt-2',
                 selectedEnvFile ? 'border-accent-green bg-accent-green/5' : 'border-border-default hover:border-border-subtle hover:bg-bg-hover'
@@ -624,7 +637,7 @@ const resetFileState = () => {
               
               <div v-else class="text-xs text-text-muted">
                 Drag & Drop environment file, or 
-                <button @click="($el as HTMLElement).querySelector('input')?.click()" class="text-accent-orange hover:underline">browse</button>
+                <button @click="triggerEnvFileInput" class="text-accent-orange hover:underline">browse</button>
               </div>
             </div>
           </div>

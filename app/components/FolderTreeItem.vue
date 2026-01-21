@@ -235,7 +235,7 @@ const isDescendant = (ancestorId: string, descendantId: string): boolean => {
               :draggable="true"
               @dragstart="handleDragStart($event, 'request', request.id)"
               @dragend="handleDragEnd"
-              @click="emit('selectRequest', request)"
+              @click="emit('selectRequest', { ...request, folderId: props.folder.id })"
               @contextmenu.prevent="emit('contextMenu', $event, 'request', request)"
               @dragover="handleDragOver($event, 'request', request.id, index === 0 ? 'before' : 'after')"
               @dragleave="handleDragLeave"

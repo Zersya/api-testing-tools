@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import Modal from './Modal.vue';
+
 interface RequestHistoryEntry {
   id: string;
   workspaceId: string;
@@ -62,6 +64,7 @@ const emit = defineEmits<{
 
 const selectedForCompare = ref<Set<string>>(new Set());
 const showComparePanel = ref(false);
+const showClearHistoryConfirm = ref(false);
 
 const history = ref<RequestHistoryEntry[]>([]);
 const isLoading = ref(false);
@@ -129,8 +132,12 @@ const restoreToBuilder = (entry: RequestHistoryEntry) => {
   emit('restoreRequest', restoredRequest);
 };
 
+const confirmClearHistory = () => {
+  showClearHistoryConfirm.value = true;
+};
+
 const clearHistory = async () => {
-  if (!confirm('Are you sure you want to clear all request history?')) return;
+  showClearHistoryConfirm.value = false;
   if (!props.workspaceId) return;
   
   try {
@@ -274,7 +281,7 @@ watch(() => props.workspaceId, () => {
           Compare ({{ selectedForCompare.size }})
         </button>
         <button
-          @click="clearHistory"
+          @click="confirmClearHistory"
           class="flex items-center justify-center w-7 h-7 bg-transparent border-none rounded text-text-secondary cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-red"
           title="Clear History"
         >
@@ -309,11 +316,11 @@ watch(() => props.workspaceId, () => {
     </div>
 
     <div class="flex-1 overflow-y-auto">
-      <div v-if="isLoading" class="flex items-center justify-center py-10 text-text-muted text-sm">
+      <div v-if="isLoading" class="flex items-center justify-center py-4 text-text-muted text-sm">
         Loading history...
       </div>
       
-      <div v-else-if="error" class="flex flex-col items-center gap-3 py-10 px-5 text-center">
+      <div v-else-if="error" class="flex flex-col items-center gap-2 py-4 px-5 text-center">
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="text-accent-red opacity-50">
           <circle cx="12" cy="12" r="10"></circle>
           <line x1="12" y1="8" x2="12" y2="12"></line>
@@ -323,7 +330,7 @@ watch(() => props.workspaceId, () => {
         <button @click="fetchHistory" class="text-xs text-accent-blue hover:text-accent-blue/80">Retry</button>
       </div>
       
-      <div v-else-if="history.length === 0" class="flex flex-col items-center gap-3 py-10 px-5 text-center">
+      <div v-else-if="history.length === 0" class="flex flex-col items-center gap-2 py-4 px-5 text-center">
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="text-text-muted opacity-30">
           <circle cx="12" cy="12" r="10"></circle>
           <polyline points="12 6 12 12 16 14"></polyline>
@@ -406,5 +413,20 @@ watch(() => props.workspaceId, () => {
         </button>
       </div>
     </div>
+
+    <!-- Clear History Confirmation Modal -->
+    <Modal :show="showClearHistoryConfirm" title="Clear Request History" @close="showClearHistoryConfirm = false">
+      <p class="text-text-secondary leading-relaxed">
+        Are you sure you want to clear all request history?
+        <br /><br />
+        This will permanently delete <strong>{{ total }}</strong> history entries.
+        <br /><br />
+        <strong class="text-accent-yellow">Note:</strong> This action cannot be undone.
+      </p>
+      <template #footer>
+        <button class="btn btn-secondary" @click="showClearHistoryConfirm = false">Cancel</button>
+        <button class="btn btn-danger" @click="clearHistory">Clear History</button>
+      </template>
+    </Modal>
   </div>
 </template>

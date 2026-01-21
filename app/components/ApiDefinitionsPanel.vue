@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import Modal from './Modal.vue';
+
 interface ApiDefinition {
   id: string;
   name: string;
@@ -20,9 +22,13 @@ interface ApiDefinition {
 
 interface Props {
   workspaceId?: string;
+  refreshTrigger?: number;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  workspaceId: undefined,
+  refreshTrigger: 0
+});
 
 const emit = defineEmits<{
   viewDocs: [definition: ApiDefinition];
@@ -38,6 +44,8 @@ const sharingDefinitions = ref<Set<string>>(new Set());
 const editingSlugs = ref<Set<string>>(new Set());
 const slugValues = ref<Record<string, string>>({});
 const slugErrors = ref<Record<string, string>>({});
+const showDeleteConfirm = ref(false);
+const definitionToDelete = ref<ApiDefinition | null>(null);
 
 const fetchDefinitions = async () => {
   isLoading.value = true;
@@ -54,9 +62,13 @@ const fetchDefinitions = async () => {
   }
 };
 
+watch(() => props.refreshTrigger, () => {
+  fetchDefinitions();
+});
+
 const handleViewDocs = async (def: ApiDefinition) => {
   try {
-    const { data } = await $Fetch<any>(`/api/definitions/${def.id}`);
+    const data = await $fetch<any>(`/api/definitions/${def.id}`);
     emit('viewDocs', { ...def, ...data });
   } catch (e: any) {
     console.error('Error fetching definition details:', e);
@@ -66,7 +78,7 @@ const handleViewDocs = async (def: ApiDefinition) => {
 
 const handleGenerateMocks = async (def: ApiDefinition) => {
   try {
-    const { data } = await $Fetch<any>(`/api/definitions/${def.id}`);
+    const data = await $fetch<any>(`/api/definitions/${def.id}`);
     emit('generateMocks', { ...def, ...data });
   } catch (e: any) {
     console.error('Error fetching definition details:', e);
@@ -74,18 +86,24 @@ const handleGenerateMocks = async (def: ApiDefinition) => {
   }
 };
 
-const handleDelete = async (def: ApiDefinition) => {
-  if (!confirm(`Are you sure you want to delete "${def.name}"? This action cannot be undone.`)) {
-    return;
-  }
+const confirmDelete = (def: ApiDefinition) => {
+  definitionToDelete.value = def;
+  showDeleteConfirm.value = true;
+};
+
+const handleDelete = async () => {
+  if (!definitionToDelete.value) return;
   
   try {
-    await $fetch(`/api/definitions/${def.id}`, { method: 'DELETE' });
-    definitions.value = definitions.value.filter(d => d.id !== def.id);
-    emit('deleteDefinition', def);
+    await $fetch(`/api/definitions/${definitionToDelete.value.id}`, { method: 'DELETE' });
+    definitions.value = definitions.value.filter(d => d.id !== definitionToDelete.value!.id);
+    emit('deleteDefinition', definitionToDelete.value);
   } catch (e: any) {
     error.value = e.message || 'Failed to delete definition';
     console.error('Error deleting definition:', e);
+  } finally {
+    showDeleteConfirm.value = false;
+    definitionToDelete.value = null;
   }
 };
 
@@ -223,11 +241,11 @@ onMounted(() => {
     </div>
 
     <div class="flex-1 overflow-y-auto">
-      <div v-if="isLoading" class="flex items-center justify-center py-10 text-text-muted text-sm">
+      <div v-if="isLoading" class="flex items-center justify-center py-4 text-text-muted text-sm">
         Loading definitions...
       </div>
       
-      <div v-else-if="error" class="flex flex-col items-center gap-3 py-10 px-5 text-center">
+      <div v-else-if="error" class="flex flex-col items-center gap-2 py-4 px-5 text-center">
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="text-accent-red opacity-50">
           <circle cx="12" cy="12" r="10"></circle>
           <line x1="12" y1="8" x2="12" y2="12"></line>
@@ -237,7 +255,7 @@ onMounted(() => {
         <button @click="fetchDefinitions" class="text-xs text-accent-blue hover:text-accent-blue/80">Retry</button>
       </div>
       
-      <div v-else-if="definitions.length === 0" class="flex flex-col items-center gap-3 py-10 px-5 text-center">
+      <div v-else-if="definitions.length === 0" class="flex flex-col items-center gap-2 py-4 px-5 text-center">
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="text-text-muted opacity-30">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
           <polyline points="14 2 14 8 20 8"></polyline>
@@ -309,7 +327,7 @@ onMounted(() => {
                 <span>Re-import</span>
               </button>
               <button
-                @click="handleDelete(def)"
+                @click="confirmDelete(def)"
                 class="flex items-center gap-1 px-2 py-1 text-[10px] text-text-secondary hover:text-accent-red hover:bg-accent-red/10 rounded transition-colors"
                 title="Delete"
               >
@@ -412,5 +430,22 @@ onMounted(() => {
         </div>
       </div>
     </div>
+
+    <!-- Delete Definition Confirmation Modal -->
+    <Modal :show="showDeleteConfirm" title="Delete API Definition" @close="showDeleteConfirm = false; definitionToDelete = null">
+      <p class="text-text-secondary leading-relaxed">
+        Are you sure you want to delete this API definition?
+        <br />
+        <code class="inline-block mt-2 py-1.5 px-2.5 bg-bg-tertiary rounded text-accent-orange font-mono">{{ definitionToDelete?.name }}</code>
+        <br /><br />
+        <strong class="text-accent-red">Warning:</strong> This will permanently delete this definition and all its endpoints.
+        <br /><br />
+        <strong class="text-accent-yellow">Note:</strong> This action cannot be undone.
+      </p>
+      <template #footer>
+        <button class="btn btn-secondary" @click="showDeleteConfirm = false; definitionToDelete = null">Cancel</button>
+        <button class="btn btn-danger" @click="handleDelete">Delete Definition</button>
+      </template>
+    </Modal>
   </div>
 </template>
