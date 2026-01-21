@@ -40,6 +40,33 @@ Parse stored spec content for derived data:
 
 ---
 
+### Dynamic Syntax Highlighting Pattern
+Import and apply client-side syntax highlighting:
+- Import highlighting library dynamically inside component functions to avoid SSR issues
+- Cache imported module in a variable to prevent multiple imports
+- Check `typeof window !== 'undefined'` before executing browser-specific code
+- Use `highlightElement` method to apply highlighting to DOM elements
+- Apply highlighting via watchers with `nextTick` to ensure DOM elements exist
+- Map language names to library-specific CSS classes (e.g., 'curl' → 'shj-lang-bash')
+
+### Security Scheme Parsing Pattern
+Extract and resolve OpenAPI authentication:
+- Check endpoint.security first; fallback to spec.security if not defined
+- Resolve security scheme name to scheme definition from securitySchemes object
+- Inspect scheme type: 'http' for bearer/basic, 'apiKey' for key-based auth
+- Generate appropriate auth header/name/value triple based on scheme
+- Return null if no authentication required (empty security array)
+
+### Client-Side Module Import Pattern
+Safely import browser-only modules in Nuxt/Vue:
+- Check if code is running in browser: `typeof window !== 'undefined'`
+- Import dynamically inside component methods or watchers, not at top level
+- Cache imported module in a variable to avoid repeated imports
+- Use the cached module for subsequent calls
+- This pattern prevents SSR errors for browser-specific libraries
+
+---
+
 ### Unified Multi-Type Modal Pattern
 Use a single modal component to handle multiple import types (OpenAPI, Postman) by:
 - Two-level tab system: Type tabs (OpenAPI/Postman) + Method tabs (File/URL/Paste)
@@ -356,4 +383,50 @@ app/components/AppHeader.vue` (updated)\n- `app/pages/admin/index.vue` (updated)
 sessionID":"ses_4222b12acffedrFPbjjdyjqCuS","part":{"id":"prt_bddd9ae36001xb22MV9zlF8ZEN","sessionID":"ses_4222b12acffedrFPbjjdyjqCuS","messageID":"msg_bddd9aa1b001ysjAgZxzQvBhVL","type":"step-start","snapshot":"c4a105f6a90e3985d32fd76baa23ba53be79b05a"}}
 {"type":"text","timestamp":1768953595412,"sessionID":"ses_4222b12acffedrFPbjjdyjqCuS","part":{"id":"prt_bddd9b4c3001j1UvWjH43UzSMi","sessionID":"ses_4222b12acffedrFPbjjdyjqCuS","messageID":"msg_bddd9aa1b001ysjAgZxzQvBhVL","type":"text","text":"
 
+---
+## ✓ Iteration 7 - US-035: Redocly-style API documentation - Navigation
+*2026-01-21T00:02:27.008Z (150s)*
+
+**Status:** Completed
+
+**Notes:**
+ould have orange border indicator\n5. **Code examples**: Switch between cURL/JavaScript/Python/HTTP tabs\n6. **Copy code**: Click \"Copy Code\" button\n7. **Theme toggle**: Click the sun/moon icon in the code panel header\n\n### 🎨 Design Notes\n\n- Clean dark theme matching existing app aesthetic\n- Consistent color usage from defined palette\n- Method badges using existing `MethodBadge` component\n- Responsive overflow handling on all panels\n- Smooth transitions on hover and state changes\n\n
+
+---
+## ✓ Iteration 8 - US-036: Redocly-style API documentation - Endpoint details
+*2026-01-21T00:03:28.074Z (60s)*
+
+**Status:** Completed
+
+---
+
+## [January 21, 2026] - US-037
+### What was implemented
+- Added Go and Ruby language tabs to the code examples panel
+- Integrated @speed-highlight/core for syntax highlighting across all supported languages
+- Enhanced code example generation to include authentication headers based on OpenAPI security schemes
+- Added support for Bearer token, Basic auth, and API key authentication
+- Implemented dynamic language class mapping for syntax highlighting (bash, javascript, python, go, plain for ruby, http)
+- Added watchers to re-apply syntax highlighting when language changes or modal opens
+- Updated code examples for Go with proper package structure and Go conventions
+- Added Ruby code examples with Net::HTTP and JSON parsing
+- Imported speed-highlight default theme CSS in main.css
+
+### Files changed
+- app/components/ApiDocumentationViewer.vue (updated - added syntax highlighting, new languages, authentication support)
+- app/assets/css/main.css (updated - imported @speed-highlight/core CSS)
+
+### Learnings:
+- **Dynamic Syntax Highlighting Pattern**: Import highlighting library on-demand in client-side code to avoid SSR issues; use module caching variable to prevent multiple imports; apply highlighting via `highlightElement` method on DOM elements with language-specific classes.
+- **Language Class Mapping**: Map frontend language names to library-specific class names (e.g., 'curl' → 'shj-lang-bash', 'go' → 'shj-lang-go'); some languages may need fallback to plain text if not supported (e.g., Ruby → 'shj-lang-plain').
+- **Authentication Extraction Pattern**: Extract authentication from endpoint security or global spec security; resolve security scheme name to scheme definition; handle different auth types (http/bearer, http/basic, apiKey) with appropriate header generation.
+- **Computed Property Chain for Auth**: Use computed property to derive auth header from endpoint and spec; avoids recalculating on each render; returns null if no authentication required.
+- **Code Example Generation Enhancement**: For each language, check auth header and conditionally add appropriate auth code (curl -H, JavaScript headers dict, Python headers dict, Go req.Header.Set, Ruby request[header]).
+- **React-style Watcher Pattern**: Use watch with nextTick to ensure DOM elements exist before applying highlighting; wait for language changes and modal show events.
+- **Client-side Only Modules**: When importing browser-specific modules, check `typeof window !== 'undefined'` to avoid SSR errors; import dynamically inside component functions.
+
+### Patterns discovered:
+- **Code Example with Auth Pattern**: Get auth header via computed property → switch on language → generate language-specific code → conditionally add auth header syntax → return formatted code string.
+- **Syntax Highlighting Integration Pattern**: Import module dynamically → cache in variable → apply when DOM ready → use CSS classes for language identification → highlight on language change.
+- **Security Scheme Parsing Pattern**: Check endpoint.security first → fallback to spec.security → resolve scheme name → inspect scheme type → generate appropriate auth header/name/value triple.
 ---

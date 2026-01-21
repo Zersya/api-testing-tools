@@ -16,8 +16,58 @@ const emit = defineEmits<{
 const searchTerm = ref('');
 const selectedEndpoint = ref<OpenAPIEndpoint | null>(null);
 const expandedTags = ref<Set<string>>(new Set());
-const activeLanguage = ref<'curl' | 'javascript' | 'python' | 'http'>('curl');
+const activeLanguage = ref<'curl' | 'javascript' | 'python' | 'go' | 'ruby' | 'http'>('curl');
 const isDarkMode = ref(true);
+
+let highlightModule: any = null;
+
+const getLanguageClass = (lang?: string): string => {
+  const language = lang || activeLanguage.value;
+  switch (language) {
+    case 'curl':
+      return 'shj-lang-bash';
+    case 'javascript':
+      return 'shj-lang-js';
+    case 'python':
+      return 'shj-lang-py';
+    case 'go':
+      return 'shj-lang-go';
+    case 'ruby':
+      return 'shj-lang-plain';
+    case 'http':
+      return 'shj-lang-http';
+    default:
+      return 'shj-lang-plain';
+  }
+};
+
+const applySyntaxHighlighting = () => {
+  if (typeof window === 'undefined') return;
+  
+  const codeElements = document.querySelectorAll('.code-highlight-block');
+  if (codeElements.length === 0) return;
+  
+  if (!highlightModule) {
+    import('@speed-highlight/core').then((mod) => {
+      highlightModule = mod;
+      codeElements.forEach((el) => {
+        const languageClass = getLanguageClass();
+        el.className = languageClass;
+        if (mod.highlightElement) {
+          mod.highlightElement(el, languageClass.replace('shj-lang-', ''));
+        }
+      });
+    });
+  } else {
+    codeElements.forEach((el) => {
+      const languageClass = getLanguageClass();
+      el.className = languageClass;
+      if (highlightModule.highlightElement) {
+        highlightModule.highlightElement(el, languageClass.replace('shj-lang-', ''));
+      }
+    });
+  }
+};
 
 const toggleTheme = () => {
   isDarkMode.value = !isDarkMode.value;
@@ -81,48 +131,175 @@ const selectEndpoint = (endpoint: OpenAPIEndpoint) => {
   selectedEndpoint.value = endpoint;
 };
 
+const getAuthHeader = computed(() => {
+  if (!selectedEndpoint.value || !props.spec?.securitySchemes) return null;
+  
+  const security = selectedEndpoint.value.security || props.spec.security;
+  if (!security || security.length === 0) return null;
+  
+  const firstSecurity = security[0];
+  const schemeKeys = Object.keys(firstSecurity);
+  
+  if (schemeKeys.length === 0) return null;
+  
+  const schemeName = schemeKeys[0];
+  const scheme = props.spec.securitySchemes[schemeName];
+  
+  if (!scheme) return null;
+  
+  const schemeType = (scheme as any).type;
+  const schemeNameValue = (scheme as any).name;
+  
+  if (schemeType === 'http') {
+    const schemeFormat = (scheme as any).scheme?.toLowerCase();
+    if (schemeFormat === 'bearer') {
+      return {
+        header: 'Authorization',
+        value: 'Bearer YOUR_ACCESS_TOKEN'
+      };
+    } else if (schemeFormat === 'basic') {
+      return {
+        header: 'Authorization',
+        value: 'Basic base64(username:password)'
+      };
+    }
+  } else if (schemeType === 'apiKey') {
+    const inParam = (scheme as any).in;
+    if (inParam === 'header') {
+      return {
+        header: schemeNameValue,
+        value: 'YOUR_API_KEY'
+      };
+    }
+  }
+  
+  return null;
+});
+
 const getCodeExample = computed(() => {
   if (!selectedEndpoint.value || !props.spec?.servers?.[0]) return '';
   
   const ep = selectedEndpoint.value;
   const server = props.spec.servers[0].url;
   const url = `${server}${ep.path}`;
+  const auth = getAuthHeader.value;
   
   switch (activeLanguage.value) {
-    case 'curl':
-      return `curl -X ${ep.method} "${url}" \\
+    case 'curl': {
+      const headers = auth ? `\n  -H "${auth.header}: ${auth.value}"` : '';
+      return `curl -X ${ep.method} "${url}" \\${headers}
   -H "Content-Type: application/json"`;
+    }
     
-    case 'javascript':
+    case 'javascript': {
+      const headers = auth ? `\n    "${auth.header}": "${auth.value}",\n` : '';
       return `const response = await fetch("${url}", {
   method: "${ep.method}",
-  headers: {
-    "Content-Type": "application/json"
+  headers: {${headers}    "Content-Type": "application/json"
   }
 });
 
 const data = await response.json();`;
+    }
     
-    case 'python':
+    case 'python': {
+      const headers = auth ? `\n        "${auth.header}": "${auth.value}",` : '';
       return `import requests
 
 response = requests.${ep.method.toLowerCase()}(
     "${url}",
-    headers={"Content-Type": "application/json"}
+    headers={${headers}
+        "Content-Type": "application/json"
+    }
 )
 
 print(response.json())`;
+    }
     
-    case 'http':
+    case 'go': {
+      const authLine = auth ? `\n    req.Header.Set("${auth.header}", "${auth.value}")` : '';
+      return `package main
+
+import (
+    "bytes"
+    "encoding/json"
+    "fmt"
+    "io"
+    "net/http"
+)
+
+func main() {
+    url := "${url}"
+    
+    req, err := http.NewRequest("${ep.method.toUpperCase()}", url, nil)
+    if err != nil {
+        panic(err)
+    }
+    
+    req.Header.Set("Content-Type", "application/json")${authLine}
+    
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    if err != nil {
+        panic(err)
+    }
+    defer resp.Body.Close()
+    
+    body, err := io.ReadAll(resp.Body)
+    if err != nil {
+        panic(err)
+    }
+    
+    fmt.Println(string(body))
+}`;
+    }
+    
+    case 'ruby': {
+      const authLine = auth ? `\n  request['${auth.header}'] = '${auth.value}'` : '';
+      return `require 'net/http'
+require 'uri'
+require 'json'
+
+uri = URI('${url}')
+http = Net::HTTP.new(uri.host, uri.port)
+http.use_ssl = (uri.scheme == 'https')
+
+request = Net::HTTP::${ep.method.capitalize[0].toUpperCase() + ep.method.slice(1)}.new(uri.request_uri)
+request['Content-Type'] = 'application/json'${authLine}
+
+response = http.request(request)
+puts JSON.parse(response.body)`;
+    }
+    
+    case 'http': {
+      const authHeader = auth ? `\n${auth.header}: ${auth.value}` : '';
       return `${ep.method} ${ep.path} HTTP/1.1
 Host: ${new URL(server).hostname}
-Content-Type: application/json`;
+Content-Type: application/json${authHeader}`;
+    }
+    
+    default:
+      return '';
   }
 });
 
 const copyCode = () => {
   navigator.clipboard.writeText(getCodeExample.value);
 };
+
+watch([activeLanguage, selectedEndpoint], () => {
+  nextTick(() => {
+    applySyntaxHighlighting();
+  });
+});
+
+watch(() => props.show, (newVal) => {
+  if (newVal) {
+    nextTick(() => {
+      applySyntaxHighlighting();
+    });
+  }
+});
 
 const groupEndpointsByTags = (endpoints: OpenAPIEndpoint[]) => {
   const grouped: Record<string, OpenAPIEndpoint[]> = {};
@@ -387,22 +564,22 @@ onMounted(() => {
                         </button>
                       </div>
                       
-                      <div class="flex border-b border-border-default">
+                      <div class="flex border-b border-border-default overflow-x-auto">
                         <button 
-                          v-for="lang in ['curl', 'javascript', 'python', 'http']"
+                          v-for="lang in ['curl', 'javascript', 'python', 'go', 'ruby', 'http']"
                           :key="lang"
                           :class="[
-                            'flex-1 py-2 px-3 bg-transparent border-none border-b-2 text-[11px] font-medium cursor-pointer -mb-px transition-all duration-fast',
+                            'flex-shrink-0 py-2 px-3 bg-transparent border-none border-b-2 text-[11px] font-medium cursor-pointer -mb-px transition-all duration-fast whitespace-nowrap',
                             activeLanguage === lang ? 'text-accent-orange border-b-accent-orange' : 'text-text-secondary border-b-transparent hover:text-text-primary hover:bg-bg-hover'
                           ]"
                           @click="activeLanguage = lang"
                         >
-                          {{ lang === 'curl' ? 'cURL' : lang === 'javascript' ? 'JavaScript' : lang === 'python' ? 'Python' : 'HTTP' }}
+                          {{ lang === 'curl' ? 'cURL' : lang.charAt(0).toUpperCase() + lang.slice(1) }}
                         </button>
                       </div>
                       
                       <div class="flex-1 overflow-auto p-3 bg-bg-tertiary">
-                        <pre v-if="getCodeExample" class="font-mono text-[10px] leading-normal text-text-primary m-0 whitespace-pre-wrap break-words">{{ getCodeExample }}</pre>
+                        <div v-if="getCodeExample" class="code-highlight-block font-mono text-[10px] leading-normal text-text-primary m-0 whitespace-pre-wrap break-words">{{ getCodeExample }}</div>
                         <div v-else class="text-xs text-text-muted h-full flex items-center justify-center">
                           Select an endpoint to see code examples
                         </div>
