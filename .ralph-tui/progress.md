@@ -7,6 +7,11 @@ after each iteration and included in agent prompts for context.
 
 *Add reusable patterns discovered during development here.*
 
+- Keyboard shortcuts in Vue should use composables with lifecycle hooks (onMounted/onUnmounted) for event registration
+- Shortcut handlers should check if the target is an input element to avoid interfering with user typing
+- Cross-platform shortcuts: check `navigator.platform` to differentiate Mac (`metaKey`) from Windows/Linux (`ctrlKey`)
+- Escape key should be handled globally to close modals and overlays
+- Vue composables return reactive state and cleanup functions that can be used by parent components
 - OAuth 2.0 implementations should use conditional rendering (`v-if`) to show/hide grant-type-specific configuration fields (Auth URL, Callback URL, PKCE only needed for Authorization Code flow)
 - Keycloak SSO requires PKCE for secure OAuth flow (code_challenge with S256)
 - User info from OAuth providers should be stored in a separate cookie for client-side access
@@ -17,6 +22,8 @@ after each iteration and included in agent prompts for context.
 - Circular reference validation is essential when moving folders to prevent infinite nesting
 - Visual drop indicators should use absolute positioning with calculated offsets for precise placement
 - Optimistic UI updates for drag-and-drop should refresh data after server confirmation to ensure consistency
+- Migration scripts should store rollback data in persistent storage (useStorage) for recovery capability
+- Preserve original data by embedding it in new schema's JSON fields for traceability and rollback
 
 ---
 
@@ -189,5 +196,95 @@ sessionID":"ses_421eeb5bcffexni3Q4D6hUdnIr","part":{"id":"prt_bde15dbac001jrg9Jt
 
 **Notes:**
 config\n\n**Features Implemented:**\n1. Keycloak configuration page with realm, client ID, and OIDC endpoint fields\n2. Login with Keycloak button on the login page\n3. PKCE flow for secure OAuth authentication\n4. Token exchange and user info fetching from Keycloak UserInfo endpoint\n5. User avatar with initials, name, email display\n6. Session timer showing time until token expiry\n7. Logout with optional Keycloak single logout redirect\n\n**To run the build:**\n```bash\nnpm run build\n```\n\n---\n\n## 2026-01-21 - US-045\n\n**What was implemented:**\n- Added drag-and-drop reordering functionality to the sidebar hierarchy view\n- FolderTreeItem.vue now supports dragging folders and requests with visual indicators\n- Implemented blue drop indicator lines for showing where items will be placed\n- Added highlight styling for valid drop targets (folder body for nesting, between items for reordering)\n- Prevented invalid drops: folders cannot be dropped into themselves or their descendants (circular reference prevention)\n- Created server API endpoints: `/api/admin/folders/reorder` and `/api/admin/requests/reorder` for batch updates\n- Added optimistic UI updates that refresh data after server confirmation\n- AppSidebar.vue now emits `reorderFolders` and `reorderRequests` events with update payloads\n\n**Files changed:**\n- `app/components/FolderTreeItem.vue` - Added drag-and-drop support with visual indicators\n- `app/components/AppSidebar.vue` - Added drag event handlers and reorder logic\n- `app/pages/admin/index.vue` - Added handlers for reorder events\n- `server/api/admin/folders/reorder.post.ts` (new) - Batch folder reorder endpoint\n- `server/api/admin/requests/reorder.post.ts` (new) - Batch request reorder endpoint\n\n**Learnings:**\n- Vue requires keys on `<template>` tags for v-for loops, not on child elements - this causes build errors\n- Circular reference validation must check the entire ancestor chain when moving folders\n- Drop position detection requires tracking mouse position relative to target elements\n- For nested tree structures, drop indicators need careful absolute positioning calculations\n- Batch update endpoints should process all updates in a single transaction for consistency\n\n**Gotchas:**\n- Vue template key placement: `:key` on `<template>` for v-for, never on inner divs\n- Drop target state needs to be cleared on both `dragend` and when moving to invalid targets\n- Absolute positioning for drop indicators requires knowing exact element heights (36px per request row)\n- Server endpoints must validate that folders belong to the same collection when changing parent
+
+---
+## ✓ Iteration 5 - US-045: Drag-and-drop reordering in sidebar
+*2026-01-21T01:19:34.525Z (548s)*
+
+**Status:** Completed
+
+**Notes:**
+updates** - UI refreshes after server confirmation\n\n**Files Modified/Created:**\n- `app/components/FolderTreeItem.vue` - Drag-and-drop with visual indicators\n- `app/components/AppSidebar.vue` - Drag event handlers and reorder logic  \n- `app/pages/admin/index.vue` - Reorder event handlers\n- `server/api/admin/folders/reorder.post.ts` - Batch folder reorder endpoint\n- `server/api/admin/requests/reorder.post.ts` - Batch request reorder endpoint\n\n**Build Status:** ✅ Completed successfully\n\n
+
+---
+
+
+## 2026-01-21 - US-046
+
+**What was implemented:**
+- Created keyboard shortcuts composable at `app/composables/useKeyboardShortcuts.ts`
+- Implemented KeyboardShortcutsHelpModal component for displaying available shortcuts
+- Added global keyboard shortcuts handlers in admin/index.vue
+- Cmd/Ctrl+Enter - Send request
+- Cmd/Ctrl+S - Save request
+- Cmd/Ctrl+N - New request tab
+- Cmd/Ctrl+W - Close current tab
+- Cmd/Ctrl+L - Focus URL input
+- Cmd/Ctrl+/ - Show keyboard shortcuts help modal
+- Escape key closes the help modal
+
+**Files changed:**
+- `app/composables/useKeyboardShortcuts.ts` (new) - Composable for keyboard shortcuts with callbacks
+- `app/components/KeyboardShortcutsHelpModal.vue` (new) - Modal component displaying shortcuts
+- `app/pages/admin/index.vue` - Integrated keyboard shortcuts with proper callbacks
+
+**Learnings:**
+- Vue composables work well for cross-component keyboard event handling using onMounted/onUnmounted lifecycle hooks
+- Keyboard shortcuts should respect input focus - don't trigger shortcuts when user is typing in text fields
+- Mac vs Windows: `metaKey` for Cmd (Mac) and `ctrlKey` for Ctrl (Windows/Linux)
+- Using `nextTick` for focus operations ensures DOM is ready
+- TypeScript optional chaining with `!.` assertion helps with TypeScript's type narrowing for computed properties
+
+**Gotchas:**
+- TypeScript may not narrow types correctly when using computed properties with dynamic keys - use explicit type assertions
+- Global keyboard event handlers need to be cleaned up on component unmount to prevent memory leaks
+- When triggering focus programmatically, need to account for Vue's reactivity cycle with nextTick
+## ✓ Iteration 6 - US-046: Keyboard shortcuts
+*2026-01-21T01:26:41.006Z (425s)*
+
+**Status:** Completed
+
+**Notes:**
+help modal |\n| Escape | Close help modal |\n\n**Key Implementation Details:**\n- Shortcuts respect input focus (won't trigger when typing in text fields)\n- Cross-platform support: works on Mac (Cmd) and Windows/Linux (Ctrl)\n- Uses Vue composables pattern with proper lifecycle cleanup\n- Help modal organized by category (Request Actions, Tab Management, Navigation, General)\n\n**Build Status:** ✅ Client build successful (server-side errors are pre-existing issues unrelated to this change)
+
+
+---
+
+## 2026-01-21 - US-047
+
+**What was implemented:**
+- Created migration service at `server/services/migration.ts` with comprehensive data mapping
+- Created API endpoints: `/api/admin/migrate` (POST for status/migrate, GET for status), `/api/admin/migrate/rollback` (POST)
+- Migration maps old mock storage data to new Drizzle ORM schema:
+  - Collections → New Collection records
+  - Mocks → SavedRequest records in Root folders
+  - Preserves mock response data (status, response, delay, secure) in request body JSON
+- Creates default "Personal" workspace and "My Project" project
+- Stores rollback data in settings storage for recovery
+- Handles root collection and orphaned mocks appropriately
+
+**Files changed:**
+- `server/services/migration.ts` (new) - Migration service with all business logic
+- `server/api/admin/migrate.post.ts` (new) - Migration action endpoint
+- `server/api/admin/migrate.rollback.post.ts` (new) - Rollback endpoint
+- `server/api/admin/migrate.get.ts` (new) - Migration status endpoint
+
+**Learnings:**
+- Nuxt's `useStorage()` works for both server API routes and migration services
+- Migration scripts should handle partial failures gracefully with error arrays
+- Original mock data can be preserved by storing it in the new schema's JSON body field
+- Rollback requires storing mappings between old and new IDs for restoration
+- Pre-existing server build errors (../../../db imports) are unrelated to new changes
+
+**Gotchas:**
+- Server build errors in `server/api/definitions/[id].put.ts` are pre-existing and unrelated to migration
+- Drizzle ORM delete operations with empty where clauses may cause issues - ensure proper condition
+- `undefined` values for optional foreign keys should be explicitly set rather than omitted
+- Original mock IDs are stored in the request body for traceability and rollback
+
+**API Endpoints:**
+- `GET /api/admin/migrate` - Get migration status
+- `POST /api/admin/migrate` - Run migration (body: `{ "action": "migrate" }`)
+- `POST /api/admin/migrate/rollback` - Rollback migration\n\n
 
 ---

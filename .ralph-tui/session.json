@@ -3,10 +3,10 @@
   "sessionId": "3ea6938a-5c6d-4fb8-8909-5878247a7ed8",
   "status": "running",
   "startedAt": "2026-01-21T00:26:24.313Z",
-  "updatedAt": "2026-01-21T01:10:26.816Z",
-  "currentIteration": 4,
+  "updatedAt": "2026-01-21T01:26:42.522Z",
+  "currentIteration": 6,
   "maxIterations": 10,
-  "tasksCompleted": 4,
+  "tasksCompleted": 6,
   "isPaused": false,
   "agentPlugin": "opencode",
   "model": "minimax/MiniMax-M2.1",
@@ -282,14 +282,14 @@
       {
         "id": "US-045",
         "title": "Drag-and-drop reordering in sidebar",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-046",
         "title": "Keyboard shortcuts",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-047",
@@ -345,12 +345,32 @@
       "durationMs": 290983,
       "startedAt": "2026-01-21T01:05:34.786Z",
       "endedAt": "2026-01-21T01:10:25.769Z"
+    },
+    {
+      "iteration": 5,
+      "status": "completed",
+      "taskId": "US-045",
+      "taskTitle": "Drag-and-drop reordering in sidebar",
+      "taskCompleted": true,
+      "durationMs": 547635,
+      "startedAt": "2026-01-21T01:10:26.810Z",
+      "endedAt": "2026-01-21T01:19:34.445Z"
+    },
+    {
+      "iteration": 6,
+      "status": "completed",
+      "taskId": "US-046",
+      "taskTitle": "Keyboard shortcuts",
+      "taskCompleted": true,
+      "durationMs": 425273,
+      "startedAt": "2026-01-21T01:19:35.650Z",
+      "endedAt": "2026-01-21T01:26:40.923Z"
     }
   ],
   "skippedTaskIds": [],
   "cwd": "/Users/zeinersyad/Playground/mock-service",
   "activeTaskIds": [
-    "US-045"
+    "US-047"
   ],
   "subagentPanelVisible": false
 }

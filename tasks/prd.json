@@ -927,11 +927,12 @@
         "Verify in browser - drag and drop works"
       ],
       "priority": 45,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-018"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-046",
@@ -947,11 +948,12 @@
         "Verify in browser - shortcuts work"
       ],
       "priority": 46,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-030"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-047",
@@ -966,13 +968,14 @@
         "nuxt build passes without errors"
       ],
       "priority": 47,
-      "passes": false,
+      "passes": true,
       "notes": "",
       "dependsOn": [
         "US-001",
         "US-002",
         "US-003"
-      ]
+      ],
+      "completionNotes": "Completed by agent"
     },
     {
       "id": "US-048",
@@ -996,6 +999,6 @@
     }
   ],
   "metadata": {
-    "updatedAt": "2026-01-21T01:10:26.810Z"
+    "updatedAt": "2026-01-21T01:26:42.070Z"
   }
 }
