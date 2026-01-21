@@ -74,8 +74,25 @@ Handle nested schema properties with expand/collapse:
 - Render expand button only when `hasNestedProperties()` returns true
 - Use visual hierarchy with borders and padding reduction for nested levels
 
+### Slug Management Pattern
+Handle URL-friendly slugs for public resources:
+- Auto-generate URL-friendly slugs from names using regex (lowercase, replace special chars with hyphens)
+- Use Set-based tracking for editing state (`editingSlugs`)
+- Maintain separate slug values in Record (`slugValues`)
+- Allow save on Enter key and cancel on Escape key
+- Show edit/cancel buttons only when in edit mode
+- Validate slug uniqueness before saving (check database for conflicts)
+- Inline error display for duplicate conflicts
+- Auto-generate slug when switching from private to public
+- Clear slug when switching from public to private (after confirmation)
 
----
+### Public API Access Pattern
+Expose public resources without authentication:
+- Create separate API endpoint under `/api/public/[resource]/[slug]`
+- Fetch by slug instead of ID to avoid exposing internal identifiers
+- Check isPublic flag for security (return 404 if not public)
+- Serve full data including parsed/derived information
+- Used by standalone public pages without authentication middleware
 
 ### Unified Multi-Type Modal Pattern
 Use a single modal component to handle multiple import types (OpenAPI, Postman) by:
@@ -451,7 +468,41 @@ sessionID":"ses_42222f371ffeRo3AGNsYnay75a","part":{"id":"prt_bdde15286001BrgD05
 
 ---
 
-## [January 21, 2026] - US-038
+## [January 21, 2026] - US-039
+### What was implemented
+- Added backend PUT endpoint for updating API definition sharing settings (isPublic, publicSlug)
+- Updated definitions list endpoint to include isPublic and publicSlug fields in response
+- Created public API endpoint to fetch documentation by public slug without authentication
+- Updated ApiDefinitionsPanel with public/private toggle switch and custom slug editing
+- Added slug generation from definition name when making public
+- Added duplicate slug validation to prevent conflicts
+- Created standalone public docs page without app chrome at /docs/[slug]
+- Implemented copy-to-clipboard functionality for public URLs
+- Added visual indicators for public/private status
+- Implemented inline slug editing with save/cancel actions
+- Added confirmation dialog when switching from public to private
+
+### Files changed
+- server/api/definitions/[id].put.ts (new - update definition sharing settings)
+- server/api/definitions/index.get.ts (updated - include isPublic and publicSlug)
+- server/api/public/docs/[slug].get.ts (new - fetch public docs by slug)
+- app/components/ApiDefinitionsPanel.vue (updated - public/private toggle, slug editing)
+- app/pages/docs/[slug].vue (new - standalone public docs page)
+- app/db/schema/apiDefinition.ts (no changes - already had isPublic and publicSlug fields)
+
+### Learnings:
+- **Slug Generation Pattern**: Auto-generate URL-friendly slugs from names using regex to replace spaces and special characters with hyphens, then trim leading/trailing hyphens. This ensures clean, readable URLs.
+- **Inline Slug Editing Pattern**: Use Set-based tracking for editing state (editingSlugs), maintain separate slug values in Record, allow save on Enter and cancel on Escape, show edit/cancel buttons only when editing.
+- **Public/Private State Transition**: When switching from public to private, show confirmation dialog due to impact (shared URLs will break). When switching from private to public, auto-generate slug if not provided.
+- **Public API Endpoint Security**: Fetch by slug only if isPublic is true, return 404 for both missing and non-public definitions to avoid leaking private definition existence.
+- **Standalone Page Pattern**: Create dedicated route without layout for public pages. Use Nuxt's useFetch with await for server-side data fetching, show loading/error states, and render content directly without app chrome (header, sidebar).
+- **Slug Validation Pattern**: Normalize slug (lowercase, hyphens only), check for duplicates in database before saving, show error inline if duplicate exists.
+
+### Patterns discovered:
+- **Public Documentation Sharing Pattern**: Database has isPublic + publicSlug fields → toggle to make public → auto-generate or custom slug → public API fetches by slug (only if isPublic) → standalone page renders docs without app chrome.
+- **Slug Management Pattern**: On toggle public: auto-generate slug from name → save to db + update UI → show /docs/{slug} with copy button → allow inline editing → validate uniqueness before save → handle duplicate conflicts.
+- **Inline Edit with Validation Pattern**: Edit button → enters edit mode (Set) → input field pre-filled → Enter to save or Escape to cancel → validate on save → API call → update UI → exit edit mode on success → show error inline if validation fails.
+- **Public API Access Pattern**: GET /api/public/[resource]/[slug] → fetch by slug → check isPublic flag → return 404 if not public → return full data (including parsed spec) if public → used by standalone public page without authentication.
 ### What was implemented
 - Added Schemas section to ApiDocumentationViewer component with tab-based navigation between Endpoints and Schemas views
 - Schema list sidebar displaying all schemas from OpenAPI components with filtering support
@@ -484,3 +535,12 @@ sessionID":"ses_42222f371ffeRo3AGNsYnay75a","part":{"id":"prt_bdde15286001BrgD05
 - **Property Hierarchy Display Pattern**: Level 0 properties with full spacing and expand button → level 1 nested properties with border-left, reduced padding, smaller icons → maintain visual hierarchy using borders and spacing reduction.
 - **Comprehensive Schema Type Display Pattern**: Build type string step-by-step → basic type → nullable suffix → format suffix → $ref replacement → enum suffix → array items type → composition (allOf/oneOf/anyOf) count → final display string covers all schema variations.
 - **Schema Property Table Pattern**: Property name + type display + required badge in one row → description below if present → enum values below if present → nested properties when expanded → border between properties for clear separation.
+## ✓ Iteration 10 - US-038: Redocly-style API documentation - Schema viewer
+*2026-01-21T00:13:34.597Z (321s)*
+
+**Status:** Completed
+
+**Notes:**
+k on a schema to view its details\n5. Verify the following functionality:\n   - Schema type and description display\n   - Property table with name, type, required indicator\n   - Enum values appear as clickable badges\n   - Click expand button on properties with nested objects to see nested properties\n   - Array item properties are shown when expanded\n   - Example values display in formatted JSON\n   - Filter schemas using the search box\n   - Switch back to Endpoints tab to view endpoints\n\n
+
+---

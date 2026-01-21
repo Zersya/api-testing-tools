@@ -41,6 +41,8 @@ export default defineEventHandler(async (event) => {
                 name: def.name,
                 specFormat: def.specFormat,
                 sourceUrl: def.sourceUrl,
+                isPublic: def.isPublic,
+                publicSlug: def.publicSlug,
                 endpointCount,
                 createdAt: def.createdAt,
                 updatedAt: def.updatedAt
