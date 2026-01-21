@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
       });
     }
 
-    const body = await readBody<UpdateBody>();
+    const body = await readBody<UpdateBody>(event);
     
     if (!body || Object.keys(body).length === 0) {
       throw createError({ 

@@ -279,19 +279,109 @@ export function parseOpenAPISpec(spec: unknown): OpenAPIParseResult {
     });
   }
 
-  // Extract schemas
+  // Extract schemas from OpenAPI 3.x components.schemas
   const schemas: Record<string, OpenAPISchema> = {};
-  const components = specObj.components as Record<string, unknown> | undefined;
   
+  // Try OpenAPI 3.x format: components.schemas
+  const components = specObj.components as Record<string, unknown> | undefined;
   if (components && typeof components === 'object') {
     const componentSchemas = components.schemas as Record<string, OpenAPISchema> | undefined;
     if (componentSchemas && typeof componentSchemas === 'object') {
       for (const [name, schema] of Object.entries(componentSchemas)) {
         if (schema && typeof schema === 'object') {
-          schemas[name] = schema;
+          schemas[name] = resolveSchemaRef(specObj, schema as OpenAPISchema);
         }
       }
     }
+  }
+  
+  // Try Swagger 2.0 format: definitions
+  const definitions = (specObj as Record<string, unknown>).definitions as Record<string, OpenAPISchema> | undefined;
+  if (definitions && typeof definitions === 'object') {
+    for (const [name, schema] of Object.entries(definitions)) {
+      if (schema && typeof schema === 'object' && !schemas[name]) {
+        schemas[name] = resolveSchemaRef(specObj, schema as OpenAPISchema);
+      }
+    }
+  }
+  
+  // If no schemas found in components or definitions, try to extract from paths
+  // Some specs define schemas inline in responses
+  if (Object.keys(schemas).length === 0) {
+    const paths = specObj.paths as Record<string, Record<string, unknown>> | undefined;
+    if (paths && typeof paths === 'object') {
+      for (const pathItem of Object.values(paths)) {
+        if (pathItem && typeof pathItem === 'object') {
+          for (const operation of Object.values(pathItem)) {
+            if (operation && typeof operation === 'object') {
+              const responses = (operation as Record<string, unknown>).responses as Record<string, unknown> | undefined;
+              if (responses) {
+                for (const response of Object.values(responses)) {
+                  if (response && typeof response === 'object') {
+                    const content = (response as Record<string, unknown>).content as Record<string, unknown> | undefined;
+                    if (content) {
+                      for (const mediaType of Object.values(content)) {
+                        if (mediaType && typeof mediaType === 'object') {
+                          const schema = (mediaType as Record<string, unknown>).schema as OpenAPISchema | undefined;
+                          if (schema && typeof schema === 'object' && !schema.$ref) {
+                            // Inline schema found - but we can't easily name these
+                            // Just note that inline schemas exist
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Helper function to resolve $ref references
+  function resolveSchemaRef(spec: unknown, schema: OpenAPISchema): OpenAPISchema {
+    if (schema.$ref && typeof schema.$ref === 'string') {
+      const refPath = schema.$ref.split('/').pop();
+      if (refPath) {
+        // Try to find the referenced schema
+        if (components && typeof components === 'object') {
+          const refSchemas = (components as Record<string, unknown>).schemas as Record<string, OpenAPISchema> | undefined;
+          if (refSchemas && typeof refSchemas === 'object' && refSchemas[refPath]) {
+            return resolveSchemaRef(spec, refSchemas[refPath]);
+          }
+        }
+        if (definitions && typeof definitions === 'object') {
+          if (definitions[refPath]) {
+            return resolveSchemaRef(spec, definitions[refPath]);
+          }
+        }
+      }
+    }
+    
+    // Recursively resolve nested schemas
+    if (schema.allOf) {
+      schema.allOf = schema.allOf.map(s => resolveSchemaRef(spec, s));
+    }
+    if (schema.oneOf) {
+      schema.oneOf = schema.oneOf.map(s => resolveSchemaRef(spec, s));
+    }
+    if (schema.anyOf) {
+      schema.anyOf = schema.anyOf.map(s => resolveSchemaRef(spec, s));
+    }
+    if (schema.items) {
+      schema.items = resolveSchemaRef(spec, schema.items);
+    }
+    if (schema.properties) {
+      for (const key of Object.keys(schema.properties)) {
+        if (schema.properties && schema.properties[key]) {
+          schema.properties[key] = resolveSchemaRef(spec, schema.properties[key]);
+        }
+      }
+    }
+    
+    return schema;
   }
 
   // Extract security schemes
