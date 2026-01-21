@@ -100,16 +100,26 @@ watch(() => props.show, (newShow) => {
 
 const selectedWorkspace = computed(() => props.workspaces[0]);
 const selectedProject = computed(() => selectedWorkspace.value?.projects[0]);
-const selectedCollection = computed(() => {
-  if (!selectedProject.value) return null;
-  if (form.value.collectionId) {
-    return selectedProject.value.collections.find(c => c.id === form.value.collectionId);
-  }
-  return selectedProject.value.collections[0];
-});
 
-const availableCollections = computed(() => {
-  return selectedProject.value?.collections || [];
+const findAllCollections = (): Array<CollectionItem & { projectName: string }> => {
+  const result: Array<CollectionItem & { projectName: string }> = [];
+  props.workspaces.forEach(workspace => {
+    workspace.projects.forEach(project => {
+      project.collections.forEach(collection => {
+        result.push({
+          ...collection,
+          projectName: `${workspace.name} / ${project.name}`
+        });
+      });
+    });
+  });
+  return result;
+};
+
+const allCollections = computed(() => findAllCollections());
+
+const selectedCollectionData = computed(() => {
+  return allCollections.value.find(c => c.id === form.value.collectionId);
 });
 
 const flattenFolderTree = (folders: FolderItem[]): Array<FolderItem & { level: number }> => {
@@ -129,8 +139,8 @@ const flattenFolderTree = (folders: FolderItem[]): Array<FolderItem & { level: n
 };
 
 const availableFolders = computed(() => {
-  if (!selectedCollection.value) return [];
-  return flattenFolderTree(selectedCollection.value.folders);
+  if (!selectedCollectionData.value) return [];
+  return flattenFolderTree(selectedCollectionData.value.folders);
 });
 
 const handleCreateFolder = async () => {
@@ -148,7 +158,7 @@ const handleCreateFolder = async () => {
   error.value = '';
   
   try {
-    const collectionIdToUse = form.value.collectionId || availableCollections.value[0]?.id;
+    const collectionIdToUse = form.value.collectionId || allCollections.value[0]?.id;
     
     if (!collectionIdToUse) {
       throw new Error('No collection selected');
@@ -188,7 +198,7 @@ const handleSave = () => {
     return;
   }
   
-  const collectionIdToUse = form.value.collectionId || availableCollections.value[0]?.id;
+  const collectionIdToUse = form.value.collectionId || allCollections.value[0]?.id;
   
   if (!collectionIdToUse) {
     error.value = 'Please select a collection';
@@ -307,18 +317,26 @@ const getFolderIndent = (level: number) => {
                   </div>
                 </div>
 
-                <select
-                  v-model="form.collectionId"
-                  :disabled="showNewFolderInput && form.isNewFolder"
-                  class="w-full py-2.5 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(33,150,243,0.2)] disabled:opacity-50 disabled:cursor-not-allowed appearance-none cursor-pointer bg-[url('data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20width%3D%2712%27%20height%3D%2712%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27%239ca3af%27%20stroke-width%3D%272%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpolyline%20points%3D%276%209%2012%2015%2018%209%27%3E%3C/polyline%3E%3C/svg%3E')] bg-no-repeat bg-[right_12px_center]"
-                >
-                  <option value="">Select a collection...</option>
-                  <option v-for="collection in availableCollections" :key="collection.id" :value="collection.id">
-                    {{ collection.name }}
-                  </option>
-                </select>
+                  <select
+                    v-model="form.collectionId"
+                    :disabled="showNewFolderInput && form.isNewFolder"
+                    class="w-full py-2.5 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(33,150,243,0.2)] disabled:opacity-50 disabled:cursor-not-allowed appearance-none cursor-pointer bg-[url('data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20width%3D%2712%27%20height%3D%2712%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27%239ca3af%27%20stroke-width%3D%272%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpolyline%20points%3D%276%209%2012%2015%2018%209%27%3E%3C/polyline%3E%3C/svg%3E')] bg-no-repeat bg-[right_12px_center]"
+                  >
+                    <option value="">Select a collection...</option>
+                    <optgroup v-for="workspace in workspaces" :key="workspace.id" :label="workspace.name">
+                      <option v-for="project in workspace.projects" :key="project.id" :value="project.collections[0]?.id" disabled class="font-semibold text-text-muted">
+                        {{ project.name }}
+                      </option>
+                      <option v-for="collection in workspace.projects.flatMap(p => p.collections)" :key="collection.id" :value="collection.id" class="pl-4">
+                        {{ collection.name }}
+                      </option>
+                    </optgroup>
+                    <option v-for="collection in allCollections" :key="collection.id" :value="collection.id">
+                      {{ collection.projectName }} / {{ collection.name }}
+                    </option>
+                  </select>
 
-                <div v-if="selectedCollection && !form.isNewFolder" class="mt-3">
+                <div v-if="selectedCollectionData && !form.isNewFolder" class="mt-3">
                   <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide mb-2">
                     Folder (optional)
                   </label>
@@ -338,7 +356,6 @@ const getFolderIndent = (level: number) => {
                         <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
                       </svg>
                       <span>{{ folder.name }}</span>
-                      <span v-if="folder.requestCount > 0" class="text-xs text-text-muted">({{ folder.requestCount }})</span>
                     </div>
                     <div
                       v-if="availableFolders.length === 0"

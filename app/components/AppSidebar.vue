@@ -91,11 +91,12 @@ interface CollectionWithGroups extends Collection {
 }
 
 interface Props {
-  collections?: Collection[];
-  mocks?: Mock[];
+  collections: Collection[];
+  mocks: Mock[];
   selectedMockId?: string | null;
   selectedCollectionId?: string | null;
   workspaces?: WorkspaceWithProjects[];
+  selectedWorkspaceId?: string | null;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -103,7 +104,8 @@ const props = withDefaults(defineProps<Props>(), {
   mocks: () => [],
   selectedMockId: null,
   selectedCollectionId: null,
-  workspaces: () => []
+  workspaces: () => [],
+  selectedWorkspaceId: null
 });
 
 const emit = defineEmits<{
@@ -111,15 +113,20 @@ const emit = defineEmits<{
   selectCollection: [collection: Collection];
   selectRequest: [request: HttpRequest];
   createMock: [collectionId?: string];
-  createCollection: [];
+  createCollection: [projectId?: string];
   createResource: [];
   editCollection: [collection: Collection];
+  renameCollection: [collection: Collection];
   deleteCollection: [collection: Collection];
   deleteGroup: [collectionId: string, groupName: string, mocks: Mock[]];
+  deleteFolder: [folder: any];
   createRequest: [folderId?: string];
   createFolder: [collectionId?: string];
   createProject: [workspaceId?: string];
   createWorkspace: [];
+  renameProject: [project: any];
+  deleteProject: [project: any];
+  deleteRequest: [request: any];
   restoreRequest: [request: HttpRequest];
   compare: [left: any, right: any];
   viewDefinitionDocs: [definition: any];
@@ -127,6 +134,8 @@ const emit = defineEmits<{
   reimportDefinition: [definition: any];
   reorderFolders: [collectionId: string, folderUpdates: { id: string; parentFolderId: string | null; order: number }[]];
   reorderRequests: [folderId: string, requestUpdates: { id: string; folderId: string; order: number }[]];
+  selectWorkspace: [workspaceId: string];
+  renameFolder: [folder: any];
 }>();
 
 const selectedWorkspaceId = ref<string | null>(null);
@@ -153,6 +162,10 @@ const localWorkspaces = ref<WorkspaceWithProjects[]>([]);
 const currentWorkspace = computed(() => {
   if (!selectedWorkspaceId.value) return props.workspaces[0] || localWorkspaces.value[0];
   return props.workspaces.find(w => w.id === selectedWorkspaceId.value) || localWorkspaces.value[0];
+});
+
+const currentProject = computed(() => {
+  return currentWorkspace.value?.projects?.[0];
 });
 
 // Build collections with their grouped mocks
@@ -585,17 +598,34 @@ const handleContextAction = (action: string) => {
       break;
     case 'project':
       if (action === 'create-collection') {
-        emit('createCollection');
+        emit('createCollection', contextMenu.value.data.id);
+      } else if (action === 'rename-project') {
+        emit('renameProject', data);
+      } else if (action === 'delete-project') {
+        emit('deleteProject', data);
       }
       break;
     case 'collection':
       if (action === 'create-folder') {
         emit('createFolder', data.id);
+      } else if (action === 'rename-collection') {
+        emit('renameCollection', data);
+      } else if (action === 'delete-collection') {
+        emit('deleteCollection', data);
       }
       break;
     case 'folder':
       if (action === 'create-request') {
         emit('createRequest', data.id);
+      } else if (action === 'rename-folder') {
+        emit('renameFolder', data);
+      } else if (action === 'delete-folder') {
+        emit('deleteFolder', data);
+      }
+      break;
+    case 'request':
+      if (action === 'delete-request') {
+        emit('deleteRequest', data);
       }
       break;
   }
@@ -623,6 +653,18 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('click', closeContextMenu);
 });
+
+watch(selectedWorkspaceId, (newId) => {
+  if (newId) {
+    emit('selectWorkspace', newId);
+  }
+});
+
+watch(() => props.selectedWorkspaceId, (newId) => {
+  if (newId) {
+    selectedWorkspaceId.value = newId;
+  }
+});
 </script>
 
 <template>
@@ -640,13 +682,16 @@ onUnmounted(() => {
         </svg>
         Workspace
       </button>
-      <NuxtLink to="/admin" active-class="bg-bg-active text-text-primary" class="flex items-center gap-2 py-2 px-3 rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors text-[13px] font-medium no-underline">
+      <button
+        :class="['flex items-center gap-2 py-2 px-3 rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors text-[13px] font-medium', activeView === 'mocks' ? 'bg-bg-active text-text-primary' : '']"
+        @click="activeView = 'mocks'"
+      >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
           <polyline points="9 22 9 12 15 12 15 22"></polyline>
         </svg>
         Mocks
-      </NuxtLink>
+      </button>
       <button
         :class="['flex items-center gap-2 py-2 px-3 rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors text-[13px] font-medium', activeView === 'definitions' ? 'bg-bg-active text-text-primary' : '']"
         @click="activeView = 'definitions'"
@@ -699,67 +744,19 @@ onUnmounted(() => {
       </button>
     </div>
 
-    <!-- History Panel -->
-    <div v-if="activeView === 'history'" class="flex-1">
-      <RequestHistoryPanel
-        :workspace-id="currentWorkspace?.id"
-        @restore-request="emit('restoreRequest', $event)"
-        @compare="emit('compare', $event[0], $event[1])"
-      />
-    </div>
-
-    <!-- API Definitions Panel -->
-    <div v-if="activeView === 'definitions'" class="flex-1">
-      <ApiDefinitionsPanel
-        :workspace-id="currentWorkspace?.id"
-        @view-docs="emit('viewDefinitionDocs', $event)"
-        @generate-mocks="emit('generateDefinitionMocks', $event)"
-        @reimport="emit('reimportDefinition', $event)"
-      />
-    </div>
-
-    <!-- Sidebar Header - Mock Mode -->
-    <div v-if="activeView === 'mocks'" class="flex items-center justify-between py-3 px-3 border-b border-border-default">
-      <div class="flex items-center gap-2 text-text-primary text-[13px] font-semibold">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+    <!-- Projects Header -->
+    <div v-if="activeView === 'hierarchy' && currentWorkspace" class="flex items-center justify-between py-2 px-4 border-b border-border-default">
+      <span class="text-xs font-medium text-text-muted uppercase tracking-wide">Projects</span>
+      <button
+        class="flex items-center justify-center w-6 h-6 bg-transparent border-none rounded text-text-secondary cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-orange"
+        @click="emit('createProject', currentWorkspace.id)"
+        title="New Project"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
         </svg>
-        <span>Collections</span>
-      </div>
-      <div class="flex gap-1">
-        <button
-          class="flex items-center justify-center w-7 h-7 bg-transparent border-none rounded text-text-secondary cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-orange"
-          @click="emit('createMock')"
-          title="New Mock"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-          </svg>
-        </button>
-        <button
-          class="flex items-center justify-center w-7 h-7 bg-transparent border-none rounded text-text-secondary cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-orange"
-          @click="emit('createResource')"
-          title="New Resource (CRUD)"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
-            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
-            <path d="M3 5v14c0 1.66 4 3 9 3s 9-1.34 9-3V5"></path>
-          </svg>
-        </button>
-        <button
-          class="flex items-center justify-center w-7 h-7 bg-transparent border-none rounded text-text-secondary cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-orange"
-          @click="emit('createCollection')"
-          title="New Collection"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-            <line x1="12" y1="11" x2="12" y2="17"></line>
-            <line x1="9" y1="14" x2="15" y2="14"></line>
-          </svg>
-        </button>
-      </div>
+      </button>
     </div>
 
     <!-- Tree View -->
@@ -809,7 +806,7 @@ onUnmounted(() => {
             <!-- Add collection button -->
             <button
               class="flex items-center justify-center w-[22px] h-[22px] bg-transparent border-none rounded text-text-secondary cursor-pointer opacity-0 group-hover:opacity-100 transition-all duration-fast hover:bg-bg-hover hover:text-accent-green"
-              @click.stop="emit('createCollection')"
+              @click.stop="emit('createCollection', project.id)"
               title="Add Collection"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1093,6 +1090,25 @@ onUnmounted(() => {
               </svg>
               New Collection
             </button>
+            <button
+              class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              @click.stop="handleContextAction('rename-project')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
+                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+              </svg>
+              Rename
+            </button>
+            <button
+              class="flex items-center w-full px-3 py-2 text-xs text-accent-red hover:bg-bg-hover transition-colors"
+              @click.stop="handleContextAction('delete-project')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+              Delete Project
+            </button>
           </template>
           <template v-if="contextMenu.type === 'collection'">
             <button
@@ -1106,6 +1122,25 @@ onUnmounted(() => {
               </svg>
               New Folder
             </button>
+            <button
+              class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              @click.stop="handleContextAction('rename-collection')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
+                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+              </svg>
+              Rename
+            </button>
+            <button
+              class="flex items-center w-full px-3 py-2 text-xs text-accent-red hover:bg-bg-hover transition-colors"
+              @click.stop="handleContextAction('delete-collection')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+              Delete Collection
+            </button>
           </template>
           <template v-if="contextMenu.type === 'folder'">
             <button
@@ -1117,6 +1152,37 @@ onUnmounted(() => {
                 <line x1="5" y1="12" x2="19" y2="12"></line>
               </svg>
               New Request
+            </button>
+            <button
+              class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              @click.stop="handleContextAction('rename-folder')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
+                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+              </svg>
+              Rename
+            </button>
+            <button
+              class="flex items-center w-full px-3 py-2 text-xs text-accent-red hover:bg-bg-hover transition-colors"
+              @click.stop="handleContextAction('delete-folder')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+              Delete Folder
+            </button>
+          </template>
+          <template v-if="contextMenu.type === 'request'">
+            <button
+              class="flex items-center w-full px-3 py-2 text-xs text-accent-red hover:bg-bg-hover transition-colors"
+              @click.stop="handleContextAction('delete-request')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+              Delete Request
             </button>
           </template>
         </div>

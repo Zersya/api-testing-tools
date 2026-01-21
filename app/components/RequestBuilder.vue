@@ -151,24 +151,7 @@ const response = ref<ProxyResponse | ProxyErrorResponse | null>(null);
 const variableWarnings = ref<string[]>([]);
 const environmentVariables = ref<Variable[]>([]);
 
-// Fetch environment variables if environmentId is provided
-watch(() => props.environmentId, async (newEnvId) => {
-  if (newEnvId) {
-    try {
-      const variables = await $fetch<Variable[]>(`/api/admin/environments/${newEnvId}/variables`);
-      environmentVariables.value = variables;
-    } catch (error) {
-      console.error('Failed to fetch environment variables:', error);
-      environmentVariables.value = [];
-    }
-  } else {
-    environmentVariables.value = [];
-  }
-}, { immediate: true });
 const responseViewType = ref<ResponseViewType>('pretty');
-const searchQuery = ref('');
-const showSearch = ref(false);
-const expandedNodes = ref<Set<string>>(new Set());
 
 const queryParams = ref<QueryParam[]>([]);
 const isBulkEditMode = ref(false);
@@ -212,6 +195,9 @@ const oauth2 = ref({
 const isGettingToken = ref(false);
 const tokenError = ref('');
 const inheritFromParent = ref(false);
+const expandedNodes = ref(new Set<string>());
+const showSearch = ref(false);
+const searchQuery = ref('');
 
 const parseUrlQuery = (url: string) => {
   try {
@@ -230,6 +216,43 @@ const parseUrlQuery = (url: string) => {
     return [];
   }
 };
+
+watch(() => props.request, (newRequest) => {
+  form.value.method = newRequest.method as typeof HTTP_METHODS[number];
+  form.value.url = newRequest.url;
+  queryParams.value = parseUrlQuery(newRequest.url);
+  if (newRequest.headers) {
+    try {
+      const headersObj = typeof newRequest.headers === 'string' 
+        ? JSON.parse(newRequest.headers) 
+        : newRequest.headers;
+      headers.value = Object.entries(headersObj).map(([key, value]) => ({
+        id: crypto.randomUUID(),
+        key,
+        value: String(value),
+        enabled: true
+      }));
+    } catch {
+      headers.value = [];
+    }
+  } else {
+    headers.value = [];
+  }
+  if (newRequest.body) {
+    try {
+      const bodyObj = typeof newRequest.body === 'string' 
+        ? JSON.parse(newRequest.body) 
+        : newRequest.body;
+      jsonBody.value = JSON.stringify(bodyObj, null, 2);
+      bodyFormat.value = 'json';
+    } catch {
+      bodyFormat.value = 'none';
+    }
+  } else {
+    bodyFormat.value = 'none';
+    jsonBody.value = '';
+  }
+}, { immediate: true });
 
 const updateUrlFromParams = () => {
   try {

@@ -46,7 +46,7 @@ interface HttpRequest {
 
 const { data: mocks, refresh: refreshMocks, error } = await useFetch<Mock[]>('/api/admin/mocks');
 const { data: collections, refresh: refreshCollections } = await useFetch<Collection[]>('/api/admin/collections');
-const { data: workspaces } = await useFetch<any[]>('/api/admin/tree');
+const { data: workspaces, refresh: refreshWorkspaces } = await useFetch<any[]>('/api/admin/tree');
 
 const currentWorkspaceId = computed(() => {
   return workspaces.value?.[0]?.id;
@@ -88,6 +88,40 @@ const activateEnvironment = async (environmentId: string | null) => {
   }
 };
 
+const findCollectionInWorkspaces = (collectionId: string): any => {
+  if (!workspaces.value) return null;
+  for (const workspace of workspaces.value) {
+    for (const project of workspace.projects) {
+      const collection = project.collections.find((c: any) => c.id === collectionId);
+      if (collection) return collection;
+    }
+  }
+  return null;
+};
+
+const findFolderInWorkspaces = (folderId: string): any => {
+  if (!workspaces.value) return null;
+  for (const workspace of workspaces.value) {
+    for (const project of workspace.projects) {
+      for (const collection of project.collections) {
+        const findInFolder = (folders: any[]): any => {
+          for (const folder of folders) {
+            if (folder.id === folderId) return folder;
+            if (folder.children?.length) {
+              const found = findInFolder(folder.children);
+              if (found) return found;
+            }
+          }
+          return null;
+        };
+        const found = findInFolder(collection.folders);
+        if (found) return found;
+      }
+    }
+  }
+  return null;
+};
+
 if (error.value && error.value.statusCode === 401) {
     await navigateTo('/login');
 }
@@ -103,6 +137,16 @@ const showDeleteGroupConfirm = ref(false);
 const showSaveDialog = ref(false);
 const showSaveAsDialog = ref(false);
 const showImportModal = ref(false);
+const showProjectModal = ref(false);
+const projectWorkspaceId = ref<string | null>(null);
+const showWorkspaceModal = ref(false);
+const selectedWorkspaceId = ref<string | null>(null);
+const showFolderModal = ref(false);
+const folderCollectionId = ref<string | null>(null);
+const folderCollectionName = ref<string>('');
+const showRequestModal = ref(false);
+const requestFolderId = ref<string | null>(null);
+const requestFolderName = ref<string>('');
 
 // State
 const previewContent = ref('');
@@ -141,6 +185,7 @@ const settingsForm = ref({
 const collectionModalMode = ref<'create' | 'edit'>('create');
 const collectionForm = ref({
   id: '',
+  projectId: '',
   name: '',
   description: '',
   color: '#6366f1'
@@ -740,19 +785,50 @@ const handleSaveAs = async (data: any) => {
 };
 
 const openCreateRequest = (folderId?: string) => {
-  alert('Create request handler - folderId: ' + (folderId || 'None'));
+  if (folderId) {
+    const folder = findFolderInWorkspaces(folderId);
+    requestFolderId.value = folderId;
+    requestFolderName.value = folder?.name || 'Unknown Folder';
+    showRequestModal.value = true;
+  } else {
+    alert('Please select a folder first');
+  }
 };
 
 const openCreateFolder = (collectionId?: string) => {
-  alert('Create folder handler - collectionId: ' + (collectionId || 'None'));
+  if (collectionId) {
+    const collection = findCollectionInWorkspaces(collectionId);
+    folderCollectionId.value = collectionId;
+    folderCollectionName.value = collection?.name || 'Unknown Collection';
+    showFolderModal.value = true;
+  } else {
+    alert('Please select a collection first');
+  }
+};
+
+const handleFolderModalClose = () => {
+  showFolderModal.value = false;
+  folderCollectionId.value = null;
+  folderCollectionName.value = '';
+};
+
+const handleFolderCreated = async () => {
+  await refreshWorkspaces();
+  setTimeout(() => refreshWorkspaces(), 200);
 };
 
 const openCreateProject = (workspaceId?: string) => {
-  alert('Create project handler - workspaceId: ' + (workspaceId || 'None'));
+  const wsId = workspaceId || currentWorkspaceId.value || workspaces.value?.[0]?.id;
+  if (wsId) {
+    projectWorkspaceId.value = wsId;
+    showProjectModal.value = true;
+  } else {
+    alert('Please create a workspace first');
+  }
 };
 
 const openCreateWorkspace = () => {
-  alert('Create workspace handler');
+  showWorkspaceModal.value = true;
 };
 
 const handleRestoreRequest = (request: any) => {
@@ -923,10 +999,11 @@ const generateMocks = async () => {
 };
 
 // Collection Management
-const openCreateCollection = () => {
+const openCreateCollection = (projectId?: string) => {
     collectionModalMode.value = 'create';
     collectionForm.value = {
         id: '',
+        projectId: projectId || currentProjectId.value || '',
         name: '',
         description: '',
         color: '#6366f1'
@@ -948,12 +1025,15 @@ const openEditCollection = (collection: Collection) => {
 const saveCollection = async () => {
     try {
         if (collectionModalMode.value === 'create') {
-            await $fetch('/api/admin/collections', {
+            if (!collectionForm.value.projectId) {
+                alert('Please select a project');
+                return;
+            }
+            await $fetch(`/api/admin/projects/${collectionForm.value.projectId}/collections`, {
                 method: 'POST',
                 body: {
                     name: collectionForm.value.name,
-                    description: collectionForm.value.description,
-                    color: collectionForm.value.color
+                    description: collectionForm.value.description
                 }
             });
         } else {
@@ -968,7 +1048,7 @@ const saveCollection = async () => {
             });
         }
         showCollectionModal.value = false;
-        refresh();
+        refreshWorkspaces();
     } catch (e: any) {
         alert('Error saving collection: ' + (e.data?.message || e.message));
     }
@@ -982,12 +1062,39 @@ const confirmDeleteCollection = (collection: Collection) => {
 const deleteCollection = async () => {
     if (!collectionToDelete.value) return;
     try {
-        await $fetch(`/api/admin/collections?id=${collectionToDelete.value.id}`, { method: 'DELETE' });
+        const hasProjectId = 'projectId' in collectionToDelete.value && collectionToDelete.value.projectId;
+        if (hasProjectId) {
+            await $fetch(`/api/admin/projects/${collectionToDelete.value.projectId}/collections/${collectionToDelete.value.id}`, { method: 'DELETE' });
+        } else {
+            await $fetch(`/api/admin/collections?id=${collectionToDelete.value.id}`, { method: 'DELETE' });
+        }
         showDeleteCollectionConfirm.value = false;
         collectionToDelete.value = null;
-        refresh();
+        refreshWorkspaces();
     } catch (e: any) {
         alert('Error deleting collection: ' + (e.data?.message || e.message));
+    }
+};
+
+// Project deletion state
+const showDeleteProjectConfirm = ref(false);
+const projectToDelete = ref<any>(null);
+
+const confirmDeleteProject = (project: any) => {
+    projectToDelete.value = project;
+    showDeleteProjectConfirm.value = true;
+};
+
+const deleteProject = async () => {
+    if (!projectToDelete.value) return;
+    try {
+        await $fetch(`/api/admin/projects/${projectToDelete.value.id}`, { method: 'DELETE' });
+        showDeleteProjectConfirm.value = false;
+        projectToDelete.value = null;
+        selectedWorkspaceId.value = null;
+        refreshWorkspaces();
+    } catch (e: any) {
+        alert('Error deleting project: ' + (e.data?.message || e.message));
     }
 };
 
@@ -1000,17 +1107,131 @@ const deleteGroup = async () => {
     if (!groupToDelete.value) return;
     
     try {
-        // Delete all mocks in the group sequentially (can be improved with bulk delete API)
         await Promise.all(groupToDelete.value.mocks.map(mock => 
             $fetch(`/api/admin/mocks?id=${mock.id}`, { method: 'DELETE' })
         ));
         
         showDeleteGroupConfirm.value = false;
         groupToDelete.value = null;
-        selectedMock.value = null; // Clear selection if it was in the group
+        selectedMock.value = null;
         refresh();
     } catch (e: any) {
         alert('Error deleting folder: ' + e.message);
+    }
+};
+
+// Folder deletion state
+const showDeleteFolderConfirm = ref(false);
+const folderToDelete = ref<any>(null);
+
+const confirmDeleteFolder = (folder: any) => {
+    folderToDelete.value = folder;
+    showDeleteFolderConfirm.value = true;
+};
+
+const deleteFolder = async () => {
+    if (!folderToDelete.value) return;
+    
+    try {
+        await $fetch(`/api/admin/folders/${folderToDelete.value.id}`, { method: 'DELETE' });
+        showDeleteFolderConfirm.value = false;
+        folderToDelete.value = null;
+        refreshWorkspaces();
+    } catch (e: any) {
+        alert('Error deleting folder: ' + (e.data?.message || e.message));
+    }
+};
+
+// Request deletion state
+const showDeleteRequestConfirm = ref(false);
+const requestToDelete = ref<any>(null);
+
+const confirmDeleteRequest = (request: any) => {
+    requestToDelete.value = request;
+    showDeleteRequestConfirm.value = true;
+};
+
+const deleteRequest = async () => {
+    if (!requestToDelete.value) return;
+    const requestId = requestToDelete.value.id;
+    
+    try {
+        await $fetch(`/api/admin/requests/${requestId}`, { method: 'DELETE' });
+        showDeleteRequestConfirm.value = false;
+        requestToDelete.value = null;
+        
+        // Close the tab if it's open
+        const tabIndex = openTabs.value.findIndex(t => t.request?.id === requestId);
+        if (tabIndex !== -1) {
+            openTabs.value.splice(tabIndex, 1);
+        }
+        
+        if (selectedRequest.value?.id === requestId) {
+            selectedRequest.value = null;
+        }
+        
+        await refreshWorkspaces();
+    } catch (e: any) {
+        alert('Error deleting request: ' + e.message);
+    }
+};
+
+// Rename state
+const showRenameModal = ref(false);
+const renameType = ref<'project' | 'collection' | 'folder'>('project');
+const itemToRename = ref<any>(null);
+const renameValue = ref('');
+
+const openRenameProject = (project: any) => {
+    renameType.value = 'project';
+    itemToRename.value = project;
+    renameValue.value = project.name;
+    showRenameModal.value = true;
+};
+
+const openRenameCollection = (collection: any) => {
+    renameType.value = 'collection';
+    itemToRename.value = collection;
+    renameValue.value = collection.name;
+    showRenameModal.value = true;
+};
+
+const openRenameFolder = (folder: any) => {
+    renameType.value = 'folder';
+    itemToRename.value = folder;
+    renameValue.value = folder.name;
+    showRenameModal.value = true;
+};
+
+const renameItem = async () => {
+    if (!itemToRename.value || !renameValue.value.trim()) return;
+    
+    const newName = renameValue.value.trim();
+    
+    try {
+        if (renameType.value === 'project') {
+            await $fetch(`/api/admin/projects/${itemToRename.value.id}`, {
+                method: 'PUT',
+                body: { name: newName }
+            });
+        } else if (renameType.value === 'collection') {
+            await $fetch(`/api/admin/collections/${itemToRename.value.id}`, {
+                method: 'PUT',
+                body: { name: newName }
+            });
+        } else if (renameType.value === 'folder') {
+            await $fetch(`/api/admin/folders/${itemToRename.value.id}`, {
+                method: 'PUT',
+                body: { name: newName }
+            });
+        }
+        
+        showRenameModal.value = false;
+        itemToRename.value = null;
+        renameValue.value = '';
+        refreshWorkspaces();
+    } catch (e: any) {
+        alert('Error renaming: ' + (e.data?.message || e.message));
     }
 };
 
@@ -1103,6 +1324,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
         :mocks="mocks || []"
         :selected-mock-id="selectedMock?.id"
         :workspaces="workspaces || []"
+        :selected-workspace-id="selectedWorkspaceId"
         @select-mock="handleSelectMock"
         @select-request="handleSelectRequest"
         @create-mock="goToCreate"
@@ -1112,9 +1334,15 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
         @create-folder="openCreateFolder"
         @create-project="openCreateProject"
         @create-workspace="openCreateWorkspace"
+        @rename-project="openRenameProject"
+        @delete-project="confirmDeleteProject"
         @edit-collection="openEditCollection"
+        @rename-collection="openRenameCollection"
         @delete-collection="confirmDeleteCollection"
         @delete-group="confirmDeleteGroup"
+        @delete-folder="confirmDeleteFolder"
+        @rename-folder="openRenameFolder"
+        @delete-request="confirmDeleteRequest"
         @restore-request="handleRestoreRequest"
         @compare="handleCompareResponses"
         @view-definition-docs="handleViewDefinitionDocs"
@@ -1122,6 +1350,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
         @reimport-definition="handleReimportDefinition"
         @reorder-folders="handleReorderFolders"
         @reorder-requests="handleReorderRequests"
+        @select-workspace="selectedWorkspaceId = $event"
       />
 
       <!-- Main Content -->
@@ -1487,6 +1716,20 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
       :title="collectionModalMode === 'create' ? 'Create Collection' : 'Edit Collection'" 
       @close="showCollectionModal = false"
     >
+      <div v-if="collectionModalMode === 'create'" class="mb-4">
+        <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide mb-1.5">Project</label>
+        <select 
+          v-model="collectionForm.projectId"
+          class="w-full py-2.5 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue cursor-pointer"
+        >
+          <option value="">Select a project</option>
+          <optgroup v-for="workspace in workspaces" :key="workspace.id" :label="workspace.name">
+            <option v-for="project in workspace.projects" :key="project.id" :value="project.id">
+              {{ project.name }}
+            </option>
+          </optgroup>
+        </select>
+      </div>
       <div class="mb-4">
         <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide mb-1.5">Collection Name</label>
         <input 
@@ -1527,6 +1770,21 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
       </template>
     </Modal>
 
+    <!-- Delete Project Confirmation Modal -->
+    <Modal :show="showDeleteProjectConfirm" title="Delete Project" @close="showDeleteProjectConfirm = false">
+      <p class="text-text-secondary leading-relaxed">
+        Are you sure you want to delete this project?
+        <br />
+        <code class="inline-block mt-2 py-1.5 px-2.5 bg-bg-tertiary rounded text-accent-orange font-mono">{{ projectToDelete?.name }}</code>
+        <br /><br />
+        <strong class="text-accent-red">Warning:</strong> This will permanently delete this project, all collections, folders, and requests within it.
+      </p>
+      <template #footer>
+        <button class="btn btn-secondary" @click="showDeleteProjectConfirm = false">Cancel</button>
+        <button class="btn btn-danger" @click="deleteProject">Delete Project</button>
+      </template>
+    </Modal>
+
     <!-- Delete Collection Confirmation Modal -->
     <Modal :show="showDeleteCollectionConfirm" title="Delete Collection" @close="showDeleteCollectionConfirm = false">
       <p class="text-text-secondary leading-relaxed">
@@ -1554,6 +1812,54 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
       <template #footer>
         <button class="btn btn-secondary" @click="showDeleteGroupConfirm = false">Cancel</button>
         <button class="btn btn-danger" @click="deleteGroup">Delete Folder & Items</button>
+      </template>
+    </Modal>
+
+    <!-- Delete Folder Confirmation Modal -->
+    <Modal :show="showDeleteFolderConfirm" title="Delete Folder" @close="showDeleteFolderConfirm = false">
+      <p class="text-text-secondary leading-relaxed">
+        Are you sure you want to delete this folder?
+        <br />
+        <code class="inline-block mt-2 py-1.5 px-2.5 bg-bg-tertiary rounded text-accent-orange font-mono">{{ folderToDelete?.name }}</code>
+        <br /><br />
+        <strong class="text-accent-red">Warning:</strong> This will permanently delete this folder and all its contents.
+      </p>
+      <template #footer>
+        <button class="btn btn-secondary" @click="showDeleteFolderConfirm = false">Cancel</button>
+        <button class="btn btn-danger" @click="deleteFolder">Delete Folder</button>
+      </template>
+    </Modal>
+
+    <!-- Delete Request Confirmation Modal -->
+    <Modal :show="showDeleteRequestConfirm" title="Delete Request" @close="showDeleteRequestConfirm = false">
+      <p class="text-text-secondary leading-relaxed">
+        Are you sure you want to delete this request?
+        <br />
+        <code class="inline-block mt-2 py-1.5 px-2.5 bg-bg-tertiary rounded text-accent-orange font-mono">{{ requestToDelete?.method }} {{ requestToDelete?.name }}</code>
+      </p>
+      <template #footer>
+        <button class="btn btn-secondary" @click="showDeleteRequestConfirm = false">Cancel</button>
+        <button class="btn btn-danger" @click="deleteRequest">Delete Request</button>
+      </template>
+    </Modal>
+
+    <!-- Rename Modal -->
+    <Modal :show="showRenameModal" :title="`Rename ${renameType.charAt(0).toUpperCase() + renameType.slice(1)}`" @close="showRenameModal = false">
+      <div class="mb-4">
+        <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide mb-1.5">
+          {{ renameType.charAt(0).toUpperCase() + renameType.slice(1) }} Name
+        </label>
+        <input 
+          v-model="renameValue" 
+          :placeholder="`Enter ${renameType} name`"
+          class="w-full py-2.5 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(0,122,255,0.2)]"
+          @keyup.enter="renameItem"
+          autofocus
+        />
+      </div>
+      <template #footer>
+        <button class="btn btn-secondary" @click="showRenameModal = false">Cancel</button>
+        <button class="btn btn-primary" @click="renameItem">Rename</button>
       </template>
     </Modal>
 
@@ -1675,6 +1981,41 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
       :left-response="comparisonLeft"
       :right-response="comparisonRight"
       @close="closeComparison"
+    />
+
+    <!-- Create Workspace Modal -->
+    <CreateWorkspaceModal
+      :show="showWorkspaceModal"
+      @close="showWorkspaceModal = false"
+      @created="(workspace) => { refreshWorkspaces(); selectedWorkspaceId = workspace.id; }"
+    />
+
+    <!-- Create Project Modal -->
+    <CreateProjectModal
+      v-if="projectWorkspaceId"
+      :show="showProjectModal"
+      :workspace-id="projectWorkspaceId"
+      :workspace-name="workspaces?.find(w => w.id === projectWorkspaceId)?.name || ''"
+      @close="showProjectModal = false"
+      @created="refreshWorkspaces()"
+    />
+
+    <!-- Create Folder Modal -->
+    <CreateFolderModal
+      :show="showFolderModal"
+      :collection-id="folderCollectionId || ''"
+      :collection-name="folderCollectionName"
+      @close="handleFolderModalClose"
+      @created="handleFolderCreated"
+    />
+
+    <!-- Create Request Modal -->
+    <CreateRequestModal
+      :show="showRequestModal"
+      :folder-id="requestFolderId || ''"
+      :folder-name="requestFolderName"
+      @close="showRequestModal = false; requestFolderId = null"
+      @created="refreshWorkspaces()"
     />
 
     <!-- Keyboard Shortcuts Help Modal -->
