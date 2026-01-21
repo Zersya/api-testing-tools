@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ParsedOpenAPISpec, OpenAPIEndpoint } from '~/server/utils/openapi-parser';
+import { ParsedOpenAPISpec, OpenAPIEndpoint, OpenAPISchema } from '~/server/utils/openapi-parser';
+import MethodBadge from '~/components/MethodBadge.vue';
 
 interface Props {
   show: boolean;
@@ -15,9 +16,12 @@ const emit = defineEmits<{
 
 const searchTerm = ref('');
 const selectedEndpoint = ref<OpenAPIEndpoint | null>(null);
+const selectedSchema = ref<string | null>(null);
 const expandedTags = ref<Set<string>>(new Set());
+const expandedProperties = ref<Set<string>>(new Set());
 const activeLanguage = ref<'curl' | 'javascript' | 'python' | 'go' | 'ruby' | 'http'>('curl');
 const isDarkMode = ref(true);
+const activeSection = ref<'endpoints' | 'schemas'>('endpoints');
 
 let highlightModule: any = null;
 
@@ -69,9 +73,8 @@ const applySyntaxHighlighting = () => {
   }
 };
 
-const toggleTheme = () => {
-  isDarkMode.value = !isDarkMode.value;
-  document.documentElement.classList.toggle('light-theme', !isDarkMode.value);
+const copyCode = () => {
+  navigator.clipboard.writeText(getCodeExample.value);
 };
 
 const allTags = computed(() => {
@@ -129,6 +132,92 @@ const toggleTag = (tag: string) => {
 
 const selectEndpoint = (endpoint: OpenAPIEndpoint) => {
   selectedEndpoint.value = endpoint;
+  selectedSchema.value = null;
+};
+
+const filteredSchemas = computed(() => {
+  const term = searchTerm.value.toLowerCase();
+  const allSchemas = props.spec?.schemas || {};
+  
+  if (!term) return allSchemas;
+  
+  const filtered: Record<string, OpenAPISchema> = {};
+  for (const [name, schema] of Object.entries(allSchemas)) {
+    if (name.toLowerCase().includes(term) || 
+        schema.title?.toLowerCase().includes(term) ||
+        schema.description?.toLowerCase().includes(term)) {
+      filtered[name] = schema;
+    }
+  }
+  
+  return filtered;
+});
+
+const selectSchema = (schemaName: string) => {
+  selectedSchema.value = schemaName;
+  selectedEndpoint.value = null;
+};
+
+const isPropertyExpanded = (propertyPath: string) => {
+  return expandedProperties.value.has(propertyPath);
+};
+
+const toggleProperty = (propertyPath: string) => {
+  if (expandedProperties.value.has(propertyPath)) {
+    expandedProperties.value.delete(propertyPath);
+  } else {
+    expandedProperties.value.add(propertyPath);
+  }
+};
+
+const getSchemaTypeDisplay = (schema: OpenAPISchema): string => {
+  let type = schema.type || 'unknown';
+  
+  if (schema.nullable) {
+    type += ' | null';
+  }
+  
+  if (schema.format) {
+    type = `${type} (${schema.format})`;
+  }
+  
+  if (schema.$ref) {
+    const refName = schema.$ref.split('/').pop() || schema.$ref;
+    type = refName;
+  }
+  
+  if (schema.enum && schema.enum.length > 0) {
+    type += ` enum`;
+  }
+  
+  if (schema.items) {
+    if (schema.items.$ref) {
+      const refName = schema.items.$ref.split('/').pop() || schema.items.$ref;
+      type = `${refName}[]`;
+    } else if (schema.items.type) {
+      type = `${schema.items.type}[]`;
+    } else {
+      type += '[]';
+    }
+  }
+  
+  if (schema.allOf && schema.allOf.length > 0) {
+    type = `allOf (${schema.allOf.length})`;
+  }
+  
+  if (schema.oneOf && schema.oneOf.length > 0) {
+    type = `oneOf (${schema.oneOf.length})`;
+  }
+  
+  if (schema.anyOf && schema.anyOf.length > 0) {
+    type = `anyOf (${schema.anyOf.length})`;
+  }
+  
+  return type;
+};
+
+const hasNestedProperties = (schema: OpenAPISchema): boolean => {
+  return !!(schema.properties && Object.keys(schema.properties).length > 0);
 };
 
 const getAuthHeader = computed(() => {
@@ -362,6 +451,31 @@ onMounted(() => {
               
               <div class="flex-1 flex overflow-hidden">
                 <div class="w-64 border-r border-border-default flex flex-col bg-bg-sidebar">
+                  <div class="flex border-b border-border-default">
+                    <button
+                      @click="activeSection = 'endpoints'"
+                      :class="[
+                        'flex-1 py-2.5 text-xs font-medium transition-colors',
+                        activeSection === 'endpoints'
+                          ? 'text-text-primary border-b-2 border-accent-orange'
+                          : 'text-text-secondary border-b-2 border-transparent hover:text-text-primary'
+                      ]"
+                    >
+                      Endpoints
+                    </button>
+                    <button
+                      @click="activeSection = 'schemas'"
+                      :class="[
+                        'flex-1 py-2.5 text-xs font-medium transition-colors',
+                        activeSection === 'schemas'
+                          ? 'text-text-primary border-b-2 border-accent-orange'
+                          : 'text-text-secondary border-b-2 border-transparent hover:text-text-primary'
+                      ]"
+                    >
+                      Schemas
+                    </button>
+                  </div>
+                  
                   <div class="flex items-center gap-2 py-2 px-3 border-b border-border-default">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-text-muted">
                       <circle cx="11" cy="11" r="8"></circle>
@@ -370,61 +484,90 @@ onMounted(() => {
                     <input 
                       v-model="searchTerm"
                       type="text"
-                      placeholder="Filter..."
+                      :placeholder="activeSection === 'endpoints' ? 'Filter endpoints...' : 'Filter schemas...'"
                       class="flex-1 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs focus:outline-none focus:border-accent-blue"
                     />
                   </div>
                   
                   <div class="flex-1 overflow-y-auto py-2">
-                    <div v-if="Object.keys(filteredEndpointsByTag).length === 0" class="px-3 py-4 text-xs text-text-muted text-center">
-                      No endpoints match
+                    <div v-if="activeSection === 'endpoints'">
+                      <div v-if="Object.keys(filteredEndpointsByTag).length === 0" class="px-3 py-4 text-xs text-text-muted text-center">
+                        No endpoints match
+                      </div>
+                      
+                      <div v-else class="space-y-1 px-2">
+                        <div 
+                          v-for="([tag, endpoints]) in Object.entries(filteredEndpointsByTag)" 
+                          :key="tag"
+                        >
+                          <button
+                            @click="toggleTag(tag)"
+                            class="w-full flex items-center justify-between py-1.5 px-2 text-xs font-medium text-text-secondary hover:text-text-primary transition-colors"
+                          >
+                            <span class="flex items-center gap-1.5">
+                              <svg 
+                                width="12" 
+                                height="12" 
+                                viewBox="0 0 24 24" 
+                                fill="none" 
+                                stroke="currentColor" 
+                                stroke-width="2" 
+                                stroke-linecap="round" 
+                                stroke-linejoin="round"
+                                :class="{ 'rotate-90': isTagExpanded(tag) }"
+                                class="transition-transform duration-fast"
+                              >
+                                <polyline points="9 18 15 12 9 6"></polyline>
+                              </svg>
+                              <span>{{ tag === 'default' ? 'General' : tag }}</span>
+                            </span>
+                            <span class="text-[10px] text-text-muted">{{ endpoints.length }}</span>
+                          </button>
+                          
+                          <div v-if="isTagExpanded(tag)" class="mt-1 space-y-0.5 pl-4 border-l border-border-subtle">
+                            <button
+                              v-for="endpoint in endpoints"
+                              :key="`${endpoint.method}:${endpoint.path}`"
+                              @click="selectEndpoint(endpoint)"
+                              :class="[
+                                'w-full flex items-center gap-2 py-1.5 px-2 text-left rounded-md transition-all duration-fast text-[11px]',
+                                selectedEndpoint?.path === endpoint.path && selectedEndpoint?.method === endpoint.method
+                                  ? 'bg-bg-hover text-text-primary border-l-2 border-accent-orange -ml-2 pl-4'
+                                  : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
+                              ]"
+                            >
+                              <MethodBadge :method="endpoint.method" size="sm" />
+                              <span class="truncate font-mono">{{ endpoint.path }}</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                     
                     <div v-else class="space-y-1 px-2">
-                      <div 
-                        v-for="([tag, endpoints]) in Object.entries(filteredEndpointsByTag)" 
-                        :key="tag"
-                      >
+                      <div v-if="Object.keys(filteredSchemas).length === 0" class="px-3 py-4 text-xs text-text-muted text-center">
+                        No schemas match
+                      </div>
+                      
+                      <div v-else>
                         <button
-                          @click="toggleTag(tag)"
-                          class="w-full flex items-center justify-between py-1.5 px-2 text-xs font-medium text-text-secondary hover:text-text-primary transition-colors"
+                          v-for="(schema, name) in filteredSchemas"
+                          :key="name"
+                          @click="selectSchema(name)"
+                          :class="[
+                            'w-full flex items-center gap-2 py-1.5 px-2 text-left rounded-md transition-all duration-fast text-[11px]',
+                            selectedSchema === name
+                              ? 'bg-bg-hover text-text-primary border-l-2 border-accent-orange -ml-2 pl-4'
+                              : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
+                          ]"
                         >
-                          <span class="flex items-center gap-1.5">
-                            <svg 
-                              width="12" 
-                              height="12" 
-                              viewBox="0 0 24 24" 
-                              fill="none" 
-                              stroke="currentColor" 
-                              stroke-width="2" 
-                              stroke-linecap="round" 
-                              stroke-linejoin="round"
-                              :class="{ 'rotate-90': isTagExpanded(tag) }"
-                              class="transition-transform duration-fast"
-                            >
-                              <polyline points="9 18 15 12 9 6"></polyline>
-                            </svg>
-                            <span>{{ tag === 'default' ? 'General' : tag }}</span>
-                          </span>
-                          <span class="text-[10px] text-text-muted">{{ endpoints.length }}</span>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-accent-orange flex-shrink-0">
+                            <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+                            <line x1="4" y1="12" x2="20" y2="12"></line>
+                            <line x1="12" y1="4" x2="12" y2="20"></line>
+                          </svg>
+                          <span class="truncate">{{ schema.title || name }}</span>
                         </button>
-                        
-                        <div v-if="isTagExpanded(tag)" class="mt-1 space-y-0.5 pl-4 border-l border-border-subtle">
-                          <button
-                            v-for="endpoint in endpoints"
-                            :key="`${endpoint.method}:${endpoint.path}`"
-                            @click="selectEndpoint(endpoint)"
-                            :class="[
-                              'w-full flex items-center gap-2 py-1.5 px-2 text-left rounded-md transition-all duration-fast text-[11px]',
-                              selectedEndpoint?.path === endpoint.path && selectedEndpoint?.method === endpoint.method
-                                ? 'bg-bg-hover text-text-primary border-l-2 border-accent-orange -ml-2 pl-4'
-                                : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
-                            ]"
-                          >
-                            <MethodBadge :method="endpoint.method" size="sm" />
-                            <span class="truncate font-mono">{{ endpoint.path }}</span>
-                          </button>
-                        </div>
                       </div>
                     </div>
                   </div>
@@ -607,6 +750,184 @@ onMounted(() => {
                         <polygon points="10 8 16 12 10 16 10 8"></polygon>
                       </svg>
                       <p class="text-sm">Select an endpoint from the sidebar to view documentation</p>
+                    </div>
+                  </div>
+                </div>
+                  
+                  <div v-else-if="selectedSchema" class="flex-1 flex overflow-y-auto">
+                    <div class="flex-1 p-5 overflow-y-auto">
+                      <div class="mb-4 pb-3 border-b border-border-default">
+                        <h3 class="text-lg font-semibold text-text-primary mb-1">{{ props.spec?.schemas[selectedSchema]?.title || selectedSchema }}</h3>
+                        <p v-if="props.spec?.schemas[selectedSchema]?.description" class="text-sm text-text-secondary m-0">
+                          {{ props.spec.schemas[selectedSchema].description }}
+                        </p>
+                      </div>
+                      
+                      <div v-if="props.spec?.schemas[selectedSchema]" class="space-y-4">
+                        <div>
+                          <h4 class="text-xs font-semibold text-text-primary uppercase tracking-wide mb-2">Schema Type</h4>
+                          <div class="bg-bg-tertiary border border-border-default rounded-md p-2.5">
+                            <span class="font-mono text-xs text-text-primary">{{ getSchemaTypeDisplay(props.spec.schemas[selectedSchema]) }}</span>
+                          </div>
+                        </div>
+                        
+                        <div v-if="props.spec.schemas[selectedSchema].default !== undefined">
+                          <h4 class="text-xs font-semibold text-text-primary uppercase tracking-wide mb-2">Default Value</h4>
+                          <div class="bg-bg-tertiary border border-border-default rounded-md p-2.5">
+                            <code class="font-mono text-xs text-text-primary">{{ JSON.stringify(props.spec.schemas[selectedSchema].default) }}</code>
+                          </div>
+                        </div>
+                        
+                        <div v-if="props.spec.schemas[selectedSchema].example !== undefined">
+                          <h4 class="text-xs font-semibold text-text-primary uppercase tracking-wide mb-2">Example Value</h4>
+                          <div class="bg-bg-tertiary border border-border-default rounded-md p-2.5">
+                            <pre class="font-mono text-xs text-text-primary m-0 whitespace-pre-wrap">{{ JSON.stringify(props.spec.schemas[selectedSchema].example, null, 2) }}</pre>
+                          </div>
+                        </div>
+                        
+                        <div v-if="props.spec.schemas[selectedSchema].enum && props.spec.schemas[selectedSchema].enum.length > 0">
+                          <h4 class="text-xs font-semibold text-text-primary uppercase tracking-wide mb-2">Enum Values</h4>
+                          <div class="bg-bg-tertiary border border-border-default rounded-md p-2.5 space-y-1">
+                            <div v-for="(value, idx) in props.spec.schemas[selectedSchema].enum" :key="idx" class="flex items-center gap-2">
+                              <code class="font-mono text-xs text-text-primary">{{ JSON.stringify(value) }}</code>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div v-if="props.spec.schemas[selectedSchema].properties">
+                          <h4 class="text-xs font-semibold text-text-primary uppercase tracking-wide mb-2">Properties</h4>
+                          <div class="bg-bg-tertiary border border-border-default rounded-md divide-y divide-border-default">
+                            <template v-for="(property, propName) in props.spec.schemas[selectedSchema].properties" :key="propName">
+                              <div class="p-2.5">
+                                <div class="flex items-start gap-3">
+                                  <div class="flex items-center gap-2 min-w-0 flex-1">
+                                    <button
+                                      v-if="hasNestedProperties(property)"
+                                      @click="toggleProperty(`${selectedSchema}.${propName}`)"
+                                      class="flex-shrink-0"
+                                    >
+                                      <svg 
+                                        width="12" 
+                                        height="12" 
+                                        viewBox="0 0 24 24" 
+                                        fill="none" 
+                                        stroke="currentColor" 
+                                        stroke-width="2" 
+                                        stroke-linecap="round" 
+                                        stroke-linejoin="round"
+                                        :class="{ 'rotate-90': isPropertyExpanded(`${selectedSchema}.${propName}`) }"
+                                        class="transition-transform duration-fast text-text-secondary"
+                                      >
+                                        <polyline points="9 18 15 12 9 6"></polyline>
+                                      </svg>
+                                    </button>
+                                    <span v-else class="w-3 flex-shrink-0"></span>
+                                    
+                                    <span class="font-mono text-xs text-text-primary truncate">{{ propName }}</span>
+                                    <span class="font-mono text-[10px] text-text-muted flex-shrink-0">
+                                      {{ getSchemaTypeDisplay(property) }}
+                                    </span>
+                                    <span v-if="props.spec.schemas[selectedSchema].required?.includes(propName)" class="text-[10px] text-accent-red flex-shrink-0">
+                                      required
+                                    </span>
+                                  </div>
+                                </div>
+                                
+                                <div v-if="property.description" class="text-[11px] text-text-muted mt-1 ml-5">
+                                  {{ property.description }}
+                                </div>
+                                
+                                <div v-if="property.enum && property.enum.length > 0" class="mt-2 ml-5">
+                                  <div class="flex flex-wrap gap-1">
+                                    <span 
+                                      v-for="(value, idx) in property.enum" 
+                                      :key="idx"
+                                      class="inline-block px-1.5 py-0.5 bg-bg-hover text-text-muted text-[10px] rounded font-mono"
+                                    >
+                                      {{ JSON.stringify(value) }}
+                                    </span>
+                                  </div>
+                                </div>
+                                
+                                <template v-if="hasNestedProperties(property) && isPropertyExpanded(`${selectedSchema}.${propName}`)">
+                                  <div class="ml-5 mt-2 space-y-2">
+                                    <template v-if="property.properties">
+                                      <div v-for="(nestedProp, nestedName) in property.properties" :key="`${propName}.${nestedName}`" class="border-l border-border-subtle pl-3 py-2">
+                                        <div class="flex items-start gap-2">
+                                          <button
+                                            v-if="hasNestedProperties(nestedProp)"
+                                            @click="toggleProperty(`${selectedSchema}.${propName}.${nestedName}`)"
+                                            class="flex-shrink-0"
+                                          >
+                                            <svg 
+                                              width="10" 
+                                              height="10" 
+                                              viewBox="0 0 24 24" 
+                                              fill="none" 
+                                              stroke="currentColor" 
+                                              stroke-width="2" 
+                                              stroke-linecap="round" 
+                                              stroke-linejoin="round"
+                                              :class="{ 'rotate-90': isPropertyExpanded(`${selectedSchema}.${propName}.${nestedName}`) }"
+                                              class="transition-transform duration-fast text-text-muted"
+                                            >
+                                              <polyline points="9 18 15 12 9 6"></polyline>
+                                            </svg>
+                                          </button>
+                                          <span v-else class="w-[10px] flex-shrink-0"></span>
+                                          
+                                          <span class="font-mono text-[11px] text-text-primary">{{ nestedName }}</span>
+                                          <span class="font-mono text-[10px] text-text-muted">{{ getSchemaTypeDisplay(nestedProp) }}</span>
+                                        </div>
+                                        
+                                        <div v-if="nestedProp.description" class="text-[10px] text-text-muted mt-1 ml-4">
+                                          {{ nestedProp.description }}
+                                        </div>
+                                        
+                                        <div v-if="nestedProp.enum && nestedProp.enum.length > 0" class="mt-1 ml-4 flex flex-wrap gap-1">
+                                          <span 
+                                            v-for="(value, idx) in nestedProp.enum" 
+                                            :key="idx"
+                                            class="inline-block px-1 py-0.5 bg-bg-hover text-text-muted text-[10px] rounded font-mono"
+                                          >
+                                            {{ JSON.stringify(value) }}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </template>
+                                    
+                                    <div v-if="property.items && hasNestedProperties(property.items)">
+                                      <span class="text-[10px] font-medium text-text-muted block mb-1">Array Items:</span>
+                                      <div v-if="property.items.properties" class="border-l border-border-subtle pl-3 py-2 space-y-2">
+                                        <div v-for="(itemProp, itemName) in property.items.properties" :key="`${propName}.items.${itemName}`">
+                                          <div class="flex items-start gap-2 mb-1">
+                                            <span class="font-mono text-[11px] text-text-primary">{{ itemName }}</span>
+                                            <span class="font-mono text-[10px] text-text-muted">{{ getSchemaTypeDisplay(itemProp) }}</span>
+                                          </div>
+                                          <div v-if="itemProp?.description" class="text-[10px] text-text-muted ml-4">
+                                            {{ itemProp.description }}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </template>
+                              </div>
+                            </template>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div v-else class="flex-1 flex items-center justify-center text-text-muted">
+                    <div class="text-center">
+                      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" class="opacity-30 mx-auto mb-3">
+                        <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+                        <line x1="4" y1="12" x2="20" y2="12"></line>
+                        <line x1="12" y1="4" x2="12" y2="20"></line>
+                      </svg>
+                      <p class="text-sm">Select a schema from the sidebar to view its details</p>
                     </div>
                   </div>
                 </div>

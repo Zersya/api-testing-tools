@@ -65,6 +65,16 @@ Safely import browser-only modules in Nuxt/Vue:
 - Use the cached module for subsequent calls
 - This pattern prevents SSR errors for browser-specific libraries
 
+### Schema Property Expansion Pattern
+Handle nested schema properties with expand/collapse:
+- Use Set-based expansion tracking with dot-notation paths (`${schemaName}.${propertyName}`)
+- `expandedProperties` ref stores all expanded paths as Set<string>
+- `isPropertyExpanded(path)` checks if path is in Set
+- `toggleProperty(path)` adds/removes path from Set
+- Render expand button only when `hasNestedProperties()` returns true
+- Use visual hierarchy with borders and padding reduction for nested levels
+
+
 ---
 
 ### Unified Multi-Type Modal Pattern
@@ -430,3 +440,47 @@ ould have orange border indicator\n5. **Code examples**: Switch between cURL/Jav
 - **Syntax Highlighting Integration Pattern**: Import module dynamically → cache in variable → apply when DOM ready → use CSS classes for language identification → highlight on language change.
 - **Security Scheme Parsing Pattern**: Check endpoint.security first → fallback to spec.security → resolve scheme name → inspect scheme type → generate appropriate auth header/name/value triple.
 ---
+## ✓ Iteration 9 - US-037: Redocly-style API documentation - Code samples
+*2026-01-21T00:08:12.624Z (284s)*
+
+**Status:** Completed
+
+**Notes:**
+sessionID":"ses_42222f371ffeRo3AGNsYnay75a","part":{"id":"prt_bdde15286001BrgD056d8pfky9","sessionID":"ses_42222f371ffeRo3AGNsYnay75a","messageID":"msg_bdde14de8001aT1edQX5F7x5S6","type":"step-start","snapshot":"15dc1bbdad45a493d8b648cf48b2241a6ad553ac"}}
+{"type":"text","timestamp":1768954092523,"sessionID":"ses_42222f371ffeRo3AGNsYnay75a","part":{"id":"prt_bdde152dc001SCe9XFX0TGzZS4","sessionID":"ses_42222f371ffeRo3AGNsYnay75a","messageID":"msg_bdde14de8001aT1edQX5F7x5S6","type":"text","text":"
+
+---
+
+## [January 21, 2026] - US-038
+### What was implemented
+- Added Schemas section to ApiDocumentationViewer component with tab-based navigation between Endpoints and Schemas views
+- Schema list sidebar displaying all schemas from OpenAPI components with filtering support
+- Schema details view displaying schema type, default value, example value, and enum values
+- Property table for schemas with name, type, required indicator, and description
+- Nested object expansion with click-to-expand functionality for properties with nested properties
+- Support for displaying array item properties
+- Enum value display at both schema and property level
+- Example values display in formatted JSON
+- Schema filtering by name, title, and description
+- Proper handling of schema composition (allOf, oneOf, anyOf) in type display
+- Array type display with item type information
+- $ref resolution for schema references
+- Nullable type indicator
+- Format display (e.g., date-time, email, uuid)
+
+### Files changed
+- app/components/ApiDocumentationViewer.vue (updated - added schemas section, schema list, schema details view, property table, nested object expansion, enum display, example values)
+
+### Learnings:
+- **Tab-Based Navigation Pattern in Components**: Use `activeSection` ref with union type to switch between different views within the same component (endpoints vs schemas); conditionally render sidebar content and main content based on activeSection; maintain separate selected state for each section.
+- **Schema Type Display Composition**: Build comprehensive type display string by checking multiple schema properties (type, format, nullable, $ref, items, allOf, oneOf, anyOf, enum) in order of specificity; handle array types specially by checking items type or $ref.
+- **Nested Property Expansion Pattern**: Use Set-based expansion tracking with dot-notation property paths (e.g., `${schemaName}.${propertyName}`) for unique identification; toggleProperty adds/removes from Set; isPropertyExpanded checks membership in Set; render expand button only when nested properties exist.
+- **Inline Recursive Template Rendering**: Instead of creating separate recursive components, handle nested object rendering directly in template using nested v-for loops and conditional rendering; maintain structure with borders and padding for visual hierarchy; limit to 2 levels for maintainability.
+- **Schema Filtering Pattern**: Filter schemas by name, title, and description using computed property; check multiple fields for comprehensive search; return filtered object with same structure to keep rendering simple.
+- **Multi-Level Property Details**: Display property type, description, enum values at primary level; when expanded, render nested properties with borders and reduced padding for visual hierarchy; show array items separately with label "Array Items:".
+
+### Patterns discovered:
+- **Schema Viewer with Filtering Pattern**: Tab navigation to switch views → filteredSchemas computed → schema list with clickable items → selectedSchema state → schema details view with property table → nested property expansion with Set tracking.
+- **Property Hierarchy Display Pattern**: Level 0 properties with full spacing and expand button → level 1 nested properties with border-left, reduced padding, smaller icons → maintain visual hierarchy using borders and spacing reduction.
+- **Comprehensive Schema Type Display Pattern**: Build type string step-by-step → basic type → nullable suffix → format suffix → $ref replacement → enum suffix → array items type → composition (allOf/oneOf/anyOf) count → final display string covers all schema variations.
+- **Schema Property Table Pattern**: Property name + type display + required badge in one row → description below if present → enum values below if present → nested properties when expanded → border between properties for clear separation.
