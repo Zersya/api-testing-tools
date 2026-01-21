@@ -1,17 +1,29 @@
 import jwt from 'jsonwebtoken';
 
+interface UserInfo {
+  sub: string;
+  email: string;
+  name: string;
+  username: string;
+  givenName: string;
+  familyName: string;
+  picture: string;
+  idToken: string;
+}
+
+interface DecodedToken {
+  email?: string;
+  name?: string;
+  sub?: string;
+  authMethod?: string;
+  realm?: string;
+  exp?: number;
+  iat?: number;
+}
+
 export default defineEventHandler((event) => {
-    // This endpoint is just for checking auth status.
-    // The server middleware 'auth.ts' already protects /api/admin/*
-    // But we might want a dedicated check that explicitly returns 200 or 401
-    // independent of the general admin middleware if we place it outside /api/admin
-
-    // Actually, let's put it in /api/auth/check to avoid the admin middleware 
-    // blocking it if we want to handle it manually (though admin middleware only blocks /api/admin)
-
-    // But wait, we WANT to check if the cookie is valid.
-
     const token = getCookie(event, 'auth_token');
+    const userInfoCookie = getCookie(event, 'user_info');
     const config = useRuntimeConfig();
 
     if (!token) {
@@ -21,15 +33,48 @@ export default defineEventHandler((event) => {
         });
     }
 
-    // Verify token
+    let decoded: DecodedToken;
     try {
-        jwt.verify(token, config.jwtSecret);
+        decoded = jwt.verify(token, config.jwtSecret) as DecodedToken;
     } catch (e) {
         throw createError({
             statusCode: 401,
-            statusMessage: 'Invalid token'
+            statusMessage: 'Invalid or expired token'
         });
     }
 
-    return { status: 'logged_in', storageDriver: process.env.REDIS_URL ? 'redis' : 'fs' };
+    let userInfo: UserInfo | null = null;
+    if (userInfoCookie) {
+        try {
+            userInfo = JSON.parse(Buffer.from(userInfoCookie, 'base64').toString('utf8'));
+        } catch {
+            userInfo = null;
+        }
+    }
+
+    if (!userInfo && decoded) {
+        userInfo = {
+            sub: decoded.sub || '',
+            email: decoded.email || '',
+            name: decoded.name || '',
+            username: decoded.email?.split('@')[0] || '',
+            givenName: '',
+            familyName: '',
+            picture: '',
+            idToken: ''
+        };
+    }
+
+    const tokenExp = decoded.exp ? decoded.exp * 1000 : null;
+    const isExpiringSoon = tokenExp && (tokenExp - Date.now()) < 5 * 60 * 1000;
+
+    return {
+        status: 'logged_in',
+        storageDriver: process.env.REDIS_URL ? 'redis' : 'fs',
+        user: userInfo,
+        authMethod: decoded.authMethod || 'credentials',
+        realm: decoded.realm || null,
+        tokenExpiry: decoded.exp || null,
+        isTokenExpiringSoon: isExpiringSoon || false
+    };
 });

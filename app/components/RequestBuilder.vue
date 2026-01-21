@@ -709,6 +709,11 @@ const handleOAuthCallback = async () => {
 };
 
 const refreshAccessToken = async () => {
+  if (oauth2.value.grantType === 'client_credentials') {
+    await getClientCredentialsToken();
+    return;
+  }
+
   if (!oauth2.value.refreshToken || !oauth2.value.tokenUrl) {
     tokenError.value = 'No refresh token or token URL configured';
     return;
@@ -763,6 +768,63 @@ const refreshAccessToken = async () => {
   }
 };
 
+const getClientCredentialsToken = async () => {
+  if (!oauth2.value.tokenUrl || !oauth2.value.clientId) {
+    tokenError.value = 'Please configure Token URL and Client ID';
+    return;
+  }
+
+  isGettingToken.value = true;
+  tokenError.value = '';
+
+  try {
+    const body: Record<string, string> = {
+      grant_type: 'client_credentials',
+      client_id: oauth2.value.clientId
+    };
+
+    if (oauth2.value.clientSecret) {
+      body.client_secret = oauth2.value.clientSecret;
+    }
+
+    if (oauth2.value.scopes) {
+      body.scope = oauth2.value.scopes;
+    }
+
+    const response = await $fetch<{
+      access_token: string;
+      expires_in?: number;
+      token_type?: string;
+      error?: string;
+      error_description?: string;
+    }>(oauth2.value.tokenUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+      },
+      body: new URLSearchParams(body).toString()
+    });
+
+    if (response.error) {
+      tokenError.value = response.error_description || response.error;
+      return;
+    }
+
+    oauth2.value.accessToken = response.access_token;
+    oauth2.value.tokenType = response.token_type || 'Bearer';
+    oauth2.value.expiresAt = response.expires_in ? Math.floor(Date.now() / 1000) + response.expires_in : null;
+    oauth2.value.refreshToken = '';
+
+    tokenError.value = '';
+
+  } catch (error: any) {
+    tokenError.value = error.data?.error_description || error.data?.error || error.message || 'Failed to get access token';
+  } finally {
+    isGettingToken.value = false;
+  }
+};
+
 const clearOAuthSession = () => {
   sessionStorage.removeItem('oauth2_state');
   sessionStorage.removeItem('oauth2_callback_params');
@@ -777,11 +839,17 @@ const clearTokens = () => {
 };
 
 const autoRefreshToken = async () => {
-  if (oauth2.value.refreshToken && oauth2.value.expiresAt) {
-    const timeUntilExpiry = oauth2.value.expiresAt * 1000 - Date.now();
-    const refreshThreshold = 5 * 60 * 1000;
+  if (!oauth2.value.accessToken || !oauth2.value.expiresAt) {
+    return;
+  }
 
-    if (timeUntilExpiry < refreshThreshold && timeUntilExpiry > 0) {
+  const timeUntilExpiry = oauth2.value.expiresAt * 1000 - Date.now();
+  const refreshThreshold = 5 * 60 * 1000;
+
+  if (timeUntilExpiry < refreshThreshold && timeUntilExpiry > 0) {
+    if (oauth2.value.grantType === 'client_credentials') {
+      await getClientCredentialsToken();
+    } else if (oauth2.value.refreshToken) {
       await refreshAccessToken();
     }
   }
@@ -1902,7 +1970,7 @@ onUnmounted(() => {
                     </select>
                   </div>
 
-                  <div class="space-y-2">
+                  <div v-if="oauth2.grantType === 'authorization_code'" class="space-y-2">
                     <label class="text-xs font-medium text-text-secondary">Auth URL</label>
                     <VariableInput
                       v-model="oauth2.authUrl"
@@ -1955,7 +2023,7 @@ onUnmounted(() => {
                     <p class="text-[10px] text-text-muted">Space-separated list of scopes</p>
                   </div>
 
-                  <div class="space-y-2">
+                  <div v-if="oauth2.grantType === 'authorization_code'" class="space-y-2">
                     <label class="text-xs font-medium text-text-secondary">Callback URL</label>
                     <VariableInput
                       v-model="oauth2.callbackUrl"
@@ -1966,7 +2034,7 @@ onUnmounted(() => {
                     <p class="text-[10px] text-text-muted">Must match the callback URL configured in your OAuth provider</p>
                   </div>
 
-                  <label class="flex items-center gap-2 cursor-pointer">
+                  <label v-if="oauth2.grantType === 'authorization_code'" class="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
                       v-model="oauth2.PKCE"
@@ -2066,7 +2134,7 @@ onUnmounted(() => {
 
                 <div v-else-if="oauth2.grantType === 'client_credentials'" class="space-y-3">
                   <button
-                    @click="refreshAccessToken"
+                    @click="getClientCredentialsToken"
                     :disabled="isGettingToken || !oauth2.tokenUrl || !oauth2.clientId"
                     class="w-full py-2.5 px-4 bg-accent-blue text-white rounded font-medium text-sm transition-all duration-fast hover:bg-[#1976D2] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
@@ -2112,7 +2180,7 @@ onUnmounted(() => {
 
                     <div class="flex gap-2">
                       <button
-                        @click="refreshAccessToken"
+                        @click="getClientCredentialsToken"
                         :disabled="isGettingToken || !oauth2.tokenUrl || !oauth2.clientId"
                         class="flex-1 py-2 px-3 bg-bg-input border border-border-default rounded text-xs font-medium text-text-secondary hover:border-accent-blue transition-colors duration-fast disabled:opacity-50 disabled:cursor-not-allowed"
                       >
@@ -2134,11 +2202,16 @@ onUnmounted(() => {
                       </button>
                     </div>
                   </div>
-                </div>
-              </div>
 
-              <div v-if="authType === 'none'" class="p-4 text-center text-text-muted text-sm">
-                This request will be sent without authentication
+                  <div v-if="!oauth2.accessToken" class="p-4 text-center text-text-muted text-sm">
+                    <p class="mb-2">Click "Get Access Token" to fetch a new token directly from the token endpoint</p>
+                    <p class="text-xs">No user interaction required - credentials are sent directly to the token URL</p>
+                  </div>
+                </div>
+
+                <div v-if="authType === 'none'" class="p-4 text-center text-text-muted text-sm">
+                  This request will be sent without authentication
+                </div>
               </div>
             </div>
           </div>

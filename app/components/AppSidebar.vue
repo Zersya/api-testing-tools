@@ -125,6 +125,8 @@ const emit = defineEmits<{
   viewDefinitionDocs: [definition: any];
   generateDefinitionMocks: [definition: any];
   reimportDefinition: [definition: any];
+  reorderFolders: [collectionId: string, folderUpdates: { id: string; parentFolderId: string | null; order: number }[]];
+  reorderRequests: [folderId: string, requestUpdates: { id: string; folderId: string; order: number }[]];
 }>();
 
 const selectedWorkspaceId = ref<string | null>(null);
@@ -138,9 +140,19 @@ const expandedProjects = ref<Set<string>>(new Set());
 const expandedCollectionsHierarchy = ref<Set<string>>(new Set());
 const expandedFolders = ref<Set<string>>(new Set());
 
+const draggingFolderId = ref<string | null>(null);
+const draggingRequestId = ref<string | null>(null);
+const dropTarget = ref<{
+  type: 'folder' | 'request' | 'between';
+  id: string;
+  position: 'before' | 'after' | 'inside';
+} | null>(null);
+
+const localWorkspaces = ref<WorkspaceWithProjects[]>([]);
+
 const currentWorkspace = computed(() => {
-  if (!selectedWorkspaceId.value) return props.workspaces[0];
-  return props.workspaces.find(w => w.id === selectedWorkspaceId.value) || props.workspaces[0];
+  if (!selectedWorkspaceId.value) return props.workspaces[0] || localWorkspaces.value[0];
+  return props.workspaces.find(w => w.id === selectedWorkspaceId.value) || localWorkspaces.value[0];
 });
 
 // Build collections with their grouped mocks
@@ -282,6 +294,256 @@ const isWorkspaceExpanded = (workspaceId: string) => expandedWorkspaces.value.ha
 const isProjectExpanded = (projectId: string) => expandedProjects.value.has(projectId);
 const isCollectionHierarchyExpanded = (collectionId: string) => expandedCollectionsHierarchy.value.has(collectionId);
 const isFolderExpanded = (folderId: string) => expandedFolders.value.has(folderId);
+
+const handleDragStart = (type: 'folder' | 'request', id: string) => {
+  if (type === 'folder') {
+    draggingFolderId.value = id;
+    draggingRequestId.value = null;
+  } else {
+    draggingRequestId.value = id;
+    draggingFolderId.value = null;
+  }
+};
+
+const handleDragEnd = () => {
+  draggingFolderId.value = null;
+  draggingRequestId.value = null;
+  dropTarget.value = null;
+};
+
+const handleDragOver = (event: DragEvent, type: 'folder' | 'request', id: string, position: 'before' | 'after' | 'inside') => {
+  event.preventDefault();
+  
+  if (type === 'folder') {
+    const targetFolder = findFolderById(currentWorkspace.value, id);
+    if (!targetFolder) return;
+
+    if (draggingFolderId.value === id) {
+      dropTarget.value = null;
+      return;
+    }
+
+    if (draggingFolderId.value && isDescendant(draggingFolderId.value, id, currentWorkspace.value)) {
+      dropTarget.value = null;
+      return;
+    }
+
+    dropTarget.value = { type, id, position: position === 'inside' ? 'inside' : 'before' };
+  } else {
+    dropTarget.value = { type, id, position };
+  }
+};
+
+const handleDragLeave = () => {
+  if (!dropTarget.value) {
+    return;
+  }
+};
+
+const handleDrop = async (event: DragEvent, type: 'folder' | 'request', id: string, position: 'before' | 'after' | 'inside') => {
+  event.preventDefault();
+  
+  const sourceType = draggingFolderId.value ? 'folder' : 'request';
+  const sourceId = draggingFolderId.value || draggingRequestId.value;
+  
+  if (!sourceId) {
+    handleDragEnd();
+    return;
+  }
+
+  try {
+    if (sourceType === 'folder' && type === 'folder') {
+      await handleFolderDrop(sourceId as string, id, position);
+    } else if (sourceType === 'request' && type === 'folder') {
+      await handleRequestToFolderDrop(sourceId as string, id);
+    } else if (sourceType === 'request' && type === 'request') {
+      await handleRequestDrop(sourceId as string, id, position);
+    }
+  } catch (error: any) {
+    console.error('Drop error:', error);
+  } finally {
+    handleDragEnd();
+  }
+};
+
+const findFolderById = (workspace: WorkspaceWithProjects | undefined, folderId: string): FolderWithRequestsAndChildren | null => {
+  if (!workspace) return null;
+  
+  const searchInCollections = (collections: CollectionWithFolders[]): FolderWithRequestsAndChildren | null => {
+    for (const collection of collections) {
+      const found = findInFolders(collection.folders, folderId);
+      if (found) return found;
+    }
+    return null;
+  };
+  
+  const findInFolders = (folders: FolderWithRequestsAndChildren[], targetId: string): FolderWithRequestsAndChildren | null => {
+    for (const folder of folders) {
+      if (folder.id === targetId) return folder;
+      const found = findInFolders(folder.children, targetId);
+      if (found) return found;
+    }
+    return null;
+  };
+  
+  for (const project of workspace.projects) {
+    const found = searchInCollections(project.collections);
+    if (found) return found;
+  }
+  
+  return null;
+};
+
+const isDescendant = (ancestorId: string, descendantId: string, workspace: WorkspaceWithProjects | undefined): boolean => {
+  const folder = findFolderById(workspace, ancestorId);
+  if (!folder) return false;
+  
+  const checkInChildren = (folders: FolderWithRequestsAndChildren[]): boolean => {
+    for (const f of folders) {
+      if (f.id === descendantId) return true;
+      if (checkInChildren(f.children)) return true;
+    }
+    return false;
+  };
+  
+  return checkInChildren(folder.children);
+};
+
+const handleFolderDrop = async (sourceFolderId: string, targetFolderId: string, position: 'before' | 'after' | 'inside') => {
+  const sourceFolder = findFolderById(currentWorkspace.value, sourceFolderId);
+  const targetFolder = findFolderById(currentWorkspace.value, targetFolderId);
+  
+  if (!sourceFolder || !targetFolder) return;
+
+  let newParentId: string | null = null;
+  let newOrder: number = 0;
+
+  if (position === 'inside') {
+    newParentId = targetFolderId;
+    newOrder = targetFolder.children.length;
+  } else {
+    newParentId = targetFolder.parentFolderId;
+    const siblings = getSiblingFolders(targetFolder.parentFolderId);
+    const targetIndex = siblings.findIndex(f => f.id === targetFolderId);
+    newOrder = position === 'before' ? targetIndex : targetIndex + 1;
+  }
+
+  const folderUpdates = calculateFolderOrderUpdates(sourceFolderId, newParentId, newOrder, targetFolder.collectionId);
+  
+  emit('reorderFolders', targetFolder.collectionId, folderUpdates);
+};
+
+const handleRequestToFolderDrop = async (requestId: string, targetFolderId: string) => {
+  const targetFolder = findFolderById(currentWorkspace.value, targetFolderId);
+  if (!targetFolder) return;
+
+  const newOrder = targetFolder.requests.length;
+  
+  emit('reorderRequests', targetFolderId, [{ id: requestId, folderId: targetFolderId, order: newOrder }]);
+};
+
+const handleRequestDrop = async (sourceRequestId: string, targetRequestId: string, position: 'before' | 'after') => {
+  const targetFolder = findRequestFolder(targetRequestId, currentWorkspace.value);
+  if (!targetFolder) return;
+
+  const siblings = targetFolder.requests;
+  const targetIndex = siblings.findIndex(r => r.id === targetRequestId);
+  const newOrder = position === 'before' ? targetIndex : targetIndex + 1;
+
+  const updates = siblings
+    .filter(r => r.id !== sourceRequestId)
+    .map((r, idx) => ({
+      id: r.id,
+      folderId: targetFolder.id,
+      order: idx >= newOrder ? idx + 1 : idx
+    }));
+
+  if (siblings.find(r => r.id === sourceRequestId)) {
+    updates.push({ id: sourceRequestId, folderId: targetFolder.id, order: newOrder });
+  } else {
+    updates.unshift({ id: sourceRequestId, folderId: targetFolder.id, order: newOrder });
+  }
+
+  emit('reorderRequests', targetFolder.id, updates);
+};
+
+const findRequestFolder = (requestId: string, workspace: WorkspaceWithProjects | undefined): FolderWithRequestsAndChildren | null => {
+  if (!workspace) return null;
+  
+  const searchInCollections = (collections: CollectionWithFolders[]): FolderWithRequestsAndChildren | null => {
+    for (const collection of collections) {
+      const found = findInFolders(collection.folders, requestId);
+      if (found) return found;
+    }
+    return null;
+  };
+  
+  const findInFolders = (folders: FolderWithRequestsAndChildren[], targetRequestId: string): FolderWithRequestsAndChildren | null => {
+    for (const folder of folders) {
+      if (folder.requests.find(r => r.id === targetRequestId)) return folder;
+      const found = findInFolders(folder.children, targetRequestId);
+      if (found) return found;
+    }
+    return null;
+  };
+  
+  for (const project of workspace.projects) {
+    const found = searchInCollections(project.collections);
+    if (found) return found;
+  }
+  
+  return null;
+};
+
+const getSiblingFolders = (parentId: string | null): FolderWithRequestsAndChildren[] => {
+  if (!currentWorkspace.value) return [];
+  
+  const getFoldersAtLevel = (folders: FolderWithRequestsAndChildren[]): FolderWithRequestsAndChildren[] => {
+    return folders.filter(f => f.parentFolderId === parentId);
+  };
+  
+  for (const project of currentWorkspace.value.projects) {
+    for (const collection of project.collections) {
+      if (parentId === null) {
+        return collection.folders.filter(f => f.parentFolderId === null);
+      }
+      const allFolders: FolderWithRequestsAndChildren[] = [];
+      const collectFolders = (folders: FolderWithRequestsAndChildren[]) => {
+        for (const folder of folders) {
+          if (folder.parentFolderId === parentId) {
+            allFolders.push(folder);
+          }
+          collectFolders(folder.children);
+        }
+      };
+      collectFolders(collection.folders);
+      if (allFolders.length > 0) return allFolders;
+    }
+  }
+  
+  return [];
+};
+
+const calculateFolderOrderUpdates = (
+  sourceFolderId: string,
+  newParentId: string | null,
+  newOrder: number,
+  collectionId: string
+): { id: string; parentFolderId: string | null; order: number }[] => {
+  const updates: { id: string; parentFolderId: string | null; order: number }[] = [];
+  
+  const siblings = getSiblingFolders(newParentId).filter(f => f.id !== sourceFolderId);
+  
+  siblings.forEach((folder, idx) => {
+    if (idx >= newOrder) {
+      updates.push({ id: folder.id, parentFolderId: folder.parentFolderId, order: idx + 1 });
+    }
+  });
+  
+  updates.push({ id: sourceFolderId, parentFolderId: newParentId, order: newOrder });
+  
+  return updates;
+};
 
 const getCollectionColor = (color: string) => {
   return { borderLeftColor: color };
@@ -616,10 +878,18 @@ onUnmounted(() => {
                       <FolderTreeItem
                         :folder="folder"
                         :expanded-folder-ids="expandedFolders"
+                        :dragging-folder-id="draggingFolderId"
+                        :dragging-request-id="draggingRequestId"
+                        :drop-target="dropTarget"
                         @toggle-folder="toggleFolder"
                         @select-request="emit('selectRequest', $event)"
                         @context-menu="handleContextMenu"
                         @create-request="emit('createRequest', $event)"
+                        @drag-start="handleDragStart"
+                        @drag-end="handleDragEnd"
+                        @drag-over="handleDragOver"
+                        @drag-leave="handleDragLeave"
+                        @drop="handleDrop"
                       />
                     </template>
 

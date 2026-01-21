@@ -3,10 +3,10 @@
   "sessionId": "3ea6938a-5c6d-4fb8-8909-5878247a7ed8",
   "status": "running",
   "startedAt": "2026-01-21T00:26:24.313Z",
-  "updatedAt": "2026-01-21T00:33:04.730Z",
-  "currentIteration": 1,
+  "updatedAt": "2026-01-21T01:10:26.816Z",
+  "currentIteration": 4,
   "maxIterations": 10,
-  "tasksCompleted": 1,
+  "tasksCompleted": 4,
   "isPaused": false,
   "agentPlugin": "opencode",
   "model": "minimax/MiniMax-M2.1",
@@ -264,20 +264,20 @@
       {
         "id": "US-042",
         "title": "OAuth 2.0 - Authorization Code flow",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-043",
         "title": "OAuth 2.0 - Client Credentials flow",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-044",
         "title": "Keycloak SSO integration",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-045",
@@ -315,12 +315,42 @@
       "durationMs": 396006,
       "startedAt": "2026-01-21T00:26:27.644Z",
       "endedAt": "2026-01-21T00:33:03.650Z"
+    },
+    {
+      "iteration": 2,
+      "status": "completed",
+      "taskId": "US-042",
+      "taskTitle": "OAuth 2.0 - Authorization Code flow",
+      "taskCompleted": true,
+      "durationMs": 1646747,
+      "startedAt": "2026-01-21T00:33:04.698Z",
+      "endedAt": "2026-01-21T01:00:31.445Z"
+    },
+    {
+      "iteration": 3,
+      "status": "completed",
+      "taskId": "US-043",
+      "taskTitle": "OAuth 2.0 - Client Credentials flow",
+      "taskCompleted": true,
+      "durationMs": 301120,
+      "startedAt": "2026-01-21T01:00:32.610Z",
+      "endedAt": "2026-01-21T01:05:33.730Z"
+    },
+    {
+      "iteration": 4,
+      "status": "completed",
+      "taskId": "US-044",
+      "taskTitle": "Keycloak SSO integration",
+      "taskCompleted": true,
+      "durationMs": 290983,
+      "startedAt": "2026-01-21T01:05:34.786Z",
+      "endedAt": "2026-01-21T01:10:25.769Z"
     }
   ],
   "skippedTaskIds": [],
   "cwd": "/Users/zeinersyad/Playground/mock-service",
   "activeTaskIds": [
-    "US-042"
+    "US-045"
   ],
   "subagentPanelVisible": false
 }

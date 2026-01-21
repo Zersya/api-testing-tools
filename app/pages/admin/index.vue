@@ -1011,6 +1011,32 @@ const deleteGroup = async () => {
         alert('Error deleting folder: ' + e.message);
     }
 };
+
+const handleReorderFolders = async (collectionId: string, updates: { id: string; parentFolderId: string | null; order: number }[]) => {
+    try {
+        await $fetch('/api/admin/folders/reorder', {
+            method: 'POST',
+            body: { collectionId, updates }
+        });
+        refresh();
+    } catch (e: any) {
+        alert('Error reordering folders: ' + (e.data?.message || e.message));
+        refresh();
+    }
+};
+
+const handleReorderRequests = async (folderId: string, updates: { id: string; folderId: string; order: number }[]) => {
+    try {
+        await $fetch('/api/admin/requests/reorder', {
+            method: 'POST',
+            body: { folderId, updates }
+        });
+        refresh();
+    } catch (e: any) {
+        alert('Error reordering requests: ' + (e.data?.message || e.message));
+        refresh();
+    }
+};
 </script>
 
 <template>
@@ -1048,6 +1074,11 @@ const deleteGroup = async () => {
         @restore-request="handleRestoreRequest"
         @compare="handleCompareResponses"
         @view-definition-docs="handleViewDefinitionDocs"
+        @generate-definition-mocks="handleGenerateDefinitionMocks"
+        @reimport-definition="handleReimportDefinition"
+        @reorder-folders="handleReorderFolders"
+        @reorder-requests="handleReorderRequests"
+      />
         @generate-definition-mocks="handleGenerateDefinitionMocks"
         @reimport-definition="handleReimportDefinition"
       />

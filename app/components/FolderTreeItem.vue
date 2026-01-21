@@ -27,6 +27,13 @@ interface FolderTreeItemProps {
     children: any[];
   };
   expandedFolderIds: Set<string>;
+  draggingFolderId: string | null;
+  draggingRequestId: string | null;
+  dropTarget: {
+    type: 'folder' | 'request' | 'between';
+    id: string;
+    position: 'before' | 'after' | 'inside';
+  } | null;
 }
 
 const props = defineProps<FolderTreeItemProps>();
@@ -36,6 +43,11 @@ const emit = defineEmits<{
   selectRequest: [request: HttpRequest];
   contextMenu: [event: MouseEvent, type: string, data: any];
   createRequest: [folderId?: string];
+  dragStart: [type: 'folder' | 'request', id: string];
+  dragEnd: [];
+  dragOver: [event: DragEvent, type: 'folder' | 'request', id: string, position: 'before' | 'after' | 'inside'];
+  dragLeave: [];
+  drop: [event: DragEvent, type: 'folder' | 'request', id: string, position: 'before' | 'after' | 'inside'];
 }>();
 
 const getMethodColor = (method: string) => {
@@ -52,16 +64,84 @@ const getMethodColor = (method: string) => {
 };
 
 const isExpanded = (folderId: string) => props.expandedFolderIds.has(folderId);
+
+const handleDragStart = (event: DragEvent, type: 'folder' | 'request', id: string) => {
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('application/json', JSON.stringify({ type, id }));
+  }
+  emit('dragStart', type, id);
+};
+
+const handleDragEnd = () => {
+  emit('dragEnd');
+};
+
+const handleDragOver = (event: DragEvent, type: 'folder' | 'request', id: string, position: 'before' | 'after' | 'inside') => {
+  event.preventDefault();
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'move';
+  }
+  emit('dragOver', event, type, id, position);
+};
+
+const handleDragLeave = () => {
+  emit('dragLeave');
+};
+
+const handleDrop = (event: DragEvent, type: 'folder' | 'request', id: string, position: 'before' | 'after' | 'inside') => {
+  event.preventDefault();
+  emit('drop', event, type, id, position);
+};
+
+const isValidDropTarget = (): boolean => {
+  if (props.draggingFolderId === props.folder.id) return false;
+  if (props.draggingFolderId && isDescendant(props.draggingFolderId, props.folder.id)) return false;
+  return true;
+};
+
+const isDescendant = (ancestorId: string, descendantId: string): boolean => {
+  const findInChildren = (folderId: string, children: any[]): boolean => {
+    for (const child of children) {
+      if (child.id === folderId) return true;
+      if (child.children && child.children.length > 0 && findInChildren(folderId, child.children)) return true;
+    }
+    return false;
+  };
+  return findInChildren(ancestorId, props.folder.children);
+};
 </script>
 
 <template>
-  <div class="mb-0.5">
+  <div class="mb-0.5 relative">
+    <!-- Drop indicator line - before folder -->
+    <div
+      v-if="dropTarget?.type === 'folder' && dropTarget?.id === folder.id && dropTarget?.position === 'before'"
+      class="absolute left-0 right-0 h-0.5 bg-accent-blue -top-0.5 z-10 pointer-events-none"
+    ></div>
+
     <!-- Folder Header -->
     <div
-      class="flex items-center gap-1.5 py-1.5 px-3 text-text-primary text-xs font-medium cursor-pointer transition-colors duration-fast hover:bg-bg-hover group"
+      :class="[
+        'flex items-center gap-1.5 py-1.5 px-3 text-text-primary text-xs font-medium cursor-pointer transition-colors duration-fast group relative',
+        dropTarget?.type === 'folder' && dropTarget?.id === folder.id && dropTarget?.position === 'inside' ? 'bg-accent-blue/10 border border-dashed border-accent-blue rounded' : '',
+        !isValidDropTarget() && (draggingFolderId || draggingRequestId) ? 'opacity-40' : ''
+      ]"
+      :draggable="true"
+      @dragstart="handleDragStart($event, 'folder', folder.id)"
+      @dragend="handleDragEnd"
       @click="emit('toggleFolder', folder.id)"
       @contextmenu.prevent="emit('contextMenu', $event, 'folder', folder)"
+      @dragover="handleDragOver($event, 'folder', folder.id, 'inside')"
+      @dragleave="handleDragLeave"
+      @drop="handleDrop($event, 'folder', folder.id, 'inside')"
     >
+      <!-- Drop indicator - left side when hovering for reorder -->
+      <div
+        v-if="dropTarget?.type === 'folder' && dropTarget?.id === folder.id && dropTarget?.position === 'before'"
+        class="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-accent-blue z-20"
+      ></div>
+
       <!-- Chevron -->
       <svg
         :class="['text-text-muted transition-transform duration-fast', { 'rotate-90': isExpanded(folder.id) }]"
@@ -98,39 +178,94 @@ const isExpanded = (folderId: string) => props.expandedFolderIds.has(folderId);
 
     <!-- Folder Content (Nested Folders & Requests) -->
     <Transition name="expand">
-      <div v-show="isExpanded(folder.id)" class="pl-3">
+      <div v-show="isExpanded(folder.id)" class="pl-3 relative">
+        <!-- Drop indicator - before first child -->
+        <div
+          v-if="dropTarget?.type === 'between' && dropTarget?.id === 'start-' + folder.id"
+          class="absolute left-0 right-0 h-0.5 bg-accent-blue -top-0.5 z-10 pointer-events-none"
+        ></div>
+
         <!-- Nested Folders -->
-        <template v-for="childFolder in folder.children" :key="childFolder.id">
+        <template v-for="(childFolder, index) in folder.children" :key="childFolder.id">
           <FolderTreeItem
             :folder="childFolder"
             :expanded-folder-ids="expandedFolderIds"
+            :dragging-folder-id="draggingFolderId"
+            :dragging-request-id="draggingRequestId"
+            :drop-target="dropTarget"
             @toggle-folder="emit('toggleFolder', $event)"
             @select-request="emit('selectRequest', $event)"
             @context-menu="emit('contextMenu', $event, 'folder', $event)"
             @create-request="emit('createRequest', $event)"
+            @drag-start="emit('dragStart', $event[0], $event[1])"
+            @drag-end="emit('dragEnd')"
+            @drag-over="emit('dragOver', $event[0], $event[1], $event[2], $event[3])"
+            @drag-leave="emit('dragLeave')"
+            @drop="emit('drop', $event[0], $event[1], $event[2], $event[3])"
           />
+          <!-- Drop indicator between folders -->
+          <div
+            v-if="dropTarget?.type === 'between' && dropTarget?.id === childFolder.id && dropTarget?.position === 'after'"
+            class="absolute left-0 right-0 h-0.5 bg-accent-blue -mt-0.5 z-10 pointer-events-none"
+            :style="{ top: '0px' }"
+          ></div>
         </template>
 
+        <!-- Drop indicator before requests section -->
+        <div
+          v-if="folder.children.length > 0 && dropTarget?.type === 'between' && dropTarget?.id === 'before-requests'"
+          class="absolute left-0 right-0 h-0.5 bg-accent-blue -mt-0.5 z-10 pointer-events-none"
+        ></div>
+
         <!-- Requests -->
-        <div v-if="folder.requests.length > 0" class="mt-1">
-          <div
-            v-for="request in folder.requests"
-            :key="request.id"
-            class="flex items-center gap-2 py-1.5 px-3 mx-2 my-px rounded cursor-pointer border-l-2 border-l-transparent transition-all duration-fast hover:bg-bg-hover"
-            @click="emit('selectRequest', request)"
-            @contextmenu.prevent="emit('contextMenu', $event, 'request', request)"
-          >
-            <span
-              class="text-[10px] font-semibold px-1.5 py-0.5 rounded"
-              :style="{ backgroundColor: getMethodColor(request.method) + '20', color: getMethodColor(request.method) }"
+        <div v-if="folder.requests.length > 0" class="mt-1 relative">
+          <template v-for="(request, index) in folder.requests" :key="request.id">
+            <!-- Drop indicator before request -->
+            <div
+              v-if="dropTarget?.type === 'request' && dropTarget?.id === request.id && dropTarget?.position === 'before'"
+              class="absolute left-0 right-0 h-0.5 bg-accent-blue -mt-0.5 z-10 pointer-events-none"
+              :style="{ top: (index * 36) + 'px' }"
+            ></div>
+
+            <div
+              :class="[
+                'flex items-center gap-2 py-1.5 px-3 mx-2 my-px rounded cursor-pointer border-l-2 border-l-transparent transition-all duration-fast hover:bg-bg-hover',
+                dropTarget?.type === 'request' && dropTarget?.id === request.id ? 'bg-accent-blue/10 border-l-accent-blue' : ''
+              ]"
+              :draggable="true"
+              @dragstart="handleDragStart($event, 'request', request.id)"
+              @dragend="handleDragEnd"
+              @click="emit('selectRequest', request)"
+              @contextmenu.prevent="emit('contextMenu', $event, 'request', request)"
+              @dragover="handleDragOver($event, 'request', request.id, index === 0 ? 'before' : 'after')"
+              @dragleave="handleDragLeave"
+              @drop="handleDrop($event, 'request', request.id, index === 0 ? 'before' : 'after')"
             >
-              {{ request.method }}
-            </span>
-            <span class="flex-1 text-[11px] font-mono truncate text-text-secondary">
-              {{ request.name }}
-            </span>
-          </div>
+              <span
+                class="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                :style="{ backgroundColor: getMethodColor(request.method) + '20', color: getMethodColor(request.method) }"
+              >
+                {{ request.method }}
+              </span>
+              <span class="flex-1 text-[11px] font-mono truncate text-text-secondary">
+                {{ request.name }}
+              </span>
+            </div>
+
+            <!-- Drop indicator after request -->
+            <div
+              v-if="dropTarget?.type === 'request' && dropTarget?.id === request.id && dropTarget?.position === 'after'"
+              class="absolute left-0 right-0 h-0.5 bg-accent-blue -mt-0.5 z-10 pointer-events-none"
+              :style="{ top: ((index + 1) * 36) + 'px' }"
+            ></div>
+          </template>
         </div>
+
+        <!-- Drop indicator at end of folder -->
+        <div
+          v-if="dropTarget?.type === 'between' && dropTarget?.id === 'end-' + folder.id"
+          class="absolute left-0 right-0 h-0.5 bg-accent-blue -mt-0.5 z-10 pointer-events-none"
+        ></div>
 
         <!-- Empty Folder -->
         <div v-if="folder.children.length === 0 && folder.requests.length === 0" class="py-2 px-5 text-xs text-text-muted italic">
