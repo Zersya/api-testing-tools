@@ -4,6 +4,7 @@ import SaveRequestDialog from '~/components/SaveRequestDialog.vue';
 import RequestTabs, { type OpenTab } from '~/components/RequestTabs.vue';
 import ImportModal from '~/components/ImportModal.vue';
 import MethodBadge from '~/components/MethodBadge.vue';
+import ApiDocumentationViewer from '~/components/ApiDocumentationViewer.vue';
 interface Collection {
   id: string;
   name: string;
@@ -1378,43 +1379,13 @@ const deleteGroup = async () => {
       @import-complete="refresh"
     />
 
-    <!-- API Definition Docs Modal -->
-    <Modal :show="showDefinitionDocs" title="API Documentation" size="lg" @close="showDefinitionDocs = false">
-      <div v-if="definitionDocs" class="space-y-4">
-        <div class="flex items-center gap-4 pb-3 border-b border-border-default">
-          <div>
-            <h3 class="text-lg font-semibold text-text-primary mb-1">{{ definitionDocs.name }}</h3>
-            <div class="flex items-center gap-2 text-sm text-text-secondary">
-              <span class="px-2 py-0.5 rounded bg-bg-tertiary text-xs font-mono">
-                {{ definitionDocs.specFormat === 'openapi3' ? 'OpenAPI' : 'Postman' }}
-              </span>
-              <span>{{ definitionDocs.parsedInfo?.endpoints?.length || 0 }} endpoints</span>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="definitionDocs.parsedInfo?.endpoints" class="max-h-[400px] overflow-y-auto">
-          <table class="w-full text-sm">
-            <thead class="bg-bg-tertiary">
-              <tr>
-                <th class="text-left py-2 px-3 text-xs font-medium text-text-muted uppercase tracking-wider">Method</th>
-                <th class="text-left py-2 px-3 text-xs font-medium text-text-muted uppercase tracking-wider">Path</th>
-                <th class="text-left py-2 px-3 text-xs font-medium text-text-muted uppercase tracking-wider">Summary</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-border-default">
-              <tr v-for="ep in definitionDocs.parsedInfo.endpoints" :key="`${ep.method}:${ep.path}`" class="hover:bg-bg-hover">
-                <td class="py-2 px-3">
-                  <MethodBadge :method="ep.method" size="sm" />
-                </td>
-                <td class="py-2 px-3 font-mono text-xs text-text-primary">{{ ep.path }}</td>
-                <td class="py-2 px-3 text-xs text-text-secondary">{{ ep.summary || '-' }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </Modal>
+    <!-- API Documentation Viewer Modal -->
+    <ApiDocumentationViewer
+      :show="showDefinitionDocs"
+      :spec="definitionDocs?.parsedInfo || null"
+      :definition-name="definitionDocs?.name || 'API Documentation'"
+      @close="showDefinitionDocs = false"
+    />
 
     <!-- Generate Mocks Modal -->
     <Modal :show="showGenerateModal" title="Generate Mocks" size="lg" @close="showGenerateModal = false">

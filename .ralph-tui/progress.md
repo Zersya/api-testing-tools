@@ -274,6 +274,46 @@ app/components/AppHeader.vue` (updated)\n- `app/pages/admin/index.vue` (updated)
 
 ---
 
+## [January 21, 2026] - US-035
+### What was implemented
+- ApiDocumentationViewer component with Redocly-style three-panel layout (nav, content, code samples)
+- Left navigation panel with endpoint list grouped by tags
+- Search bar to filter endpoints in real-time
+- Expand/collapse functionality for tag groups
+- Active endpoint highlighting with visual indicator (border highlight and icon)
+- Dark/light theme toggle button (toggles CSS class for future theme implementation)
+- Code examples panel with language tabs (cURL, JavaScript, Python, HTTP)
+- Copy code to clipboard functionality
+- Detailed endpoint information display including parameters, request bodies, and responses
+- Enhanced backend API endpoint to return full parsed OpenAPI spec with all details
+- Integration with existing admin page for viewing API documentation
+- Proper type imports from OpenAPI parser utilities
+
+### Files changed
+- app/components/ApiDocumentationViewer.vue (new - complete Redocly-style documentation viewer)
+- app/pages/admin/index.vue (updated - imported and integrated ApiDocumentationViewer, replaced old modal)
+- server/api/definitions/[id].get.ts (updated - returns full parsed spec instead of minimal info)
+
+### Learnings:
+- **Three-Panel Layout Pattern**: Use fixed-width sidebar (256px) with flex-1 main content area, and secondary panel (320px) on the right for code examples. This creates a balanced composition similar to Redocly's interface.
+- **Tag-Based Navigation Pattern**: Group endpoints by tags from OpenAPI spec, default to expanding all tags on mount, allow individual toggle. Maintain a Set of expanded tags for efficient lookups and updates.
+- **Filter-Dependent Grouping Pattern**: Filter endpoints first, then compute grouped structure. This ensures both filtering and grouping work together correctly without stale data issues.
+- **Computed Property Chaining**: Use computed properties that depend on other computed properties (e.g., filteredEndpointsByTag depends on searchTerm and endpointsByTag). Ensure reactive updates flow through the chain correctly.
+- **Code Example Generation Pattern**: Switch on language type to generate appropriate code snippets. For each language, extract key info (method, path, server URL) and format according to language conventions.
+- **API Data Enhancement**: Enhance list/detail endpoints to return richer data. For parsed specs, return the full ParsedOpenAPISpec object instead of minimal endpoint list. This enables richer UI without additional API calls.
+- **Modal with Custom Size**: For wide documentation views, use inline style to set specific width (1200px) instead of pre-defined size prop. This allows accommodating wider content while maintaining modal system consistency.
+- **Active State Visuals**: Use multiple visual indicators for active state (border highlight + specific border color + specific background color). This makes it immediately obvious which endpoint is selected.
+
+### Patterns discovered:
+- **Redocly-Style Documentation Pattern**: Three-panel layout with (1) tag-filtered nav sidebar with search, (2) main content with method badge + path + parameters/request/response details, (3) code examples panel with language tabs and copy button.
+- **Tag Navigation with Expand/Collapse Pattern**: Maintain expandedTags Set; toggleTag checks/ deletes from Set; isTagExpanded returns boolean; onMounted pre-populates all tags; render buttons with rotate-90 transition on arrow icon.
+- **Real-time Filter Pattern**: searchTerm ref + filteredEndpointsByTag computed that filters endpoints by path/summary/method; grouping happens on filtered results; if filter yields 0 endpoints for all tags, show "No endpoints match" message.
+- **Code Example Tab Pattern**: activeLanguage ref + language buttons array; getCodeExample computed switches on activeLanguage to generate language-specific code; copyCode uses navigator.clipboard.writeText.
+- **Spec Detail Enhancement Pattern**: Return full ParsedOpenAPISpec from backend instead of transformed minimal structure; frontend can directly use spec.info, spec.endpoints, spec.tags, etc.; maintains single source of truth.
+- **Theme Toggle Placeholder Pattern**: Add toggle button with icon switch (sun/moon); toggle isDarkMode ref; add class based on state; CSS can define light-theme overrides separately. This prepares for full theme implementation without breaking existing dark theme.
+
+---
+
 ## [January 21, 2026] - US-034
 ### What was implemented
 - ApiDefinitionsPanel component for displaying and managing imported API definitions
@@ -305,5 +345,15 @@ app/components/AppHeader.vue` (updated)\n- `app/pages/admin/index.vue` (updated)
 - **API Data Derivation Pattern**: When list endpoint needs computed data (e.g., endpoint count), parse stored content on the fly and include in response; catch parsing errors to avoid breaking the entire list.
 - **Definition Actions Pattern**: View Docs → modal with parsed data table; Generate Mocks → modal with endpoint selection; Re-import → reuse existing import modal; Delete → confirmation + DELETE API call.
 - **Specification Parsing Pattern**: Use existing parsers (parseOpenAPISpec, parseYAML) to extract derived data; handle JSON/YAML detection based on content structure; wrap in try-catch for robustness.
+
+---
+## ✓ Iteration 6 - US-034: API Definition list and management UI
+*2026-01-20T23:59:55.552Z (319s)*
+
+**Status:** Completed
+
+**Notes:**
+sessionID":"ses_4222b12acffedrFPbjjdyjqCuS","part":{"id":"prt_bddd9ae36001xb22MV9zlF8ZEN","sessionID":"ses_4222b12acffedrFPbjjdyjqCuS","messageID":"msg_bddd9aa1b001ysjAgZxzQvBhVL","type":"step-start","snapshot":"c4a105f6a90e3985d32fd76baa23ba53be79b05a"}}
+{"type":"text","timestamp":1768953595412,"sessionID":"ses_4222b12acffedrFPbjjdyjqCuS","part":{"id":"prt_bddd9b4c3001j1UvWjH43UzSMi","sessionID":"ses_4222b12acffedrFPbjjdyjqCuS","messageID":"msg_bddd9aa1b001ysjAgZxzQvBhVL","type":"text","text":"
 
 ---

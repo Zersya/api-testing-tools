@@ -38,13 +38,7 @@ export default defineEventHandler(async (event) => {
     let parsedInfo = null;
     const parseResult = parseOpenAPISpec(specObj);
     if (parseResult.success && parseResult.data) {
-        parsedInfo = {
-            endpoints: parseResult.data.endpoints.map(ep => ({
-                method: ep.method,
-                path: ep.path,
-                summary: ep.summary
-            }))
-        };
+        parsedInfo = parseResult.data;
     }
 
     return {
