@@ -6,6 +6,8 @@ import ImportModal from '~/components/ImportModal.vue';
 import MethodBadge from '~/components/MethodBadge.vue';
 import ApiDocumentationViewer from '~/components/ApiDocumentationViewer.vue';
 import ResponseComparison from '~/components/ResponseComparison.vue';
+import KeyboardShortcutsHelpModal from '~/components/KeyboardShortcutsHelpModal.vue';
+import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
 interface Collection {
   id: string;
   name: string;
@@ -1037,6 +1039,48 @@ const handleReorderRequests = async (folderId: string, updates: { id: string; fo
         refresh();
     }
 };
+
+const urlInputRef = ref<HTMLInputElement | null>(null);
+
+const focusUrlInput = () => {
+    nextTick(() => {
+        const urlInput = document.querySelector('.VariableInput input') as HTMLInputElement;
+        if (urlInput) {
+            urlInput.focus();
+            urlInput.select();
+        }
+    });
+};
+
+const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
+    onSendRequest: () => {
+        if (selectedRequest.value && activeTabKey.value) {
+            const sendButton = document.querySelector('.RequestBuilder button[class*="bg-accent-blue"]') as HTMLButtonElement;
+            if (sendButton && !sendButton.disabled) {
+                sendButton.click();
+            }
+        }
+    },
+    onSaveRequest: () => {
+        if (selectedRequest.value && activeTabKey.value) {
+            handleSaveRequest(selectedRequest.value);
+        }
+    },
+    onNewTab: () => {
+        handleNewTab();
+    },
+    onCloseTab: () => {
+        if (activeTabKey.value) {
+            handleCloseTab(activeTabKey.value);
+        }
+    },
+    onFocusUrl: () => {
+        focusUrlInput();
+    },
+    onToggleHelp: () => {
+        showHelp();
+    }
+});
 </script>
 
 <template>
@@ -1634,6 +1678,12 @@ const handleReorderRequests = async (folderId: string, updates: { id: string; fo
       :left-response="comparisonLeft"
       :right-response="comparisonRight"
       @close="closeComparison"
+    />
+
+    <!-- Keyboard Shortcuts Help Modal -->
+    <KeyboardShortcutsHelpModal
+      :show="isHelpVisible"
+      @close="hideHelp"
     />
   </div>
 </template>
