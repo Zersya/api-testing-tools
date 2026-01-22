@@ -66,8 +66,6 @@ sonarqube-check:
       - .sonar/cache
       - node_modules/
   script:
-    - npm ci
-    - npx nuxt prepare
     - sonar-scanner
   #allow_failure: true
   except:
