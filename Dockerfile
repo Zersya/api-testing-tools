@@ -1,44 +1,41 @@
-# Build stage
-FROM node:23-alpine AS builder
+# Stage 1: Build
+FROM oven/bun:1 AS builder
 
 WORKDIR /app
 
-# Install dependencies for Bun installer
-RUN apk add --no-cache bash curl
-
-# Install Bun
-RUN curl -fsSL https://bun.sh/install | bash && \
-    cp /root/.bun/bin/bun /usr/local/bin/bun && \
-    rm -rf /root/.bun/install
-
+# Copy dependency definitions
 COPY package.json bun.lockb ./
+
+# Install dependencies
 RUN bun install --frozen-lockfile
 
+# Copy source code
 COPY . .
+
+# Force the Nitro preset to 'bun' to guarantee .mjs output
+ENV NITRO_PRESET=bun
+
+# Build the app
 RUN bun run build
 
-# Production stage
-FROM node:23-alpine
+# Stage 2: Production
+FROM oven/bun:1
 
 WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001
+# Copy the built output from builder
+# We switch to the 'bun' user (standard in this image) to avoid permission errors
+COPY --from=builder --chown=bun:bun /app/.output /app/.output
 
-# Copy Bun from builder
-COPY --from=builder /usr/local/bin/bun /usr/local/bin/bun
-
-COPY --from=builder --chown=nodejs:nodejs /app/.output /app/.output
-
-USER nodejs
+# Switch to non-root user
+USER bun
 
 EXPOSE 3000
 
 ENV NUXT_HOST=0.0.0.0
 ENV NUXT_PORT=3000
 
-# Ensure the path corresponds to the actual build output
-CMD ["bun", ".output/server/index.mjs"]
+# Use the absolute path to be 100% safe
+CMD ["bun", "run", "/app/.output/server/index.mjs"]
