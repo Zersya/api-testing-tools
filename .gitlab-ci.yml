@@ -17,6 +17,7 @@ variables:
 build-check:
   stage: build
   script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
     - cp .env.example .env
     - docker build -t $CONTAINER_REGISTRY:${CI_COMMIT_SHA} -t $CONTAINER_REGISTRY:latest -f Dockerfile .
     - docker push $CONTAINER_REGISTRY:${CI_COMMIT_SHA}
@@ -32,8 +33,13 @@ build-check:
 build:
   stage: build
   script:
-    - echo "$ENV_STAGING" > "$(pwd)/.env"
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - echo "$ENV_RELEASE" > "$(pwd)/.env"
     - docker build --push -t $CONTAINER_REGISTRY:${CI_COMMIT_TAG} -t $CONTAINER_REGISTRY:latest -f Dockerfile .
+  after_script:
+    - docker image rm $CONTAINER_REGISTRY:${CI_COMMIT_TAG}
+    - docker image rm $CONTAINER_REGISTRY:latest
+    - docker builder prune -af || true
   except:
     - branches
   artifacts:
@@ -90,27 +96,27 @@ report-sonar-to-merge-id:
   needs:
     - job: sonarqube-check
 
-publish:
-  stage: publish
-  dependencies:
-    - build
-  script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-    - docker pull $CONTAINER_REGISTRY:${CI_COMMIT_TAG}
-    - docker pull $CONTAINER_REGISTRY:latest
-    - docker push $CONTAINER_REGISTRY:${CI_COMMIT_TAG}
-    - docker push $CONTAINER_REGISTRY:latest
-  after_script:
-    - docker image rm $CONTAINER_REGISTRY:${CI_COMMIT_TAG}
-    - docker image rm $CONTAINER_REGISTRY:latest
-    - docker builder prune -af || true
-  except:
-    - branches
-  artifacts:
-    paths:
-      - .env
-    expire_in: 1 days
-    when: always
+# publish:
+#   stage: publish
+#   dependencies:
+#     - build
+#   script:
+#     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+#     - docker pull $CONTAINER_REGISTRY:${CI_COMMIT_TAG}
+#     - docker pull $CONTAINER_REGISTRY:latest
+#     - docker push $CONTAINER_REGISTRY:${CI_COMMIT_TAG}
+#     - docker push $CONTAINER_REGISTRY:latest
+#   after_script:
+#     - docker image rm $CONTAINER_REGISTRY:${CI_COMMIT_TAG}
+#     - docker image rm $CONTAINER_REGISTRY:latest
+#     - docker builder prune -af || true
+#   except:
+#     - branches
+#   artifacts:
+#     paths:
+#       - .env
+#     expire_in: 1 days
+#     when: always
 
 # staging:
 #   stage: release
@@ -206,7 +212,7 @@ production:
     - echo "$ENV_RELEASE" > "$(pwd)/.env"
     - echo "$NOTIFIER" > "$(pwd)/notifier.sh"
     - echo "$DOCKER_COMPOSE_NGINX" | base64 --decode > "$(pwd)/docker-compose.yml"
-    - docker build -t $CONTAINER_REGISTRY:${CI_COMMIT_TAG} -t $CONTAINER_REGISTRY:latest -f Dockerfile .
+    # - docker build -t $CONTAINER_REGISTRY:${CI_COMMIT_TAG} -t $CONTAINER_REGISTRY:latest -f Dockerfile .
     - docker compose up -d --force-recreate 
     - docker image prune -f
     - bash notifier.sh
