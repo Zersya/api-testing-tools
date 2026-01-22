@@ -1,46 +1,49 @@
-# Stage 1: Build (Use Node.js, but install Bun for lockfile support)
+# -----------------------------------------
+# Stage 1: Builder
+# -----------------------------------------
 FROM node:22-slim AS builder
 
 WORKDIR /app
 
-# Install Bun (only used for package installation here)
+# 1. Install Bun (just to use as a package manager)
 RUN npm install -g bun
 
-# Install build tools for better-sqlite3 compilation
+# 2. Install build tools required for 'better-sqlite3'
 RUN apt-get update && \
     apt-get install -y python3 make g++ && \
     rm -rf /var/lib/apt/lists/*
 
+# 3. Install dependencies
 COPY package.json bun.lockb ./
-
-# Install dependencies using Bun, but they compile for Node.js
 RUN bun install --frozen-lockfile
 
+# 4. Copy source and Build
 COPY . .
-
-# Tell Nuxt to build for Node.js specifically
+# Force Nuxt to build specifically for Node (creates .output/server/index.mjs)
 ENV NITRO_PRESET=node-server
-
 RUN bun run build
 
-# Stage 2: Production (Run on Node.js)
+# -----------------------------------------
+# Stage 2: Runtime
+# -----------------------------------------
 FROM node:22-slim
 
+# We use /app consistently to avoid path confusion
 WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Copy the built output
-COPY --from=builder /app/.output /app/.output
+# 1. Copy the build output from the builder stage
+#    We allow 'node' user to own it immediately
+COPY --from=builder --chown=node:node /app/.output /app/.output
 
-# Create user
-RUN groupadd -r nodejs && useradd -r -g nodejs nodejs
-USER nodejs
+# 2. Switch to the non-root 'node' user for security
+USER node
 
 EXPOSE 3000
 
 ENV NUXT_HOST=0.0.0.0
 ENV NUXT_PORT=3000
 
-# RUN WITH NODE (Not Bun)
-CMD ["node", ".output/server/index.mjs"]
+# 3. Use the ABSOLUTE path to avoid "Module not found" errors
+CMD ["node", "/app/.output/server/index.mjs"]
