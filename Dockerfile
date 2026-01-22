@@ -1,38 +1,46 @@
-# Stage 1: Build
-FROM oven/bun:1 AS builder
+# Stage 1: Build (Use Node.js, but install Bun for lockfile support)
+FROM node:22-slim AS builder
 
 WORKDIR /app
 
-# Install Python and build tools required for better-sqlite3 compilation
+# Install Bun (only used for package installation here)
+RUN npm install -g bun
+
+# Install build tools for better-sqlite3 compilation
 RUN apt-get update && \
-    apt-get install -y python-is-python3 build-essential && \
+    apt-get install -y python3 make g++ && \
     rm -rf /var/lib/apt/lists/*
 
 COPY package.json bun.lockb ./
 
-# Now this will succeed because Python and make are available
+# Install dependencies using Bun, but they compile for Node.js
 RUN bun install --frozen-lockfile
 
 COPY . .
 
-ENV NITRO_PRESET=bun
+# Tell Nuxt to build for Node.js specifically
+ENV NITRO_PRESET=node-server
 
 RUN bun run build
 
-# Stage 2: Production
-FROM oven/bun:1
+# Stage 2: Production (Run on Node.js)
+FROM node:22-slim
 
 WORKDIR /app
 
 ENV NODE_ENV=production
 
-COPY --from=builder --chown=bun:bun /app/.output /app/.output
+# Copy the built output
+COPY --from=builder /app/.output /app/.output
 
-USER bun
+# Create user
+RUN groupadd -r nodejs && useradd -r -g nodejs nodejs
+USER nodejs
 
 EXPOSE 3000
 
 ENV NUXT_HOST=0.0.0.0
 ENV NUXT_PORT=3000
 
-CMD ["bun", "run", "/app/.output/server/index.mjs"]
+# RUN WITH NODE (Not Bun)
+CMD ["node", ".output/server/index.mjs"]
