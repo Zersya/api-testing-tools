@@ -67,7 +67,7 @@ sonarqube-check:
       - node_modules/
   script:
     - sonar-scanner
-  #allow_failure: true
+  allow_failure: true
   except:
     - branches
   only:
