@@ -176,6 +176,18 @@ if (existsSync(initDbScript)) {
   cpSync(initDbScript, join(targetDir, 'init-db.js'))
 }
 
+// Copy the SQLite database with existing schema and data
+console.log('📋 Copying SQLite database...')
+const sourceDb = join(projectRoot, 'sqlite.db')
+const targetDb = join(targetDir, 'sqlite.db')
+if (existsSync(sourceDb)) {
+  cpSync(sourceDb, targetDb)
+  console.log('✅ Database copied successfully')
+} else {
+  console.warn('⚠️  sqlite.db not found in project root. The app will start with an empty database.')
+  console.warn('   Run "bun run db:push" first to create the database.')
+}
+
 // Update nitro.json to ensure SSR is disabled for SPA mode
 console.log('📋 Updating Nitro configuration for SPA mode...')
 const nitroJsonSrc = join(sourceDir, 'nitro.json')

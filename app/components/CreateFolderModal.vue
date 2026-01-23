@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useApiFetch } from '~/composables/useApiFetch';
 interface Props {
   show: boolean;
   collectionId: string;
@@ -50,7 +51,7 @@ const createFolder = async () => {
   error.value = '';
 
   try {
-    await $fetch(`/api/admin/collections/${props.collectionId}/folders`, {
+    await useApiFetch(`/api/admin/collections/${props.collectionId}/folders`, {
       method: 'POST',
       body: {
         name: form.value.name.trim(),

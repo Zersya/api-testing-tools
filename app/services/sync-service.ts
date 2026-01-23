@@ -14,6 +14,7 @@ import {
   type LocalWorkspace,
   type SyncQueueItem,
 } from './local-store';
+import { tauriFetch } from './tauri-api';
 
 export interface SyncResult {
   success: boolean;
@@ -87,29 +88,28 @@ export async function syncWithServer(): Promise<SyncResult> {
 
 async function pushLocalChanges(token: string, result: SyncResult): Promise<void> {
   const queue = await getSyncQueue();
-  const serverUrl = await getServerUrl();
 
   for (const item of queue) {
     try {
       const endpoint = getEndpointForEntity(item.entityType, item.action, item.entityId);
-      const method = getMethodForAction(item.action);
+      const method = getMethodForAction(item.action) as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
 
-      const response = await fetch(`${serverUrl}${endpoint}`, {
+      // Use Tauri proxy in desktop mode
+      const response = await tauriFetch<any>(endpoint, {
         method,
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: item.action !== 'delete' ? JSON.stringify(item.payload) : undefined,
+        body: item.action !== 'delete' ? item.payload : undefined,
       });
 
-      if (response.ok) {
+      if (response.success) {
         await removeFromSyncQueue(item.id);
         result.synced++;
       } else {
-        const error = await response.text();
         result.failed++;
-        result.errors.push(`Failed to sync ${item.entityType} ${item.entityId}: ${error}`);
+        result.errors.push(`Failed to sync ${item.entityType} ${item.entityId}: ${response.error}`);
 
         // Increment retry count
         await updateSyncQueueItem(item.id, { retryCount: item.retryCount + 1 });
@@ -122,23 +122,23 @@ async function pushLocalChanges(token: string, result: SyncResult): Promise<void
 }
 
 async function pullServerChanges(token: string, result: SyncResult): Promise<void> {
-  const serverUrl = await getServerUrl();
   const localData = await getLocalData();
   const lastSync = localData.lastSyncTimestamp;
 
   try {
-    // Fetch workspaces tree from server
-    const response = await fetch(`${serverUrl}/api/admin/tree`, {
+    // Use Tauri proxy in desktop mode
+    const response = await tauriFetch<any[]>('/api/admin/tree', {
+      method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
       },
     });
 
-    if (!response.ok) {
-      throw new Error(`Server returned ${response.status}`);
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to fetch from server');
     }
 
-    const serverWorkspaces = await response.json();
+    const serverWorkspaces = response.data || [];
 
     // Merge server data with local (server wins for non-dirty items)
     await mergeServerData(serverWorkspaces);
@@ -294,7 +294,7 @@ function getMethodForAction(action: string): string {
 async function updateSyncQueueItem(id: string, updates: Partial<SyncQueueItem>): Promise<void> {
   await updateLocalData(data => ({
     ...data,
-    syncQueue: data.syncQueue.map(item => 
+    syncQueue: data.syncQueue.map(item =>
       item.id === id ? { ...item, ...updates } : item
     ),
   }));

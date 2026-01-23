@@ -28,7 +28,7 @@ const isConnecting = ref(false);
 const isTauriReady = ref(false);
 
 const { login: authLogin, isLoading, error: authError } = useAuth();
-const { triggerSync, startSync } = useSync();
+const { triggerSync, startAutoSync } = useSync();
 
 const isDesktopMode = computed(() => {
   if (typeof window === 'undefined') return false;
@@ -104,7 +104,7 @@ const login = async () => {
       if (isDesktopMode.value) {
         isSyncing.value = true;
         try {
-          startSync(30000);
+          startAutoSync(0.5); // 0.5 minutes = 30 seconds
           await triggerSync();
         } finally {
           isSyncing.value = false;

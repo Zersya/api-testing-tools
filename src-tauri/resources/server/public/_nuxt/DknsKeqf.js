@@ -1,0 +1,1 @@
+import{_ as s,c as r,o as t,a8 as c}from"./hJ4mjWut.js";const o={},n={class:"min-h-screen bg-bg-primary"};function a(e,_){return t(),r("div",n,[c(e.$slots,"default")])}const d=s(o,[["render",a]]);export{d as default};

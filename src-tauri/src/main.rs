@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager, State};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tokio::process::Command;
+// Using std::process::Command directly for process spawning
 
 struct ServerState {
     is_running: bool,
@@ -137,30 +137,126 @@ async fn start_server(app: AppHandle, state: State<'_, Arc<Mutex<ServerState>>>)
     let server_resources = resource_dir.join("server");
     let server_entry = server_resources.join("index.mjs");
     
+    println!("[TAURI] Resource dir: {:?}", resource_dir);
+    println!("[TAURI] Server resources: {:?}", server_resources);
+    println!("[TAURI] Server entry: {:?}", server_entry);
+    
     let app_data_dir = get_app_data_dir(app.clone());
     let target_db = app_data_dir.join("sqlite.db");
+    
+    println!("[TAURI] App data dir: {:?}", app_data_dir);
+    println!("[TAURI] Target DB: {:?}", target_db);
+    
+    // Create app data directory if it doesn't exist
+    if let Err(e) = fs::create_dir_all(&app_data_dir) {
+        println!("[TAURI] Warning: Failed to create app data dir: {}", e);
+    }
     
     if !target_db.exists() {
         let source_db = server_resources.join("sqlite.db");
         if source_db.exists() {
-            let _ = fs::copy(&source_db, &target_db);
+            println!("[TAURI] Copying database from {:?} to {:?}", source_db, target_db);
+            if let Err(e) = fs::copy(&source_db, &target_db) {
+                println!("[TAURI] Warning: Failed to copy database: {}", e);
+            }
+        } else {
+            println!("[TAURI] Warning: Source database not found at {:?}", source_db);
         }
     }
     
     let node_path = get_node_executable();
+    println!("[TAURI] Using Node.js at: {}", node_path);
+    
+    // Check if Node.js is available
+    let node_check = std::process::Command::new(&node_path)
+        .arg("--version")
+        .output();
+    
+    match node_check {
+        Ok(output) => {
+            let version = String::from_utf8_lossy(&output.stdout);
+            println!("[TAURI] Node.js version: {}", version.trim());
+        }
+        Err(e) => {
+            return Err(format!("Node.js not found or not executable: {}. Please install Node.js.", e));
+        }
+    }
+    
+    // Log file existence checks for debugging
+    println!("[TAURI] Checking server_entry.exists(): {}", server_entry.exists());
+    println!("[TAURI] Checking server_resources.exists(): {}", server_resources.exists());
+    
+    // List contents of server_resources for debugging
+    if server_resources.exists() {
+        println!("[TAURI] Contents of server_resources:");
+        if let Ok(entries) = fs::read_dir(&server_resources) {
+            for entry in entries.flatten() {
+                println!("[TAURI]   - {:?}", entry.file_name());
+            }
+        }
+    }
     
     if !server_entry.exists() {
-        return Err(format!("Server entry point not found: {:?}", server_entry));
+        return Err(format!("Server entry point not found: {:?}. The server files may not have been bundled correctly.", server_entry));
+    }
+    
+    // Check if server directory exists and has required files
+    if !server_resources.exists() {
+        return Err(format!("Server resources directory not found: {:?}", server_resources));
     }
 
-    Command::new(&node_path)
+    // Start the server with stdout/stderr capture for debugging
+    println!("[TAURI] Starting Node.js server...");
+    
+    let child = std::process::Command::new(&node_path)
         .arg(server_entry.to_string_lossy().to_string())
         .env("TAURI_ENV_DEV", "false")
         .env("TAURI", "true")
+        .env("NODE_ENV", "production")
+        .env("PORT", "3001")
+        .env("HOST", "127.0.0.1")
+        .env("NITRO_PORT", "3001")
+        .env("NITRO_HOST", "127.0.0.1")
         .env("SQLITE_DB_PATH", target_db.to_string_lossy().to_string())
         .current_dir(&server_resources)
-        .spawn()
-        .map_err(|e| format!("Failed to start server: {}", e))?;
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn();
+    
+    match child {
+        Ok(mut process) => {
+            // Spawn a thread to capture and log stdout
+            if let Some(stdout) = process.stdout.take() {
+                std::thread::spawn(move || {
+                    use std::io::{BufRead, BufReader};
+                    let reader = BufReader::new(stdout);
+                    for line in reader.lines() {
+                        if let Ok(line) = line {
+                            println!("[NODE-OUT] {}", line);
+                        }
+                    }
+                });
+            }
+            
+            // Spawn a thread to capture and log stderr
+            if let Some(stderr) = process.stderr.take() {
+                std::thread::spawn(move || {
+                    use std::io::{BufRead, BufReader};
+                    let reader = BufReader::new(stderr);
+                    for line in reader.lines() {
+                        if let Ok(line) = line {
+                            eprintln!("[NODE-ERR] {}", line);
+                        }
+                    }
+                });
+            }
+            
+            println!("[TAURI] Node.js process spawned with PID: {:?}", process.id());
+        }
+        Err(e) => {
+            return Err(format!("Failed to start server: {}", e));
+        }
+    }
 
     // 2. Set running status (scoped lock)
     {
@@ -168,8 +264,25 @@ async fn start_server(app: AppHandle, state: State<'_, Arc<Mutex<ServerState>>>)
         state_guard.is_running = true;
     }
 
-    // 3. Wait (non-blocking, no lock held)
-    tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+    // 3. Wait for server to be ready with health check
+    println!("[TAURI] Waiting for server to be ready...");
+    let start_time = std::time::Instant::now();
+    let timeout = std::time::Duration::from_secs(15);
+    let check_interval = std::time::Duration::from_millis(500);
+    let addr = "127.0.0.1:3001".parse::<std::net::SocketAddr>().unwrap();
+    
+    loop {
+        if std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(200)).is_ok() {
+            println!("[TAURI] Server is ready and accepting connections!");
+            break;
+        }
+        
+        if start_time.elapsed() > timeout {
+            return Err("Server failed to start within 15 seconds. Check if Node.js is installed and working correctly.".to_string());
+        }
+        
+        tokio::time::sleep(check_interval).await;
+    }
 
     Ok(ServerStatus {
         running: true,
@@ -254,9 +367,18 @@ async fn tauri_api_fetch(
 }
 
 async fn auto_start_server(app: AppHandle) {
+    println!("[TAURI] auto_start_server called");
     let app_clone = app.clone();
     let state = app_clone.state::<Arc<Mutex<ServerState>>>().clone();
-    let _ = start_server(app.clone(), state).await;
+    
+    match start_server(app.clone(), state).await {
+        Ok(status) => {
+            println!("[TAURI] Server started successfully: {:?}", status.url);
+        }
+        Err(e) => {
+            eprintln!("[TAURI] ERROR: Failed to start server: {}", e);
+        }
+    }
 }
 
 fn main() {

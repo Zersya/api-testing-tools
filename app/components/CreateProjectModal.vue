@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useApiFetch } from '~/composables/useApiFetch';
+
 interface Props {
   show: boolean;
   workspaceId: string;
@@ -55,7 +57,7 @@ const createProject = async () => {
   error.value = '';
 
   try {
-    await $fetch(`/api/admin/workspaces/${props.workspaceId}/projects`, {
+    await useApiFetch(`/api/admin/workspaces/${props.workspaceId}/projects`, {
       method: 'POST',
       body: {
         name: form.value.name.trim(),

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useApiFetch } from '~/composables/useApiFetch';
 interface Props {
   show: boolean;
   folderId: string;
@@ -94,7 +95,7 @@ const createRequest = async () => {
       auth = { type: form.value.authType };
     }
 
-    const result = await $fetch(`/api/admin/folders/${props.folderId}/requests`, {
+    const result = await useApiFetch<any>(`/api/admin/folders/${props.folderId}/requests`, {
       method: 'POST',
       body: {
         name: form.value.name.trim(),

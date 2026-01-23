@@ -23,7 +23,8 @@ export async function tauriFetch<T>(endpoint: string, options: ApiOptions = {}):
 
   try {
     // The Rust command expects a single argument 'options' containing the FetchOptions struct
-    const result = await invoke<ApiResponse<T>>('tauri_api_fetch', {
+    // IMPORTANT: Rust returns the raw JSON response directly on success, or throws error string on failure
+    const result = await invoke<T>('tauri_api_fetch', {
       options: {
         endpoint,
         method,
@@ -31,12 +32,17 @@ export async function tauriFetch<T>(endpoint: string, options: ApiOptions = {}):
         headers,
       }
     });
-    return result;
+
+    // Wrap the raw response in ApiResponse format
+    return {
+      success: true,
+      data: result,
+    };
   } catch (error) {
     console.error('Tauri API error:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: error instanceof Error ? error.message : String(error),
     };
   }
 }

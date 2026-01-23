@@ -30,8 +30,8 @@
     "active": true,
     "targets": "all",
     "icon": [],
-    "resources": [
-      "resources/server/**/*"
-    ]
+    "resources": {
+      "resources/server/": "server/"
+    }
   }
 }

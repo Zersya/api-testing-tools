@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useApiFetch } from '~/composables/useApiFetch';
+
 interface Props {
   show: boolean;
 }
@@ -49,7 +51,7 @@ const createWorkspace = async () => {
   error.value = '';
 
   try {
-    const result = await $fetch('/api/admin/workspaces', {
+    const result = await useApiFetch<any>('/api/admin/workspaces', {
       method: 'POST',
       body: {
         name: form.value.name.trim()
