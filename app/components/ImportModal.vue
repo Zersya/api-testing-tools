@@ -182,7 +182,7 @@ const handleFetchUrl = async () => {
 
   try {
     new URL(urlInput.value);
-  } catch {
+  } catch (e) {
     error.value = 'Invalid URL format';
     return;
   }
@@ -202,7 +202,7 @@ const handleFetchEnvUrl = async () => {
 
   try {
     new URL(envUrlInput.value);
-  } catch {
+  } catch (e) {
     error.value = 'Invalid URL format';
     return;
   }

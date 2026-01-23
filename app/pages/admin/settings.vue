@@ -150,15 +150,16 @@ import { ref, computed, onMounted } from 'vue';
 import AppHeader from '~/components/AppHeader.vue';
 import AppSidebar from '~/components/AppSidebar.vue';
 import SyncResultsModal from '~/components/sync/SyncResultsModal.vue';
-import { useAuth } from '~/composables/useAuth';
+import { useAuth } from '~/composables/useOfflineFirst';
 import { useSync } from '~/composables/useSync';
 import type { DesktopSyncResult } from '~/composables/useSync';
+import { getServerUrl, setServerUrl, getUser } from '~/services/local-store';
 
 definePageMeta({
   middleware: 'auth'
 });
 
-const { currentUser, logout } = useAuth();
+const { user: currentUser, logout } = useAuth();
 const { isSyncing, pendingChanges, triggerSync, saveConfig, fetchStatus } = useSync();
 
 const serverUrl = ref('http://localhost:3000');
@@ -175,6 +176,7 @@ const lastSyncText = computed(() => {
 async function handleSave() {
   saving.value = true;
   try {
+    await setServerUrl(serverUrl.value);
     await saveConfig({
       serverUrl: serverUrl.value,
       autoSync: autoSync.value,
@@ -206,11 +208,9 @@ async function handleLogout() {
 
 onMounted(async () => {
   try {
-    const { getSettings } = await import('~/services/settings');
-    const settings = await getSettings();
-    serverUrl.value = settings.serverUrl;
-    autoSync.value = settings.autoSync;
-    syncInterval.value = settings.syncInterval;
+    serverUrl.value = await getServerUrl();
+    autoSync.value = true;
+    syncInterval.value = 5;
     await fetchStatus();
   } catch (error) {
     console.error('Failed to load settings:', error);

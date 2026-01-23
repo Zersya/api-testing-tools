@@ -76,7 +76,7 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
     let targetUrl: URL;
     try {
       targetUrl = new URL(body.url);
-    } catch {
+    } catch (e) {
       throw createError({
         statusCode: 400,
         statusMessage: 'Invalid URL format'
@@ -172,7 +172,7 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
         // Try to parse as text first, fallback to raw
         try {
           responseBody = await response.text();
-        } catch {
+        } catch (e) {
           responseBody = null;
         }
       }

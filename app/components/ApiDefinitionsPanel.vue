@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import Modal from './Modal.vue';
+import { safeArray } from '~/utils/safeArray';
 
 interface ApiDefinition {
   id: string;
@@ -53,7 +54,7 @@ const fetchDefinitions = async () => {
   
   try {
     const response = await $fetch<ApiDefinition[]>('/api/definitions');
-    definitions.value = response;
+    definitions.value = safeArray(response);
   } catch (e: any) {
     error.value = e.message || 'Failed to fetch definitions';
     console.error('Error fetching definitions:', e);
@@ -96,7 +97,7 @@ const handleDelete = async () => {
   
   try {
     await $fetch(`/api/definitions/${definitionToDelete.value.id}`, { method: 'DELETE' });
-    definitions.value = definitions.value.filter(d => d.id !== definitionToDelete.value!.id);
+    definitions.value = safeArray(definitions.value).filter(d => d.id !== definitionToDelete.value!.id);
     emit('deleteDefinition', definitionToDelete.value);
   } catch (e: any) {
     error.value = e.message || 'Failed to delete definition';
@@ -147,7 +148,7 @@ const togglePublic = async (def: ApiDefinition) => {
       body: { isPublic: newIsPublic }
     });
     
-    const idx = definitions.value.findIndex(d => d.id === def.id);
+    const idx = safeArray(definitions.value).findIndex(d => d.id === def.id);
     if (idx !== -1) {
       definitions.value[idx] = { ...definitions.value[idx], ...updated };
     }
@@ -184,7 +185,7 @@ const saveSlug = async (def: ApiDefinition) => {
       body: { publicSlug: slug }
     });
     
-    const idx = definitions.value.findIndex(d => d.id === def.id);
+    const idx = safeArray(definitions.value).findIndex(d => d.id === def.id);
     if (idx !== -1) {
       definitions.value[idx] = { ...definitions.value[idx], ...updated };
     }
@@ -234,8 +235,8 @@ onMounted(() => {
           <line x1="16" y1="17" x2="8" y2="17"></line>
         </svg>
         <span>API Definitions</span>
-        <span v-if="definitions.length > 0" class="text-[10px] font-medium text-text-muted bg-bg-tertiary py-0.5 px-2 rounded-full">
-          {{ definitions.length }}
+        <span v-if="definitions?.length > 0" class="text-[10px] font-medium text-text-muted bg-bg-tertiary py-0.5 px-2 rounded-full">
+          {{ definitions?.length }}
         </span>
       </div>
     </div>
@@ -255,7 +256,7 @@ onMounted(() => {
         <button @click="fetchDefinitions" class="text-xs text-accent-blue hover:text-accent-blue/80">Retry</button>
       </div>
       
-      <div v-else-if="definitions.length === 0" class="flex flex-col items-center gap-2 py-4 px-5 text-center">
+      <div v-else-if="definitions?.length === 0" class="flex flex-col items-center gap-2 py-4 px-5 text-center">
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="text-text-muted opacity-30">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
           <polyline points="14 2 14 8 20 8"></polyline>

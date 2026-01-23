@@ -1,0 +1,16 @@
+{
+  "identifier": "default",
+  "description": "Default capabilities for the main window",
+  "windows": ["main"],
+  "permissions": [
+    {
+      "identifier": "core:default"
+    },
+    {
+      "identifier": "store:default"
+    },
+    {
+      "identifier": "shell:default"
+    }
+  ]
+}

@@ -71,7 +71,7 @@ const createRequest = async () => {
     if (form.value.headers.trim()) {
       try {
         headers = JSON.parse(form.value.headers);
-      } catch {
+      } catch (e) {
         error.value = 'Headers must be valid JSON';
         isSubmitting.value = false;
         return;
@@ -82,7 +82,7 @@ const createRequest = async () => {
     if (['POST', 'PUT', 'PATCH'].includes(form.value.method) && form.value.body.trim()) {
       try {
         body = JSON.parse(form.value.body);
-      } catch {
+      } catch (e) {
         error.value = 'Body must be valid JSON';
         isSubmitting.value = false;
         return;

@@ -1,13 +1,11 @@
 {
   "$schema": "https://schema.tauri.app/config/2.0.0",
   "productName": "mock-service",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "identifier": "com.yourcompany.mockservice",
   "build": {
-    "beforeDevCommand": "bun run dev",
-    "beforeBuildCommand": "bun run generate",
     "devUrl": "http://localhost:3000",
-    "frontendDist": "../dist"
+    "frontendDist": "resources/server/public"
   },
   "app": {
     "windows": [
@@ -24,17 +22,16 @@
       }
     ],
     "security": {
-      "csp": null
-    }
+      "csp": "default-src 'self' tauri://localhost 'unsafe-inline'; connect-src 'self' ipc: tauri: http://127.0.0.1:3001 http://localhost:3001 tauri://localhost;"
+    },
+    "withGlobalTauri": true
   },
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.ico"
+    "icon": [],
+    "resources": [
+      "resources/server/**/*"
     ]
   }
 }

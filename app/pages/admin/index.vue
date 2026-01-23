@@ -9,6 +9,10 @@ import ResponseComparison from '~/components/ResponseComparison.vue';
 import KeyboardShortcutsHelpModal from '~/components/KeyboardShortcutsHelpModal.vue';
 import RenameWorkspaceModal from '~/components/RenameWorkspaceModal.vue';
 import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
+import { safeArray } from '~/utils/safeArray';
+import { useWorkspaces } from '~/composables/useOfflineFirst';
+import { isDesktop } from '~/services/local-store';
+
 interface Collection {
   id: string;
   name: string;
@@ -45,17 +49,83 @@ interface HttpRequest {
   updatedAt: Date;
 }
 
-const { data: mocks, refresh: refreshMocks, error } = await useFetch<Mock[]>('/api/admin/mocks');
-const { data: collections, refresh: refreshCollections } = await useFetch<Collection[]>('/api/admin/collections');
-const { data: workspaces, refresh: refreshWorkspaces } = await useFetch<any[]>('/api/admin/tree');
-const { data: definitions, refresh: refreshDefinitions } = await useFetch<any[]>('/api/definitions');
+// Check if running in desktop mode
+const isDesktopMode = ref(false);
+
+// Use offline-first composable for workspaces
+const {
+  workspaces: offlineWorkspaces,
+  safeWorkspaces: offlineSafeWorkspaces,
+  fetchWorkspaces,
+  createWorkspace: createOfflineWorkspace,
+  error,
+  isDesktopMode: desktopModeFromComposable
+} = useWorkspaces();
+
+// For web mode, use useFetch as fallback
+const { data: webMocks, refresh: refreshWebMocks } = await useFetch<Mock[]>('/api/admin/mocks', {
+  default: () => [],
+  watch: false,
+  immediate: !isDesktop()
+});
+const { data: webCollections, refresh: refreshWebCollections } = await useFetch<Collection[]>('/api/admin/collections', {
+  default: () => [],
+  watch: false,
+  immediate: !isDesktop()
+});
+const { data: webWorkspaces, refresh: refreshWebWorkspaces } = await useFetch<any[]>('/api/admin/tree', {
+  default: () => [],
+  watch: false,
+  immediate: !isDesktop()
+});
+const { data: definitions, refresh: refreshDefinitions } = await useFetch<any[]>('/api/definitions', {
+  default: () => [],
+  watch: false,
+  immediate: !isDesktop()
+});
+
+// Unified data getters - use offline data in desktop mode, web data otherwise
+const mocks = computed(() => isDesktopMode.value ? [] : webMocks.value);
+const collections = computed(() => isDesktopMode.value ? [] : webCollections.value);
+const workspaces = computed(() => isDesktopMode.value ? offlineWorkspaces.value : webWorkspaces.value);
+
+// Refresh functions that work for both modes
+const refreshMocks = async () => {
+  if (!isDesktopMode.value) {
+    await refreshWebMocks();
+  }
+};
+
+const refreshCollections = async () => {
+  if (!isDesktopMode.value) {
+    await refreshWebCollections();
+  }
+};
+
+const refreshWorkspaces = async () => {
+  if (isDesktopMode.value) {
+    await fetchWorkspaces();
+  } else {
+    await refreshWebWorkspaces();
+  }
+};
 
 // Safe array getters - ensures child components always receive arrays, never error objects
-const safeMocks = computed(() => Array.isArray(mocks.value) ? mocks.value : []);
-const safeCollections = computed(() => Array.isArray(collections.value) ? collections.value : []);
-const safeWorkspaces = computed(() => Array.isArray(workspaces.value) ? workspaces.value : []);
-const safeDefinitions = computed(() => Array.isArray(definitions.value) ? definitions.value : []);
-const safeEnvironments = computed(() => Array.isArray(environments.value) ? environments.value : []);
+const safeMocks = computed(() => safeArray(mocks.value));
+const safeCollections = computed(() => safeArray(collections.value));
+const safeWorkspaces = computed(() => isDesktopMode.value ? offlineSafeWorkspaces.value : safeArray(webWorkspaces.value));
+const safeDefinitions = computed(() => safeArray(definitions.value));
+const safeEnvironments = computed(() => safeArray(environments.value));
+
+// Initialize on mount
+onMounted(async () => {
+  isDesktopMode.value = isDesktop();
+  
+  if (isDesktopMode.value) {
+    // Desktop mode: fetch from local store
+    await fetchWorkspaces();
+  }
+});
 
 const currentWorkspaceId = computed(() => {
   return safeWorkspaces.value?.[0]?.id;
@@ -73,16 +143,28 @@ interface Environment {
   createdAt: Date;
 }
 
+const environmentsUrl = computed(() => {
+  if (!currentProjectId.value) return null;
+  return `/api/admin/projects/${currentProjectId.value}/environments`;
+});
+
 const { data: environments, refresh: refreshEnvironments } = await useFetch<Environment[]>(
-  computed(() => `/api/admin/projects/${currentProjectId.value}/environments`),
+  environmentsUrl,
   {
-    immediate: true
+    immediate: false,
+    watch: false
   }
 );
 
+watch(environmentsUrl, async (newUrl) => {
+  if (newUrl) {
+    await refreshEnvironments();
+  }
+}, { immediate: true });
+
 const activeEnvironment = computed(() => {
   if (!Array.isArray(environments.value)) return null;
-  return environments.value.find(env => env.isActive) || null;
+  return environments.value?.find(env => env.isActive) || null;
 });
 
 const activateEnvironment = async (environmentId: string | null) => {
@@ -595,7 +677,7 @@ const goToEdit = (id: string) => {
 const handleSelectRequest = (request: HttpRequest) => {
   selectedMock.value = null;
   
-  const existingTab = openTabs.value.find(tab => tab.request.id === request.id);
+  const existingTab = safeArray(openTabs.value).find(tab => tab.request.id === request.id);
   if (existingTab) {
     activeTabKey.value = existingTab.key;
     selectedRequest.value = request;
@@ -614,7 +696,7 @@ const handleSelectRequest = (request: HttpRequest) => {
 
 // Tab handlers
 const handleSelectTab = (tabKey: string) => {
-  const tab = openTabs.value.find(t => t.key === tabKey);
+  const tab = safeArray(openTabs.value).find(t => t.key === tabKey);
   if (tab) {
     activeTabKey.value = tabKey;
     selectedRequest.value = tab.request;
@@ -623,15 +705,15 @@ const handleSelectTab = (tabKey: string) => {
 };
 
 const handleCloseTab = (tabKey: string) => {
-  const tabIndex = openTabs.value.findIndex(t => t.key === tabKey);
+  const tabIndex = safeArray(openTabs.value).findIndex(t => t.key === tabKey);
   if (tabIndex === -1) return;
   
   openTabs.value.splice(tabIndex, 1);
   
   // If closing the active tab, switch to another
   if (activeTabKey.value === tabKey) {
-    if (openTabs.value.length > 0) {
-      const newIndex = Math.min(tabIndex, openTabs.value.length - 1);
+    if (safeArray(openTabs.value).length > 0) {
+      const newIndex = Math.min(tabIndex, safeArray(openTabs.value).length - 1);
       activeTabKey.value = openTabs.value[newIndex].key;
       selectedRequest.value = openTabs.value[newIndex].request;
     } else {
@@ -1498,7 +1580,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
       <!-- Main Content -->
       <main class="flex flex-col flex-1 overflow-hidden bg-bg-primary">
         <!-- Empty State -->
-        <div v-if="!selectedMock && !selectedRequest && openTabs.length === 0" class="flex flex-col items-center justify-center h-full p-10 text-center">
+        <div v-if="!selectedMock && !selectedRequest && openTabs?.length === 0" class="flex flex-col items-center justify-center h-full p-10 text-center">
           <div class="mb-6">
             <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round" class="opacity-30">
               <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
@@ -1527,7 +1609,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
         </div>
 
         <!-- Request Tabs Area -->
-        <div v-if="openTabs.length > 0" class="flex flex-col flex-1 overflow-hidden">
+        <div v-if="openTabs?.length > 0" class="flex flex-col flex-1 overflow-hidden">
           <!-- Tabs -->
           <RequestTabs
             :open-tabs="openTabs"
@@ -1949,7 +2031,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
         <br />
         <code class="inline-block mt-2 py-1.5 px-2.5 bg-bg-tertiary rounded text-accent-orange font-mono">{{ groupToDelete?.name }}</code>
         <br /><br />
-        <strong class="text-accent-red">Warning:</strong> This will permanently delete <strong>{{ groupToDelete?.mocks.length }}</strong> mocks inside this folder.
+        <strong class="text-accent-red">Warning:</strong> This will permanently delete <strong>{{ groupToDelete?.mocks?.length }}</strong> mocks inside this folder.
       </p>
       <template #footer>
         <button class="btn btn-secondary" @click="showDeleteGroupConfirm = false">Cancel</button>
@@ -1986,10 +2068,10 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
     </Modal>
 
     <!-- Rename Modal -->
-    <Modal :show="showRenameModal" :title="`Rename ${renameType.charAt(0).toUpperCase() + renameType.slice(1)}`" @close="showRenameModal = false">
+    <Modal :show="showRenameModal" :title="`Rename ${renameType?.charAt(0)?.toUpperCase()}${renameType?.slice(1) || ''}`" @close="showRenameModal = false">
       <div class="mb-4">
         <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide mb-1.5">
-          {{ renameType.charAt(0).toUpperCase() + renameType.slice(1) }} Name
+          {{ renameType?.charAt(0)?.toUpperCase() }}{{ renameType?.slice(1) || '' }} Name
         </label>
         <input 
           v-model="renameValue" 
@@ -2083,10 +2165,10 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
               <span v-if="ep.summary" class="ml-2 text-xs text-text-muted truncate">- {{ ep.summary }}</span>
             </div>
           </div>
-          <p class="text-xs text-text-muted mt-2">{{ selectedEndpoints.length }} selected</p>
+          <p class="text-xs text-text-muted mt-2">{{ selectedEndpoints?.length }} selected</p>
         </div>
 
-        <div v-if="selectedEndpoints.length === 1" class="mb-4">
+        <div v-if="selectedEndpoints?.length === 1" class="mb-4">
           <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide mb-2">Preview Mock Response</label>
           <div class="bg-bg-tertiary border border-border-default rounded-md p-3">
             <div v-if="getPreviewForEndpoint(parseInt(selectedEndpoints[0].split(':')[0]), selectedEndpoints[0].split(':')[1])" class="space-y-2">
@@ -2113,7 +2195,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
 
       <template #footer>
         <button class="btn btn-secondary" @click="showGenerateModal = false">Cancel</button>
-        <button class="btn btn-primary" @click="generateMocks" :disabled="isGenerating || selectedEndpoints.length === 0">
+        <button class="btn btn-primary" @click="generateMocks" :disabled="isGenerating || selectedEndpoints?.length === 0">
           {{ isGenerating ? 'Generating...' : 'Generate Mocks' }}
         </button>
       </template>

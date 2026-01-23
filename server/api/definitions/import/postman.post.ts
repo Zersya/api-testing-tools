@@ -236,7 +236,7 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
           if (url.protocol !== 'http:' && url.protocol !== 'https:') {
             throw new Error('Invalid protocol');
           }
-        } catch {
+        } catch (e) {
           return {
             success: false,
             error: {
@@ -615,7 +615,7 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
               }
             }
           }
-        } catch {
+        } catch (e) {
           // Silently ignore invalid environment data - add a warning
           parseResult.warnings.push({
             path: '$.environments',

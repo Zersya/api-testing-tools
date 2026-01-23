@@ -471,7 +471,7 @@ export function detectSpecFormat(content: string): 'json' | 'yaml' | 'unknown' {
     try {
       JSON.parse(trimmed);
       return 'json';
-    } catch {
+    } catch (e) {
       // Not valid JSON, might be YAML
     }
   }
@@ -496,7 +496,7 @@ export function isValidUrl(urlString: string): boolean {
   try {
     const url = new URL(urlString);
     return url.protocol === 'http:' || url.protocol === 'https:';
-  } catch {
+  } catch (e) {
     return false;
   }
 }

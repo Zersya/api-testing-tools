@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import Modal from './Modal.vue';
+import { safeArray } from '~/utils/safeArray';
 
 interface RequestHistoryEntry {
   id: string;
@@ -169,7 +170,7 @@ const canCompare = computed(() => selectedForCompare.value.size === 2);
 const handleCompare = () => {
   if (!canCompare.value) return;
   
-  const entries = history.value.filter(e => selectedForCompare.value.has(e.id));
+  const entries = safeArray(history.value).filter(e => selectedForCompare.value.has(e.id));
   if (entries.length === 2) {
     emit('compare', entries[0], entries[1]);
     selectedForCompare.value.clear();

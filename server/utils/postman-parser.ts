@@ -601,7 +601,7 @@ function parsePostmanBody(body: PostmanBody | undefined): RequestBody {
       if (body.raw) {
         try {
           return JSON.parse(body.raw);
-        } catch {
+        } catch (e) {
           // Return as string if not valid JSON
           return body.raw;
         }

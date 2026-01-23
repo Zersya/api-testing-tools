@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import { useAuth } from '~/composables/useOfflineFirst';
+import { useSync } from '~/composables/useSync';
+import { isDesktop } from '~/services/local-store';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { checkIsTauri } from '~/composables/useApiFetch';
+
 definePageMeta({
   layout: 'empty'
 });
@@ -10,28 +16,49 @@ interface KeycloakConfig {
   authURL: string;
 }
 
-interface DesktopUser {
-  id: string;
-  email: string;
-  name?: string;
-}
-
 const form = ref({
   email: '',
   password: ''
 });
 
-const isLoading = ref(false);
 const errorMessage = ref('');
 const keycloakConfig = ref<KeycloakConfig | null>(null);
 const isSyncing = ref(false);
+const isConnecting = ref(false);
+const isTauriReady = ref(false);
 
-const isDesktop = computed(() => {
+const { login: authLogin, isLoading, error: authError } = useAuth();
+const { triggerSync, startSync } = useSync();
+
+const isDesktopMode = computed(() => {
   if (typeof window === 'undefined') return false;
-  return !!(window as any).__TAURI__;
+  return isDesktop();
 });
 
+const isRunningInTauri = computed(() => {
+  if (typeof window === 'undefined') return false;
+  return checkIsTauri();
+});
+
+// Helper function to call Tauri invoke safely
+async function tauriInvoke<T = any>(command: string, args?: Record<string, any>): Promise<T | null> {
+  if (!isRunningInTauri.value) return null;
+  try {
+    // Dynamic import to avoid issues when not in Tauri
+    const { invoke } = await import('@tauri-apps/api/core');
+    return await invoke<T>(command, args);
+  } catch (e) {
+    console.warn(`Tauri invoke '${command}' failed:`, e);
+    return null;
+  }
+}
+
 const fetchKeycloakConfig = async () => {
+  if (isDesktopMode.value) {
+    keycloakConfig.value = null;
+    return;
+  }
+  
   try {
     const settings = await $fetch<any>('/api/admin/settings');
     if (settings.keycloak?.enabled) {
@@ -51,66 +78,62 @@ const loginWithKeycloak = async () => {
   window.location.href = '/api/auth/keycloak/login';
 };
 
-const performInitialSync = async (token: string): Promise<boolean> => {
-  try {
-    const { triggerSync } = await import('~/composables/useSync');
-    const result = await triggerSync();
-    return result.success || result.errors.length === 0;
-  } catch (e) {
-    console.error('Initial sync failed:', e);
-    return true;
-  }
-};
-
-const handleSuccessfulLogin = async (token?: string) => {
-  if (isDesktop.value && token) {
-    isSyncing.value = true;
-    try {
-      await performInitialSync(token);
-    } finally {
-      isSyncing.value = false;
-    }
-  }
-  await navigateTo('/admin');
-};
-
 const login = async () => {
-  isLoading.value = true;
   errorMessage.value = '';
+  isConnecting.value = true;
 
   try {
-    if (isDesktop.value) {
-      const { login: desktopLogin } = await import('~/composables/useAuth');
-      const success = await desktopLogin(form.value.email, form.value.password);
-      
-      if (success) {
-        const { getToken } = await import('~/composables/useAuth');
-        const token = getToken();
-        await handleSuccessfulLogin(token || undefined);
-      } else {
-        const { error } = await import('~/composables/useAuth');
-        errorMessage.value = error.value || 'Login failed';
+    if (isDesktopMode.value) {
+      try {
+        await getCurrentWindow().emit('show-loading', 'Starting server...');
+        // Renamed command to force fresh build logic
+        await tauriInvoke('server_health_check', { timeout: 30 });
+        await getCurrentWindow().emit('hide-loading');
+      } catch (e: any) {
+        console.error('Server health check failed:', e);
+        errorMessage.value = `Server Error: ${e.message || e}`;
+        await getCurrentWindow().emit('hide-loading');
+        isConnecting.value = false;
+        return; // STOP login if server is not ready
       }
+    }
+
+    const success = await authLogin(form.value.email, form.value.password);
+    
+    if (success) {
+      if (isDesktopMode.value) {
+        isSyncing.value = true;
+        try {
+          startSync(30000);
+          await triggerSync();
+        } finally {
+          isSyncing.value = false;
+        }
+      }
+      await navigateTo('/admin');
     } else {
-      const response = await $fetch<any>('/api/auth/login', {
-        method: 'POST',
-        body: form.value
-      });
-      
-      if (response.success) {
-        await handleSuccessfulLogin(response.token);
-      }
+      errorMessage.value = authError.value || 'Login failed';
     }
   } catch (e: any) {
     console.error('Login error:', e);
     errorMessage.value = e.response?._data?.statusMessage || e.message || 'Login failed';
   } finally {
-    isLoading.value = false;
+    isConnecting.value = false;
   }
 };
 
-onMounted(() => {
+onMounted(async () => {
   fetchKeycloakConfig();
+  
+  if (isDesktopMode.value) {
+    try {
+      await tauriInvoke('server_health_check', { timeout: 30 });
+      isTauriReady.value = true;
+      console.log('Server is ready');
+    } catch (e) {
+      console.warn('Server not ready on mount:', e);
+    }
+  }
 });
 </script>
 
@@ -222,21 +245,23 @@ onMounted(() => {
           <button 
             type="submit" 
             class="flex items-center justify-center gap-2.5 w-full py-3.5 bg-gradient-to-br from-accent-orange to-[#FF8C5A] border-none rounded-[10px] text-white text-[15px] font-semibold cursor-pointer transition-all duration-normal mt-2 hover:not-disabled:-translate-y-px hover:not-disabled:shadow-[0_6px_20px_rgba(255,108,55,0.35)] active:not-disabled:translate-y-0 disabled:opacity-70 disabled:cursor-not-allowed"
-            :disabled="isLoading || isSyncing"
+            :disabled="isLoading || isSyncing || isConnecting"
           >
-            <svg v-if="isLoading || isSyncing" class="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg v-if="isLoading || isSyncing || isConnecting" class="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
             </svg>
             <span v-if="isLoading">Signing in...</span>
             <span v-else-if="isSyncing">Syncing...</span>
+            <span v-else-if="isConnecting">Connecting...</span>
             <span v-else>Sign In</span>
           </button>
         </form>
       </div>
 
       <!-- Footer -->
-      <p class="mt-6 text-[13px] text-text-muted">
-        Mock Services Admin Panel
+      <p class="mt-6 text-[13px] text-text-muted flex flex-col items-center gap-1">
+        <span>Mock Services Admin Panel</span>
+        <span class="text-[11px] opacity-60">v1.0.1 (Hard Fix)</span>
       </p>
     </div>
 

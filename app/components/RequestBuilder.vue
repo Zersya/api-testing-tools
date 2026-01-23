@@ -212,7 +212,7 @@ const parseUrlQuery = (url: string) => {
       });
     });
     return params;
-  } catch {
+  } catch (e) {
     return [];
   }
 };
@@ -232,7 +232,7 @@ watch(() => props.request, (newRequest) => {
         value: String(value),
         enabled: true
       }));
-    } catch {
+    } catch (e) {
       headers.value = [];
     }
   } else {
@@ -245,7 +245,7 @@ watch(() => props.request, (newRequest) => {
         : newRequest.body;
       jsonBody.value = JSON.stringify(bodyObj, null, 2);
       bodyFormat.value = 'json';
-    } catch {
+    } catch (e) {
       bodyFormat.value = 'none';
     }
   } else {
@@ -266,7 +266,7 @@ const updateUrlFromParams = () => {
     });
     
     form.value.url = urlObj.toString();
-  } catch {
+  } catch (e) {
   }
 };
 
@@ -453,7 +453,7 @@ const buildBody = (): any => {
     case 'json':
       try {
         return JSON.parse(jsonBody.value);
-      } catch {
+      } catch (e) {
         return jsonBody.value;
       }
     case 'form-data':
@@ -1374,7 +1374,7 @@ const sendRequest = async () => {
           urlObj.searchParams.set(key, value);
         });
         requestUrl = urlObj.toString();
-      } catch {
+      } catch (e) {
       }
     }
 

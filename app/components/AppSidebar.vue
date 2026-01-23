@@ -188,8 +188,8 @@ const collectionsWithGroups = computed((): CollectionWithGroups[] => {
       const parts = mock.path.split('/').filter(Boolean);
       let key = 'General';
 
-      if (parts.length > 0) {
-        if (parts[0] === 'api' && parts.length > 1) {
+      if (parts?.length > 0) {
+        if (parts[0] === 'api' && parts?.length > 1) {
           key = parts[1];
         } else {
           key = parts[0];
@@ -210,7 +210,7 @@ const collectionsWithGroups = computed((): CollectionWithGroups[] => {
     return {
       ...collection,
       groups: sortedGroups,
-      mockCount: collectionMocks.length
+      mockCount: collectionMocks?.length
     };
   });
 });
@@ -259,7 +259,7 @@ onMounted(() => {
     activeView.value = savedActiveView;
   }
   
-  if (safeWorkspaces.value.length > 0) {
+  if (safeWorkspaces.value?.length > 0) {
     // If there's a saved workspace ID that still exists in the workspaces list, use it
     if (savedWorkspaceId && safeWorkspaces.value.find(w => w.id === savedWorkspaceId)) {
       selectedWorkspaceId.value = savedWorkspaceId;
@@ -362,7 +362,7 @@ const collectAllFolderIds = (folders: any[]): string[] => {
   const ids: string[] = [];
   folders.forEach(folder => {
     ids.push(folder.id);
-    if (folder.children && folder.children.length > 0) {
+    if (folder.children && folder.children?.length > 0) {
       ids.push(...collectAllFolderIds(folder.children));
     }
   });
@@ -518,7 +518,7 @@ const handleFolderDrop = async (sourceFolderId: string, targetFolderId: string, 
 
   if (position === 'inside') {
     newParentId = targetFolderId;
-    newOrder = targetFolder.children.length;
+    newOrder = targetFolder.children?.length;
   } else {
     newParentId = targetFolder.parentFolderId;
     const siblings = getSiblingFolders(targetFolder.parentFolderId);
@@ -535,7 +535,7 @@ const handleRequestToFolderDrop = async (requestId: string, targetFolderId: stri
   const targetFolder = findFolderById(currentWorkspace.value, targetFolderId);
   if (!targetFolder) return;
 
-  const newOrder = targetFolder.requests.length;
+  const newOrder = targetFolder.requests?.length;
   
   emit('reorderRequests', targetFolderId, [{ id: requestId, folderId: targetFolderId, order: newOrder }]);
 };
@@ -615,7 +615,7 @@ const getSiblingFolders = (parentId: string | null): FolderWithRequestsAndChildr
         }
       };
       collectFolders(collection.folders);
-      if (allFolders.length > 0) return allFolders;
+      if (allFolders?.length > 0) return allFolders;
     }
   }
   
@@ -815,7 +815,7 @@ watch(activeView, (newView) => {
 
     <!-- Workspace Switcher -->
     <div
-      v-if="activeView === 'hierarchy' && workspaces.length > 0"
+      v-if="activeView === 'hierarchy' && workspaces?.length > 0"
       class="flex items-center justify-between py-3 px-3 border-b border-border-default"
       @contextmenu.prevent="handleContextMenu($event, 'workspace', currentWorkspace)"
     >
@@ -848,7 +848,7 @@ watch(activeView, (newView) => {
     <div v-if="activeView === 'hierarchy' && currentWorkspace" class="flex items-center justify-between py-2 px-4 border-b border-border-default">
       <div class="flex items-center gap-2">
         <span class="text-xs font-medium text-text-muted uppercase tracking-wide">Projects</span>
-        <div v-if="currentWorkspace.projects.length > 0" class="flex items-center gap-1 ml-2">
+        <div v-if="currentWorkspace.projects?.length > 0" class="flex items-center gap-1 ml-2">
           <button
             v-if="!isAllExpanded"
             class="flex items-center justify-center w-5 h-5 bg-transparent border-none rounded text-text-secondary cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-green"
@@ -893,7 +893,7 @@ watch(activeView, (newView) => {
     <div v-if="activeView === 'hierarchy'" class="flex-1 overflow-y-auto py-2">
       <div v-if="currentWorkspace">
         <!-- Empty State -->
-        <div v-if="currentWorkspace.projects.length === 0" class="flex flex-col items-center justify-center gap-3 py-10 px-5 text-text-muted text-center">
+        <div v-if="currentWorkspace.projects?.length === 0" class="flex flex-col items-center justify-center gap-3 py-10 px-5 text-text-muted text-center">
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
             <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
           </svg>
@@ -949,7 +949,7 @@ watch(activeView, (newView) => {
           <Transition name="expand">
             <div v-show="isProjectExpanded(project.id)" class="pl-4">
               <!-- Empty Project -->
-              <div v-if="project.collections.length === 0" class="py-3 px-4 text-xs text-text-muted italic">
+              <div v-if="project.collections?.length === 0" class="py-3 px-4 text-xs text-text-muted italic">
                 No collections in this project
               </div>
 
@@ -1035,7 +1035,7 @@ watch(activeView, (newView) => {
       <!-- Mocks View -->
       <div v-if="activeView === 'mocks'" class="flex-1 overflow-y-auto py-2">
         <!-- Empty State -->
-        <div v-if="collectionsWithGroups.length === 0" class="flex flex-col items-center justify-center gap-3 py-10 px-5 text-text-muted text-center">
+        <div v-if="collectionsWithGroups?.length === 0" class="flex flex-col items-center justify-center gap-3 py-10 px-5 text-text-muted text-center">
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
           </svg>
@@ -1117,7 +1117,7 @@ watch(activeView, (newView) => {
           <Transition name="expand">
             <div v-show="isCollectionExpanded(collection.id)" class="pl-4">
               <!-- Empty Collection -->
-              <div v-if="collection.groups.length === 0" class="py-3 px-4 text-xs text-text-muted italic">
+              <div v-if="collection.groups?.length === 0" class="py-3 px-4 text-xs text-text-muted italic">
                 No mocks in this collection
               </div>
               
@@ -1146,7 +1146,7 @@ watch(activeView, (newView) => {
 
                   <!-- Count -->
                   <span class="text-[10px] text-text-muted bg-bg-tertiary py-px px-1.5 rounded-lg mr-1.5">
-                    {{ group.items.length }}
+                    {{ group.items?.length }}
                   </span>
 
                   <!-- Delete Group -->

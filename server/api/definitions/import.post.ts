@@ -333,34 +333,34 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
     const format = detectSpecFormat(specContent);
     let parsedObject: unknown;
 
-    try {
-      if (format === 'json') {
-        parsedObject = JSON.parse(specContent);
-      } else if (format === 'yaml') {
-        parsedObject = parseYAML(specContent);
-      } else {
-        // Try JSON first, then YAML
-        try {
+      try {
+        if (format === 'json') {
           parsedObject = JSON.parse(specContent);
-        } catch {
+        } else if (format === 'yaml') {
+          parsedObject = parseYAML(specContent);
+        } else {
+          // Try JSON first, then YAML
           try {
-            parsedObject = parseYAML(specContent);
-          } catch (yamlError: any) {
-            return {
-              success: false,
-              error: {
-                message: 'Unable to parse specification. Content is neither valid JSON nor YAML.',
-                code: 'PARSE_ERROR',
-                details: [{
-                  path: '$',
-                  message: yamlError.message || 'Invalid format'
-                }]
-              }
-            };
+            parsedObject = JSON.parse(specContent);
+          } catch (e) {
+            try {
+              parsedObject = parseYAML(specContent);
+            } catch (yamlError: any) {
+              return {
+                success: false,
+                error: {
+                  message: 'Unable to parse specification. Content is neither valid JSON nor YAML.',
+                  code: 'PARSE_ERROR',
+                  details: [{
+                    path: '$',
+                    message: yamlError.message || 'Invalid format'
+                  }]
+                }
+              };
+            }
           }
         }
-      }
-    } catch (parseError: any) {
+      } catch (parseError: any) {
       return {
         success: false,
         error: {

@@ -47,7 +47,7 @@ export default defineEventHandler((event) => {
     if (userInfoCookie) {
         try {
             userInfo = JSON.parse(Buffer.from(userInfoCookie, 'base64').toString('utf8'));
-        } catch {
+        } catch (e) {
             userInfo = null;
         }
     }

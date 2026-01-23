@@ -13,51 +13,13 @@ export default defineNuxtConfig({
 
   ssr: false,
 
-  app: {
-    head: {
-      link: [
-        { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
-        { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
-        {
-          rel: 'stylesheet',
-          href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap'
-        }
-      ]
-    }
-  },
-
-  devServer: {
-    host: '0.0.0.0',
-    port: 3000
-  },
-
-  vite: {
-    clearScreen: false,
-    envPrefix: ['VITE_', 'TAURI_'],
-    server: {
-      strictPort: true
-    }
-  },
-
-  ignore: ['**/src-tauri/**'],
-
   nitro: {
-    storage: {
-      mocks: {
-        driver: process.env.VERCEL || process.env.REDIS_URL ? 'redis' : 'fs',
-        base: 'mocks',
-        url: process.env.REDIS_URL
-      },
-      collections: {
-        driver: process.env.VERCEL || process.env.REDIS_URL ? 'redis' : 'fs',
-        base: 'collections',
-        url: process.env.REDIS_URL
-      },
-      settings: {
-        driver: process.env.VERCEL || process.env.REDIS_URL ? 'redis' : 'fs',
-        base: 'settings',
-        url: process.env.REDIS_URL
-      }
+    preset: 'node-server',
+    prerender: {
+      routes: ['/']
+    },
+    externals: {
+      inline: ['server/**']
     }
   },
 
@@ -66,8 +28,12 @@ export default defineNuxtConfig({
     adminPassword: process.env.ADMIN_PASSWORD || 'admin123',
     jwtSecret: process.env.JWT_SECRET || 'super-secret-jwt-key-change-me',
     public: {
-      appUrl: process.env.APP_URL || 'http://localhost:3000',
-      isTauri: process.env.TAURI === 'true'
+      apiUrl: process.env.API_URL || (
+        process.env.TAURI_ENV_DEV === 'true' 
+          ? 'http://localhost:3000' 
+          : 'http://127.0.0.1:3001'
+      ),
+      isTauri: process.env.TAURI === 'true' || process.env.TAURI_ENV_DEV === 'true'
     }
   }
 })

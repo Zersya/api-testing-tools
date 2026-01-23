@@ -64,7 +64,7 @@ export default defineEventHandler(async (event) => {
   let sessionData: any;
   try {
     sessionData = JSON.parse(stateCookie);
-  } catch {
+  } catch (e) {
     throw createError({
       statusCode: 400,
       statusMessage: 'Invalid OAuth state'
@@ -140,7 +140,7 @@ export default defineEventHandler(async (event) => {
       if (userInfoResponse.ok) {
         userInfo = await userInfoResponse.json();
       }
-    } catch {
+    } catch (e) {
       console.warn('Failed to fetch user info from Keycloak');
     }
   }

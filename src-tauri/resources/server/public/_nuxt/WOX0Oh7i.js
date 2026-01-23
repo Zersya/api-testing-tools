@@ -1,0 +1,1 @@
+import{invoke as a}from"./mPlcS5K-.js";async function i(e,o={}){const{method:t="GET",body:n=null,headers:s={}}=o;try{return await a("tauri_api_fetch",{options:{endpoint:e,method:t,body:n,headers:s}})}catch(r){return console.error("Tauri API error:",r),{success:!1,error:r instanceof Error?r.message:"Unknown error"}}}export{i as tauriFetch};

@@ -24,8 +24,9 @@ const form = ref({
   secure: false
 });
 
-if (mock.value) {
-    const found = mock.value.find((m: any) => m.id === id);
+const mockArray = Array.isArray(mock.value) ? mock.value : [];
+if (mockArray.length > 0) {
+    const found = mockArray.find((m: any) => m.id === id);
     if (found) {
         form.value = {
             ...found,
@@ -114,7 +115,8 @@ const goBack = () => {
 };
 
 const getCollectionColor = (collectionId: string) => {
-  const collection = collections.value?.find(c => c.id === collectionId);
+  const collectionsArray = Array.isArray(collections.value) ? collections.value : [];
+  const collection = collectionsArray.find(c => c.id === collectionId);
   return collection?.color || '#6366f1';
 };
 </script>

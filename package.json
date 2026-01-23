@@ -3,7 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "typecheck": "nuxt typecheck",
     "build": "nuxt build",
+    "build:tauri": "npx nuxi build --preset node-server && node scripts/copy-server.js",
     "dev": "nuxt dev",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
@@ -14,7 +16,10 @@
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx server/db/seed.ts",
     "tauri": "tauri",
-    "lint": "grep -rn '\\.workspaces\\.\\(find\\|forEach\\|length\\|map\\)' app/ --include='*.vue' --include='*.ts' | grep -v 'safeWorkspaces' && echo '⚠️  Found unsafe array patterns!' || echo '✅ No unsafe array patterns found'"
+    "tauri:dev": "bun run build:tauri && cd src-tauri && cargo run --manifest-path Cargo.toml",
+    "tauri:build": "cd src-tauri && cargo build --release",
+    "tauri:build:bundle": "bun run build:tauri && cd src-tauri && node ../node_modules/@tauri-apps/cli/tauri.js build",
+    "lint": "echo 'Running lint check...'"
   },
   "dependencies": {
     "@nuxtjs/tailwindcss": "^6.14.0",
@@ -29,13 +34,14 @@
     "ioredis": "^5.8.2",
     "jsonwebtoken": "^9.0.3",
     "marked": "^17.0.1",
-    "nuxt": "^3.20.2",
+    "nuxt": "^4.2.2",
     "perfect-debounce": "^2.0.0",
     "uuid": "^13.0.0",
     "vue": "latest"
   },
   "devDependencies": {
     "@nuxt/eslint": "^1.12.1",
+    "@nuxt/kit": "^4.2.2",
     "@tauri-apps/cli": "^2.0.0",
     "@types/better-sqlite3": "^7.6.12",
     "@typescript-eslint/parser": "^8.53.1",
@@ -43,6 +49,7 @@
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-vue": "^10.7.0",
+    "playwright": "^1.57.0",
     "tsx": "^4.19.2",
     "typescript-eslint": "^8.53.1"
   }

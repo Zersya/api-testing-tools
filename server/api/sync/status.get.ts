@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
   
   try {
     jwt.verify(token, config.jwtSecret);
-  } catch {
+  } catch (e) {
     throw createError({ statusCode: 401, message: 'Invalid token' });
   }
   

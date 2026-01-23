@@ -133,7 +133,7 @@ const handleFetchUrl = async () => {
 
   try {
     new URL(urlInput.value);
-  } catch {
+  } catch (e) {
     error.value = 'Invalid URL format';
     return;
   }

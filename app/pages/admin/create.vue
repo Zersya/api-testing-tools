@@ -103,7 +103,8 @@ const goBack = () => {
 };
 
 const getCollectionColor = (collectionId: string) => {
-  const collection = collections.value?.find(c => c.id === collectionId);
+  const collectionsArray = Array.isArray(collections.value) ? collections.value : [];
+  const collection = collectionsArray.find(c => c.id === collectionId);
   return collection?.color || '#6366f1';
 };
 </script>

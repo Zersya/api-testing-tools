@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { safeArray } from '~/utils/safeArray';
+
 interface RequestHistoryEntry {
   id: string;
   workspaceId: string;
@@ -194,15 +196,16 @@ function computeLCS(arr1: string[], arr2: string[]): LCSItem[] {
 const diffLines = computed(() => computeDiff(getLeftBody.value, getRightBody.value));
 
 const filteredDiffLines = computed(() => {
-  if (!showOnlyDifferences.value) return diffLines.value;
-  return diffLines.value.filter(line => line.type !== 'unchanged');
+  if (!showOnlyDifferences.value) return safeArray(diffLines.value);
+  return safeArray(diffLines.value).filter(line => line.type !== 'unchanged');
 });
 
 const stats = computed(() => {
-  const added = diffLines.value.filter(l => l.type === 'added').length;
-  const removed = diffLines.value.filter(l => l.type === 'removed').length;
-  const changed = diffLines.value.filter(l => l.type === 'changed').length;
-  const unchanged = diffLines.value.filter(l => l.type === 'unchanged').length;
+  const lines = safeArray(diffLines.value);
+  const added = lines.filter(l => l.type === 'added').length;
+  const removed = lines.filter(l => l.type === 'removed').length;
+  const changed = lines.filter(l => l.type === 'changed').length;
+  const unchanged = lines.filter(l => l.type === 'unchanged').length;
   return { added, removed, changed, unchanged };
 });
 

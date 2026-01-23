@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { getUser, getAuthToken, getSyncQueue } from '~/services/local-store';
+import { useAuth } from '~/composables/useOfflineFirst';
+import { useSync } from '~/composables/useSync';
 
 interface Props {
   title?: string;
@@ -18,7 +21,7 @@ const emit = defineEmits<{
   activateEnvironment: [id: string | null];
 }>();
 
-const isDesktop = computed(() => {
+const isDesktopMode = computed(() => {
   if (typeof window === 'undefined') return false;
   return !!(window as any).__TAURI__;
 });
@@ -56,12 +59,16 @@ const isSyncing = ref(false);
 const pendingChanges = ref(0);
 const lastSyncStatus = ref<'idle' | 'syncing' | 'success' | 'error'>('idle');
 
+const { logout: authLogout } = useAuth();
+const { triggerSync: doSync } = useSync();
+
 const checkAuth = async () => {
   try {
-    if (isDesktop.value) {
-      const { initAuth, getUser } = await import('~/services/auth-store');
-      await initAuth();
-      desktopUser.value = getUser();
+    if (isDesktopMode.value) {
+      const token = await getAuthToken();
+      if (token) {
+        desktopUser.value = await getUser();
+      }
       isCheckingAuth.value = false;
     } else {
       const data = await $fetch<AuthState>('/api/auth/check');
@@ -80,9 +87,8 @@ const checkAuth = async () => {
 const logout = async () => {
   isLoggingOut.value = true;
   try {
-    if (isDesktop.value) {
-      const { logout: desktopLogout } = await import('~/composables/useAuth');
-      await desktopLogout();
+    if (isDesktopMode.value) {
+      await authLogout();
       await navigateTo('/login');
     } else {
       await $fetch('/api/auth/logout', { method: 'POST' });
@@ -98,8 +104,8 @@ const logout = async () => {
 const getInitials = (name: string): string => {
   if (!name) return '?';
   const parts = name.split(' ');
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  if (parts?.length >= 2) {
+    return (parts[0][0] + parts[parts?.length - 1][0]).toUpperCase();
   }
   return name.substring(0, 2).toUpperCase();
 };
@@ -120,10 +126,11 @@ const triggerSync = async () => {
   lastSyncStatus.value = 'syncing';
   try {
     if (isDesktop.value) {
-      const { triggerSync: desktopSync } = await import('~/composables/useSync');
+      const syncModule = await import('~/composables/useSync');
+      const { triggerSync: desktopSync, pendingChanges: getCount } = syncModule.useSync();
       await desktopSync();
-      const { pendingChanges: count } = await import('~/composables/useSync');
-      pendingChanges.value = await count();
+      const count = await getCount();
+      pendingChanges.value = count;
       lastSyncStatus.value = 'success';
     } else {
       await $fetch('/api/admin/sync/trigger', { method: 'POST' });
@@ -165,8 +172,10 @@ onMounted(async () => {
 
   if (isDesktop.value) {
     try {
-      const { pendingChanges: count } = await import('~/composables/useSync');
-      pendingChanges.value = await count();
+      const syncModule = await import('~/composables/useSync');
+      const { pendingChanges: getCount } = syncModule.useSync();
+      const count = await getCount();
+      pendingChanges.value = count;
     } catch (e) {
       console.error('Failed to load sync status:', e);
     }
