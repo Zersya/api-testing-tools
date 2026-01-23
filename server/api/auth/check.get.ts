@@ -1,28 +1,38 @@
 import jwt from 'jsonwebtoken';
 
 interface UserInfo {
-  sub: string;
-  email: string;
-  name: string;
-  username: string;
-  givenName: string;
-  familyName: string;
-  picture: string;
-  idToken: string;
+    sub: string;
+    email: string;
+    name: string;
+    username: string;
+    givenName: string;
+    familyName: string;
+    picture: string;
+    idToken: string;
 }
 
 interface DecodedToken {
-  email?: string;
-  name?: string;
-  sub?: string;
-  authMethod?: string;
-  realm?: string;
-  exp?: number;
-  iat?: number;
+    email?: string;
+    name?: string;
+    sub?: string;
+    authMethod?: string;
+    realm?: string;
+    exp?: number;
+    iat?: number;
 }
 
 export default defineEventHandler((event) => {
-    const token = getCookie(event, 'auth_token');
+    // Try to get token from cookie first (web mode), then from Authorization header (Tauri mode)
+    let token = getCookie(event, 'auth_token');
+
+    // If no cookie, check Authorization header (for Tauri desktop app)
+    if (!token) {
+        const authHeader = getHeader(event, 'authorization');
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+            token = authHeader.substring(7);
+        }
+    }
+
     const userInfoCookie = getCookie(event, 'user_info');
     const config = useRuntimeConfig();
 

@@ -1,4 +1,4 @@
-import { d as defineEventHandler, m as getCookie, c as createError, n as useRuntimeConfig } from '../../../nitro/nitro.mjs';
+import { d as defineEventHandler, m as getCookie, g as getHeader, c as createError, n as useRuntimeConfig } from '../../../nitro/nitro.mjs';
 import jwt from 'jsonwebtoken';
 import 'node:http';
 import 'node:https';
@@ -15,7 +15,13 @@ import 'node:url';
 
 const check_get = defineEventHandler((event) => {
   var _a;
-  const token = getCookie(event, "auth_token");
+  let token = getCookie(event, "auth_token");
+  if (!token) {
+    const authHeader = getHeader(event, "authorization");
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      token = authHeader.substring(7);
+    }
+  }
   const userInfoCookie = getCookie(event, "user_info");
   const config = useRuntimeConfig();
   if (!token) {

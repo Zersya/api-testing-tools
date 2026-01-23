@@ -5,7 +5,17 @@ export default defineEventHandler((event) => {
 
     // Only protect /api/admin routes, but exclude login endpoint if it were under admin (it's not)
     if (path.startsWith('/api/admin')) {
-        const token = getCookie(event, 'auth_token');
+        // Try to get token from cookie first (web mode), then from Authorization header (Tauri mode)
+        let token = getCookie(event, 'auth_token');
+
+        // If no cookie, check Authorization header (for Tauri desktop app)
+        if (!token) {
+            const authHeader = getHeader(event, 'authorization');
+            if (authHeader && authHeader.startsWith('Bearer ')) {
+                token = authHeader.substring(7);
+            }
+        }
+
         const config = useRuntimeConfig();
 
         if (!token) {

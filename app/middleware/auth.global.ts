@@ -5,9 +5,10 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
         const isDesktopMode = typeof window !== 'undefined' && !!(window as any).__TAURI__;
 
         if (isDesktopMode) {
-            // Desktop mode: check local auth token
+            // Desktop mode: check local auth token AND validate with server
             try {
-                const { initLocalStore, getAuthToken } = await import('~/services/local-store');
+                const { initLocalStore, getAuthToken, clearAuth } = await import('~/services/local-store');
+                const { tauriFetch } = await import('~/services/tauri-api');
 
                 // IMPORTANT: Initialize the store first
                 await initLocalStore();
@@ -17,6 +18,27 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
 
                 if (!token) {
                     console.log('[AUTH] No token, redirecting to login');
+                    return navigateTo('/login');
+                }
+
+                // Validate token with server
+                try {
+                    const response = await tauriFetch<any>('/api/auth/check', {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+
+                    if (!response.success) {
+                        console.log('[AUTH] Token validation failed, clearing auth and redirecting to login');
+                        await clearAuth();
+                        return navigateTo('/login');
+                    }
+                    console.log('[AUTH] Token validated successfully');
+                } catch (e) {
+                    console.error('[AUTH] Token validation error:', e);
+                    await clearAuth();
                     return navigateTo('/login');
                 }
             } catch (e) {
