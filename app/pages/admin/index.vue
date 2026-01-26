@@ -58,12 +58,21 @@ const currentProjectId = computed(() => {
   return workspaces.value?.[0]?.projects?.[0]?.id;
 });
 
+interface EnvironmentVariable {
+  id: string;
+  environmentId: string;
+  key: string;
+  value: string;
+  isSecret: boolean;
+}
+
 interface Environment {
   id: string;
   projectId: string;
   name: string;
   isActive: boolean;
   createdAt: Date;
+  variables: EnvironmentVariable[];
 }
 
 const { data: environments, refresh: refreshEnvironments } = await useFetch<Environment[]>(
@@ -1441,7 +1450,8 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
     <AppHeader 
       title="Mock Services"
       :environments="environments || []"
-      :active-environment="activeEnvironment"
+      :active-environment-id="activeEnvironment?.id || null"
+      :current-project-id="currentProjectId || null"
       @open-settings="openSettings"
       @export-open-a-p-i="exportOpenAPI"
       @import-open-a-p-i="openImportModal"

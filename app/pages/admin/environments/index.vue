@@ -22,11 +22,18 @@ interface EnvironmentVariable {
   isSecret: boolean;
 }
 
-const { data: workspaces } = await useFetch<any[]>('/api/admin/tree');
+const { data: workspaces, refresh: refreshWorkspaces } = await useFetch<any[]>('/api/admin/tree');
+
+onMounted(() => {
+  refreshWorkspaces();
+  refreshEnvironments();
+});
 
 const currentProjectId = computed(() => {
-  return workspaces.value?.[0]?.projects?.[0]?.id;
+  return workspaces.value?.[0]?.projects?.[0]?.id || null;
 });
+
+const hasProject = computed(() => !!currentProjectId.value);
 
 const { data: environments, refresh: refreshEnvironments } = await useFetch<Environment[]>(
   computed(() => `/api/admin/projects/${currentProjectId.value}/environments`),
@@ -76,24 +83,42 @@ const openDuplicateConfirm = (environment: Environment) => {
 
 const createEnvironment = async () => {
   if (!createEnvironmentForm.value.name.trim()) {
+    console.log('Name is empty, skipping...');
     return;
   }
 
+  if (!currentProjectId.value) {
+    alert('No project selected. Please reload the page and try again.');
+    console.error('No project ID available');
+    return;
+  }
+
+  console.log('Creating environment:', createEnvironmentForm.value.name.trim());
+  console.log('Project ID:', currentProjectId.value);
+
   try {
     isLoading.value = true;
-    await $fetch(`/api/admin/projects/${currentProjectId.value}/environments`, {
+    console.log('Sending API request...');
+    const result = await $fetch(`/api/admin/projects/${currentProjectId.value}/environments`, {
       method: 'POST',
       body: {
         name: createEnvironmentForm.value.name.trim()
       }
     });
+    console.log('Environment created successfully:', result);
     showCreateModal.value = false;
     createEnvironmentForm.value = { name: '' };
     await refreshEnvironments();
+    console.log('Environments refreshed');
   } catch (e: any) {
-    alert('Error creating environment: ' + (e.data?.message || e.message));
+    console.error('Error creating environment:', e);
+    console.error('Error status:', e.statusCode);
+    console.error('Error data:', e.data);
+    console.error('Error message:', e.message);
+    alert('Error creating environment: ' + (e.data?.message || e.statusMessage || e.message || 'Unknown error'));
   } finally {
     isLoading.value = false;
+    console.log('Loading state reset');
   }
 };
 
@@ -222,16 +247,30 @@ const deleteVariable = async (variableId: string) => {
 
 <template>
   <div class="flex flex-col h-screen overflow-hidden">
-    <AppHeader title="Environment Management" />
+    <AppHeader title="Environment Management" :show-actions="false" />
 
     <main class="flex-1 overflow-hidden bg-bg-primary">
       <div class="h-full flex flex-col max-w-7xl mx-auto p-6">
+        <div class="flex items-center gap-2 mb-4 text-sm">
+          <NuxtLink to="/" class="flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+              <polyline points="9 22 9 12 15 12 15 22"></polyline>
+            </svg>
+            Home
+          </NuxtLink>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-text-muted">
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+          <span class="text-text-primary font-medium">Environments</span>
+        </div>
+
         <div class="flex items-center justify-between mb-6">
           <div>
             <h1 class="text-2xl font-semibold text-text-primary mb-1">Environments</h1>
             <p class="text-sm text-text-secondary">Manage environments and their variables for your project</p>
           </div>
-          <button class="btn btn-primary" @click="openCreateModal">
+          <button v-if="hasProject" class="btn btn-primary" @click="openCreateModal">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="12" y1="5" x2="12" y2="19"></line>
               <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -240,7 +279,20 @@ const deleteVariable = async (variableId: string) => {
           </button>
         </div>
 
-        <div v-if="!environments || environments.length === 0" class="flex flex-col items-center justify-center flex-1 text-center">
+        <div v-if="!hasProject" class="flex flex-col items-center justify-center flex-1 text-center">
+          <div class="mb-6">
+            <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round" class="opacity-20">
+              <path d="M3 21h18M5 21V7l8-4 8 4v14M13 10v11M9 19h6M9 14h6"></path>
+            </svg>
+          </div>
+          <h2 class="text-lg font-semibold text-text-primary mb-2">No project found</h2>
+          <p class="text-text-secondary mb-6 max-w-sm">Please create a project first to manage environments.</p>
+          <button class="btn btn-primary" @click="navigateTo('/admin')">
+            Go to Dashboard
+          </button>
+        </div>
+
+        <div v-else-if="!environments || environments.length === 0" class="flex flex-col items-center justify-center flex-1 text-center">
           <div class="mb-6">
             <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round" class="opacity-20">
               <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>

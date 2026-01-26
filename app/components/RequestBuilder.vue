@@ -1330,6 +1330,11 @@ onMounted(() => {
   headers.value = parseHeadersFromRequest(props.request.headers);
   parseAuthFromRequest(props.request.auth);
   checkForOAuthCallback();
+  fetchEnvironmentVariables();
+});
+
+watch(() => props.environmentId, () => {
+  fetchEnvironmentVariables();
 });
 
 const sendRequest = async () => {
@@ -1385,7 +1390,8 @@ const sendRequest = async () => {
         method: form.value.method,
         headers: requestHeaders,
         body: requestBody,
-        workspaceId: props.workspaceId
+        workspaceId: props.workspaceId,
+        environmentId: props.environmentId
       }
     });
 

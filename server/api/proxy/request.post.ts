@@ -5,11 +5,30 @@
  * Proxies HTTP requests to target URLs to avoid CORS issues.
  * Supports all HTTP methods, custom headers, and various body types.
  * Auto-logs requests to history when workspaceId is provided.
+ * Supports environment variable substitution with {{VAR_NAME}} syntax.
  */
 
 import { db } from '../../db';
 import { requestHistories } from '../../db/schema';
+import { environments, environmentVariables } from '../../db/schema';
 import type { HttpMethod, RequestData, ResponseData } from '../../db/schema/requestHistory';
+import { eq } from 'drizzle-orm';
+
+interface EnvironmentVariable {
+  id: string;
+  environmentId: string;
+  key: string;
+  value: string;
+  isSecret: boolean;
+}
+
+interface EnvironmentWithVariables {
+  id: string;
+  projectId: string;
+  name: string;
+  isActive: boolean;
+  variables: EnvironmentVariable[];
+}
 
 interface ProxyRequestBody {
   url: string;
@@ -17,7 +36,8 @@ interface ProxyRequestBody {
   headers?: Record<string, string>;
   body?: any;
   timeout?: number;
-  workspaceId?: string; // Optional: If provided, request will be logged to history
+  workspaceId?: string;
+  environmentId?: string;
 }
 
 interface ProxyResponse {
@@ -30,6 +50,12 @@ interface ProxyResponse {
     startTime: string;
     endTime: string;
     durationMs: number;
+  };
+  variableWarnings?: string[];
+  resolvedValues?: {
+    url?: string;
+    headers?: Record<string, string>;
+    body?: any;
   };
 }
 
@@ -45,19 +71,20 @@ interface ProxyErrorResponse {
     endTime: string;
     durationMs: number;
   };
+  variableWarnings?: string[];
 }
 
 const VALID_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'] as const;
-const DEFAULT_TIMEOUT = 30000; // 30 seconds
-const MAX_TIMEOUT = 120000; // 2 minutes
+const DEFAULT_TIMEOUT = 30000;
+const MAX_TIMEOUT = 120000;
 
 export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyErrorResponse> => {
   const startTime = new Date();
+  const variableWarnings: string[] = [];
   
   try {
     const body = await readBody<ProxyRequestBody>(event);
 
-    // Validate required fields
     if (!body.url) {
       throw createError({
         statusCode: 400,
@@ -72,18 +99,6 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
       });
     }
 
-    // Validate URL format
-    let targetUrl: URL;
-    try {
-      targetUrl = new URL(body.url);
-    } catch {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Invalid URL format'
-      });
-    }
-
-    // Validate HTTP method
     const method = body.method.toUpperCase() as typeof VALID_METHODS[number];
     if (!VALID_METHODS.includes(method)) {
       throw createError({
@@ -92,13 +107,11 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
       });
     }
 
-    // Configure timeout (default 30s, max 2 minutes)
     const timeout = Math.min(
       Math.max(body.timeout || DEFAULT_TIMEOUT, 1000),
       MAX_TIMEOUT
     );
 
-    // Prepare headers - filter out problematic headers
     const requestHeaders: Record<string, string> = {};
     const headersToExclude = [
       'host',
@@ -117,39 +130,125 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
       }
     }
 
-    // Prepare request options
+    let resolvedUrl = body.url;
+    let resolvedHeaders = { ...requestHeaders };
+    let resolvedBody: any = body.body;
+    let resolvedValues: ProxyResponse['resolvedValues'] | undefined;
+    let environmentLoadFailed = false;
+
+    if (body.environmentId) {
+      try {
+        const environment = await db.query.environments.findFirst({
+          where: eq(environments.id, body.environmentId),
+          with: {
+            variables: true,
+          },
+        }) as EnvironmentWithVariables | undefined;
+
+        if (environment && environment.variables && environment.variables.length > 0) {
+          const variables: Record<string, string> = {};
+          environment.variables.forEach((v: EnvironmentVariable) => {
+            variables[v.key] = v.value;
+          });
+
+          const substituteWithLimit = (input: string, maxIterations: number = 10): string => {
+            let result = input;
+            let iterations = 0;
+            const variablePattern = /\{\{([^{}]+)\}\}/g;
+
+            let match;
+            while ((match = variablePattern.exec(result)) !== null && iterations < maxIterations) {
+              const trimmedName = match[1].trim();
+              if (variables.hasOwnProperty(trimmedName)) {
+                result = result.replace(match[0], variables[trimmedName]);
+                variablePattern.lastIndex = 0;
+                iterations++;
+              }
+            }
+
+            if (iterations >= maxIterations) {
+              variableWarnings.push(`Variable substitution limit reached (possible circular reference)`);
+            }
+
+            return result;
+          };
+
+          const originalUrl = body.url;
+          resolvedUrl = substituteWithLimit(body.url);
+          if (resolvedUrl !== originalUrl) {
+            resolvedValues = { ...resolvedValues, url: resolvedUrl };
+          }
+
+          for (const [key, value] of Object.entries(resolvedHeaders)) {
+            if (typeof value === 'string' && value.includes('{{')) {
+              resolvedHeaders[key] = substituteWithLimit(value);
+            }
+          }
+
+          if (resolvedBody && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+            if (typeof resolvedBody === 'string') {
+              resolvedBody = substituteWithLimit(resolvedBody);
+            } else {
+              const bodyStr = JSON.stringify(resolvedBody);
+              const substitutedBody = substituteWithLimit(bodyStr);
+              try {
+                resolvedBody = JSON.parse(substitutedBody);
+              } catch {
+                resolvedBody = substitutedBody;
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch environment variables:', error);
+        variableWarnings.push('Failed to load environment variables - using raw values');
+        environmentLoadFailed = true;
+      }
+    }
+
+    const unresolvedPattern = /\{\{([^{}]+)\}\}/g;
+    let unresolvedMatch;
+    while ((unresolvedMatch = unresolvedPattern.exec(resolvedUrl)) !== null) {
+      variableWarnings.push(`Undefined variable: {{${unresolvedMatch[1].trim()}}}`);
+    }
+
+    let targetUrl: URL;
+    try {
+      targetUrl = new URL(resolvedUrl);
+    } catch {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Invalid URL format'
+      });
+    }
+
     const fetchOptions: RequestInit = {
       method,
-      headers: requestHeaders,
+      headers: resolvedHeaders,
       signal: AbortSignal.timeout(timeout)
     };
 
-    // Add body for methods that support it
     if (body.body && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
-      if (typeof body.body === 'string') {
-        fetchOptions.body = body.body;
-      } else if (body.body instanceof FormData) {
-        fetchOptions.body = body.body;
+      if (typeof resolvedBody === 'string') {
+        fetchOptions.body = resolvedBody;
+      } else if (resolvedBody instanceof FormData) {
+        fetchOptions.body = resolvedBody;
       } else {
-        // Assume JSON
-        fetchOptions.body = JSON.stringify(body.body);
-        if (!requestHeaders['Content-Type'] && !requestHeaders['content-type']) {
-          requestHeaders['Content-Type'] = 'application/json';
+        fetchOptions.body = JSON.stringify(resolvedBody);
+        if (!resolvedHeaders['Content-Type'] && !resolvedHeaders['content-type']) {
+          resolvedHeaders['Content-Type'] = 'application/json';
         }
       }
     }
 
-    // Make the request
     const response = await fetch(targetUrl.toString(), fetchOptions);
     const endTime = new Date();
 
-    // Extract response headers
     const responseHeaders: Record<string, string> = {};
     response.headers.forEach((value, key) => {
       responseHeaders[key] = value;
     });
 
-    // Parse response body based on content type
     let responseBody: any;
     const contentType = response.headers.get('content-type') || '';
 
@@ -159,7 +258,6 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
       } else if (contentType.includes('text/') || contentType.includes('application/xml') || contentType.includes('application/javascript')) {
         responseBody = await response.text();
       } else if (contentType.includes('application/octet-stream') || contentType.includes('image/') || contentType.includes('audio/') || contentType.includes('video/')) {
-        // For binary data, return base64 encoded
         const arrayBuffer = await response.arrayBuffer();
         const base64 = Buffer.from(arrayBuffer).toString('base64');
         responseBody = {
@@ -169,7 +267,6 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
           size: arrayBuffer.byteLength
         };
       } else {
-        // Try to parse as text first, fallback to raw
         try {
           responseBody = await response.text();
         } catch {
@@ -190,10 +287,11 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
         startTime: startTime.toISOString(),
         endTime: endTime.toISOString(),
         durationMs: endTime.getTime() - startTime.getTime()
-      }
+      },
+      variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined,
+      resolvedValues: resolvedValues && Object.keys(resolvedValues).length > 0 ? resolvedValues : undefined
     };
 
-    // Auto-log to history if workspaceId is provided
     if (body.workspaceId) {
       try {
         const requestData: RequestData = {
@@ -218,7 +316,6 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
           timestamp: startTime
         }).run();
       } catch (logError) {
-        // Log error but don't fail the request
         console.error('Failed to log request to history:', logError);
       }
     }
@@ -228,12 +325,10 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
   } catch (error: any) {
     const endTime = new Date();
 
-    // Handle H3 errors (validation errors)
     if (error.statusCode) {
       throw error;
     }
 
-    // Handle timeout errors
     if (error.name === 'TimeoutError' || error.code === 'ABORT_ERR' || error.message?.includes('timeout')) {
       return {
         success: false,
@@ -246,11 +341,11 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
           startTime: startTime.toISOString(),
           endTime: endTime.toISOString(),
           durationMs: endTime.getTime() - startTime.getTime()
-        }
+        },
+        variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined
       };
     }
 
-    // Handle network errors
     if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND' || error.code === 'ECONNRESET') {
       return {
         success: false,
@@ -263,11 +358,11 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
           startTime: startTime.toISOString(),
           endTime: endTime.toISOString(),
           durationMs: endTime.getTime() - startTime.getTime()
-        }
+        },
+        variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined
       };
     }
 
-    // Handle DNS errors
     if (error.code === 'EAI_AGAIN' || error.code === 'ENOENT') {
       return {
         success: false,
@@ -280,11 +375,11 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
           startTime: startTime.toISOString(),
           endTime: endTime.toISOString(),
           durationMs: endTime.getTime() - startTime.getTime()
-        }
+        },
+        variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined
       };
     }
 
-    // Handle SSL/TLS errors
     if (error.code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' || error.code === 'CERT_HAS_EXPIRED' || error.message?.includes('SSL') || error.message?.includes('certificate')) {
       return {
         success: false,
@@ -297,11 +392,11 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
           startTime: startTime.toISOString(),
           endTime: endTime.toISOString(),
           durationMs: endTime.getTime() - startTime.getTime()
-        }
+        },
+        variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined
       };
     }
 
-    // Generic error fallback
     return {
       success: false,
       error: {
@@ -313,7 +408,8 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
         startTime: startTime.toISOString(),
         endTime: endTime.toISOString(),
         durationMs: endTime.getTime() - startTime.getTime()
-      }
+      },
+      variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined
     };
   }
 });

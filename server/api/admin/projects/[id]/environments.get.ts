@@ -1,6 +1,6 @@
 import { db } from '../../../../db';
 import { projects, environments, environmentVariables } from '../../../../db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, inArray } from 'drizzle-orm';
 
 interface EnvironmentWithVariables {
   id: string;
@@ -28,7 +28,6 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    // Verify project exists
     const project = db
       .select()
       .from(projects)
@@ -42,7 +41,6 @@ export default defineEventHandler(async (event) => {
       });
     }
 
-    // Get all environments for this project
     const projectEnvironments = db
       .select()
       .from(environments)
@@ -50,28 +48,40 @@ export default defineEventHandler(async (event) => {
       .orderBy(desc(environments.createdAt))
       .all();
 
-    // Build environments with their variables
-    const environmentsWithVariables: EnvironmentWithVariables[] = projectEnvironments.map(env => {
-      // Get all variables for this environment
-      const variables = db
-        .select()
-        .from(environmentVariables)
-        .where(eq(environmentVariables.environmentId, env.id))
-        .all();
+    if (projectEnvironments.length === 0) {
+      return [];
+    }
 
-      return {
-        ...env,
-        variables: variables.map(v => ({
-          ...v,
-          // Mask secret values
-          value: v.isSecret ? '••••••••' : v.value
-        }))
-      };
-    });
+    const environmentIds = projectEnvironments.map(env => env.id);
+
+    const allVariables = db
+      .select()
+      .from(environmentVariables)
+      .where(inArray(environmentVariables.environmentId, environmentIds))
+      .all();
+
+    const variablesByEnvironment = new Map<string, typeof allVariables>();
+    for (const envId of environmentIds) {
+      variablesByEnvironment.set(envId, []);
+    }
+
+    for (const variable of allVariables) {
+      const variables = variablesByEnvironment.get(variable.environmentId);
+      if (variables) {
+        variables.push({
+          ...variable,
+          value: variable.isSecret ? '••••••••' : variable.value
+        });
+      }
+    }
+
+    const environmentsWithVariables: EnvironmentWithVariables[] = projectEnvironments.map(env => ({
+      ...env,
+      variables: variablesByEnvironment.get(env.id) || []
+    }));
 
     return environmentsWithVariables;
   } catch (error: any) {
-    // Re-throw if it's already an H3 error
     if (error.statusCode) {
       throw error;
     }

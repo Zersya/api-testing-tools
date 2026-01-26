@@ -1,14 +1,33 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import EnvironmentSwitcher from './EnvironmentSwitcher.vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 
 interface Props {
   title?: string;
   showActions?: boolean;
+  environments?: Array<{
+    id: string;
+    projectId: string;
+    name: string;
+    isActive: boolean;
+    variables: Array<{
+      id: string;
+      key: string;
+      value: string;
+      isSecret: boolean;
+      environmentId: string;
+    }>;
+  }>;
+  activeEnvironmentId?: string | null;
+  currentProjectId?: string | null;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   title: 'Mock Services',
-  showActions: true
+  showActions: true,
+  environments: () => [],
+  activeEnvironmentId: null,
+  currentProjectId: null
 });
 
 const emit = defineEmits<{
@@ -67,6 +86,9 @@ const syncStatus = ref<SyncStatus | null>(null);
 const syncConfig = ref<SyncConfig | null>(null);
 const isSyncing = ref(false);
 
+const route = useRoute();
+const isEnvironmentsPage = computed(() => route.path === '/admin/environments');
+
 const checkAuth = async () => {
   try {
     const data = await $fetch<AuthState>('/api/auth/check');
@@ -94,9 +116,9 @@ const logout = async () => {
 
 const getInitials = (name: string): string => {
   if (!name) return '?';
-  const parts = name.split(' ');
+  const parts = name.split(' ').filter(p => p.length > 0);
   if (parts.length >= 2) {
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    return (parts[0][0] || '') + (parts[parts.length - 1][0] || '');
   }
   return name.substring(0, 2).toUpperCase();
 };
@@ -195,15 +217,8 @@ onMounted(async () => {
       fetchSyncStatus();
     }
   }, 30000);
-});
 
-onUnmounted(() => {
-  if (authCheckInterval) {
-    clearInterval(authCheckInterval);
-  }
-  if (syncStatusInterval) {
-    clearInterval(syncStatusInterval);
-  }
+  document.addEventListener('click', closeUserMenu);
 });
 
 const closeUserMenu = (e: MouseEvent) => {
@@ -213,11 +228,13 @@ const closeUserMenu = (e: MouseEvent) => {
   }
 };
 
-onMounted(() => {
-  document.addEventListener('click', closeUserMenu);
-});
-
 onUnmounted(() => {
+  if (authCheckInterval) {
+    clearInterval(authCheckInterval);
+  }
+  if (syncStatusInterval) {
+    clearInterval(syncStatusInterval);
+  }
   document.removeEventListener('click', closeUserMenu);
 });
 </script>
@@ -244,9 +261,18 @@ onUnmounted(() => {
 
     <!-- Right Section -->
     <div class="flex items-center gap-2">
+      <!-- Environment Switcher -->
+      <EnvironmentSwitcher
+        :environments="environments"
+        :active-environment-id="activeEnvironmentId"
+        @update:active-environment-id="emit('activateEnvironment', $event)"
+        @manage="navigateTo('/admin/environments')"
+        @create="navigateTo('/admin/environments')"
+      />
+
       <!-- Import Button -->
       <button
-        v-if="showActions"
+        v-if="showActions && !isEnvironmentsPage"
         class="inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 bg-bg-tertiary text-text-secondary border border-border-default rounded-md cursor-pointer text-[13px] font-medium transition-all duration-fast hover:bg-bg-hover hover:text-text-primary hover:border-accent-orange"
         @click="emit('importOpenAPI')"
         title="Import OpenAPI"
@@ -261,7 +287,7 @@ onUnmounted(() => {
 
       <!-- Export Button -->
       <button
-        v-if="showActions"
+        v-if="showActions && !isEnvironmentsPage"
         class="inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 bg-bg-tertiary text-text-secondary border border-border-default rounded-md cursor-pointer text-[13px] font-medium transition-all duration-fast hover:bg-bg-hover hover:text-text-primary hover:border-accent-orange"
         @click="emit('exportOpenAPI')"
         title="Export OpenAPI"
@@ -276,7 +302,7 @@ onUnmounted(() => {
 
       <!-- Settings Button -->
       <button
-        v-if="showActions"
+        v-if="showActions && !isEnvironmentsPage"
         class="inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 bg-transparent text-text-secondary border-none rounded-md cursor-pointer text-[13px] font-medium transition-all duration-fast hover:bg-bg-hover hover:text-text-primary"
         @click="emit('openSettings')"
         title="Settings"
