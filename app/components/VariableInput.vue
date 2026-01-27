@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 
 interface Variable {
   id: string;
@@ -27,13 +27,52 @@ const emit = defineEmits<{
   'update:modelValue': [value: string];
 }>();
 
-const inputRef = ref<HTMLInputElement | null>(null);
+const editorRef = ref<HTMLElement | null>(null);
 const showAutocomplete = ref(false);
 const autocompleteIndex = ref(0);
 const cursorPosition = ref(0);
-const showVariables = ref(false);
+const isComposing = ref(false);
 
 const VARIABLE_PATTERN = /\{\{([^{}]+)\}\}/g;
+
+const escapeHtml = (text: string): string => {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+};
+
+const highlightedContent = computed(() => {
+  if (!props.modelValue) return '';
+
+  let result = '';
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = VARIABLE_PATTERN.exec(props.modelValue)) !== null) {
+    const [fullMatch, variableName] = match;
+    const startIndex = match.index;
+    const endIndex = startIndex + fullMatch.length;
+
+    result += escapeHtml(props.modelValue.slice(lastIndex, startIndex));
+
+    const trimmedName = variableName.trim();
+    const variable = props.variables?.find(v => v.key === trimmedName);
+    const isDefined = !!variable;
+    
+    const colorClass = isDefined ? 'var-defined' : 'var-undefined';
+    const titleAttr = variable 
+      ? (variable.isSecret ? '••••••••' : escapeHtml(variable.value))
+      : 'Undefined variable';
+    
+    result += `<span class="${colorClass}" title="${titleAttr}">${escapeHtml(fullMatch)}</span>`;
+
+    lastIndex = endIndex;
+  }
+
+  result += escapeHtml(props.modelValue.slice(lastIndex));
+
+  return result;
+});
 
 const filteredVariables = computed(() => {
   if (!props.variables || props.variables.length === 0) return [];
@@ -49,16 +88,66 @@ const filteredVariables = computed(() => {
   );
 });
 
-const getVariableInfo = (key: string) => {
-  return props.variables?.find(v => v.key === key);
+const saveSelection = () => {
+  const selection = window.getSelection();
+  if (!selection || !editorRef.value) return null;
+  
+  const range = selection.getRangeAt(0);
+  const preCaretRange = range.cloneRange();
+  preCaretRange.selectNodeContents(editorRef.value);
+  preCaretRange.setEnd(range.endContainer, range.endOffset);
+  
+  return preCaretRange.toString().length;
 };
 
-const handleInput = (event: Event) => {
-  const target = event.target as HTMLInputElement;
-  cursorPosition.value = target.selectionStart || 0;
-  emit('update:modelValue', target.value);
+const restoreSelection = (position: number) => {
+  if (!editorRef.value) return;
   
-  const textBeforeCursor = target.value.slice(0, cursorPosition.value);
+  const treeWalker = document.createTreeWalker(editorRef.value, NodeFilter.SHOW_TEXT, null);
+  let currentPos = 0;
+  let node: Node | null = null;
+  
+  while (treeWalker.nextNode()) {
+    node = treeWalker.currentNode;
+    const nodeLength = node.textContent?.length || 0;
+    
+    if (currentPos + nodeLength >= position) {
+      const range = document.createRange();
+      range.setStart(node, Math.min(position - currentPos, nodeLength));
+      range.collapse(true);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      return;
+    }
+    
+    currentPos += nodeLength;
+  }
+};
+
+const getEditorText = (): string => {
+  if (!editorRef.value) return '';
+  
+  let text = '';
+  const walker = document.createTreeWalker(editorRef.value, NodeFilter.SHOW_TEXT, null);
+  let node: Node | null = walker.nextNode();
+  
+  while (node) {
+    text += node.textContent;
+    node = walker.nextNode();
+  }
+  
+  return text;
+};
+
+const handleInput = () => {
+  if (isComposing.value) return;
+  
+  const content = getEditorText();
+  cursorPosition.value = saveSelection() || 0;
+  emit('update:modelValue', content);
+  
+  const textBeforeCursor = content.slice(0, cursorPosition.value);
   const lastTwoChars = textBeforeCursor.slice(-2);
   if (lastTwoChars === '{{') {
     showAutocomplete.value = true;
@@ -90,29 +179,19 @@ const handleKeydown = (event: KeyboardEvent) => {
     selectVariable(filteredVariables.value[autocompleteIndex.value]);
   } else if (event.key === 'Escape') {
     showAutocomplete.value = false;
-  } else if (event.key === '{') {
-    const textBeforeCursor = props.modelValue.slice(0, cursorPosition.value);
-    const lastChar = textBeforeCursor.slice(-1);
-    if (lastChar === '{') {
-      showAutocomplete.value = true;
-      autocompleteIndex.value = 0;
-    }
+  } else if (event.key === 'Backspace' || event.key === 'Delete') {
+    showAutocomplete.value = false;
   } else {
     showAutocomplete.value = false;
   }
 };
 
-const handleFocus = () => {
-  cursorPosition.value = inputRef.value?.selectionStart || 0;
-  showVariables.value = true;
-};
-
-const handleBlur = () => {
-  showVariables.value = false;
-};
-
 const handleClick = () => {
-  cursorPosition.value = inputRef.value?.selectionStart || 0;
+  cursorPosition.value = saveSelection() || 0;
+};
+
+const handleFocus = () => {
+  cursorPosition.value = saveSelection() || 0;
 };
 
 const selectVariable = (variable: Variable) => {
@@ -131,49 +210,54 @@ const selectVariable = (variable: Variable) => {
 
   emit('update:modelValue', newValue);
   showAutocomplete.value = false;
-
-  nextTick(() => {
-    const newCursorPos = lastDoubleBraceIndex !== -1 
-      ? lastDoubleBraceIndex + variable.key.length + 4 
-      : newValue.length;
-    inputRef.value?.setSelectionRange(newCursorPos, newCursorPos);
-    inputRef.value?.focus();
-  });
 };
 
-const formatVariablePreview = (text: string): string => {
-  return text.replace(VARIABLE_PATTERN, (match, name) => {
-    const trimmedName = name.trim();
-    const variable = getVariableInfo(trimmedName);
-    if (variable) {
-      return `<span class="text-accent-blue font-medium">${match}</span>`;
+const closeAutocomplete = () => {
+  setTimeout(() => {
+    showAutocomplete.value = false;
+  }, 200);
+};
+
+watch(() => props.modelValue, (newValue) => {
+  if (editorRef.value && getEditorText() !== newValue) {
+    const savedPos = saveSelection();
+    editorRef.value.innerHTML = highlightedContent.value;
+    
+    if (savedPos !== null) {
+      restoreSelection(savedPos);
     }
-    return `<span class="text-accent-orange font-medium">${match}</span>`;
+  }
+});
+
+onMounted(() => {
+  if (editorRef.value && !editorRef.value.innerHTML) {
+    editorRef.value.innerHTML = highlightedContent.value;
+  }
+  
+  document.addEventListener('click', (e) => {
+    if (editorRef.value && !editorRef.value.contains(e.target as Node)) {
+      showAutocomplete.value = false;
+    }
   });
-};
+});
 </script>
 
 <template>
   <div class="relative variable-input-wrapper">
-    <input
-      ref="inputRef"
-      :value="modelValue"
-      :type="type"
+    <div
+      ref="editorRef"
+      contenteditable="true"
+      :class="['variable-editor', disabled ? 'disabled' : '']"
       :placeholder="placeholder"
       :disabled="disabled"
-      :autofocus="autoFocus"
       @input="handleInput"
       @keydown="handleKeydown"
-      @focus="handleFocus"
-      @blur="handleBlur"
       @click="handleClick"
-      class="variable-input"
-    />
-
-    <div 
-      v-if="showVariables && modelValue.includes('{{')"
-      class="variable-preview"
-      v-html="formatVariablePreview(modelValue)"
+      @focus="handleFocus"
+      @blur="closeAutocomplete"
+      @compositionstart="isComposing = true"
+      @compositionend="isComposing = false"
+      spellcheck="false"
     ></div>
 
     <template v-if="showAutocomplete && filteredVariables.length > 0">
@@ -181,8 +265,8 @@ const formatVariablePreview = (text: string): string => {
         <div 
           class="absolute z-50 w-64 max-h-48 overflow-auto bg-bg-secondary border border-border-default rounded-lg shadow-xl variable-autocomplete"
           :style="{
-            top: `${inputRef?.getBoundingClientRect?.()?.bottom + 4 || 0}px`,
-            left: `${inputRef?.getBoundingClientRect?.()?.left || 0}px`
+            top: `${editorRef?.getBoundingClientRect?.()?.bottom + 4 || 0}px`,
+            left: `${editorRef?.getBoundingClientRect?.()?.left || 0}px`
           }"
         >
           <div
@@ -217,8 +301,9 @@ const formatVariablePreview = (text: string): string => {
   width: 100%;
 }
 
-.variable-input {
+.variable-editor {
   width: 100%;
+  min-height: 34px;
   padding: 6px 8px;
   background: var(--bg-input);
   border: 1px solid var(--border-default);
@@ -228,36 +313,33 @@ const formatVariablePreview = (text: string): string => {
   line-height: 1.5;
   color: var(--text-primary);
   outline: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
-.variable-input:focus {
+.variable-editor:focus {
   border-color: var(--accent-blue);
 }
 
-.variable-input:disabled {
+.variable-editor.disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.variable-input::placeholder {
+.variable-editor:empty::before {
+  content: attr(placeholder);
   color: var(--text-muted);
 }
 
-.variable-preview {
-  position: absolute;
-  top: -20px;
-  left: 0;
-  right: 0;
-  padding: 4px 8px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-default);
-  border-radius: 4px;
-  font-family: 'JetBrains Mono', 'SF Mono', monospace;
-  font-size: 11px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  z-index: 10;
+.variable-editor :deep(.var-defined) {
+  color: var(--accent-blue);
+  font-weight: 500;
+}
+
+.variable-editor :deep(.var-undefined) {
+  color: var(--accent-orange);
+  font-weight: 500;
 }
 
 .variable-autocomplete {

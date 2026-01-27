@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 
 interface Variable {
   id: string;
@@ -25,58 +25,133 @@ const emit = defineEmits<{
   'update:modelValue': [value: string];
 }>();
 
-const textareaRef = ref<HTMLTextAreaElement | null>(null);
-const showVariables = ref(false);
+const editorRef = ref<HTMLElement | null>(null);
 
 const VARIABLE_PATTERN = /\{\{([^{}]+)\}\}/g;
 
-const getVariableInfo = (key: string) => {
-  return props.variables?.find(v => v.key === key);
+const escapeHtml = (text: string): string => {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 };
 
-const handleInput = (event: Event) => {
-  const target = event.target as HTMLTextAreaElement;
-  emit('update:modelValue', target.value);
+const highlightedContent = computed(() => {
+  if (!props.modelValue) return '';
+
+  let result = '';
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = VARIABLE_PATTERN.exec(props.modelValue)) !== null) {
+    const [fullMatch, variableName] = match;
+    const startIndex = match.index;
+    const endIndex = startIndex + fullMatch.length;
+
+    result += escapeHtml(props.modelValue.slice(lastIndex, startIndex));
+
+    const trimmedName = variableName.trim();
+    const variable = props.variables?.find(v => v.key === trimmedName);
+    const isDefined = !!variable;
+    
+    const colorClass = isDefined ? 'var-defined' : 'var-undefined';
+    const titleAttr = variable 
+      ? (variable.isSecret ? '••••••••' : escapeHtml(variable.value))
+      : 'Undefined variable';
+    
+    result += `<span class="${colorClass}" title="${titleAttr}">${escapeHtml(fullMatch)}</span>`;
+
+    lastIndex = endIndex;
+  }
+
+  result += escapeHtml(props.modelValue.slice(lastIndex));
+
+  if (props.modelValue.endsWith('\n')) {
+    result += '\n';
+  }
+
+  return result;
+});
+
+const getEditorText = (): string => {
+  if (!editorRef.value) return '';
+  
+  let text = '';
+  const walker = document.createTreeWalker(editorRef.value, NodeFilter.SHOW_TEXT, null);
+  let node: Node | null = walker.nextNode();
+  
+  while (node) {
+    text += node.textContent;
+    node = walker.nextNode();
+  }
+  
+  return text;
 };
 
-const handleFocus = () => {
-  showVariables.value = true;
+const saveSelection = () => {
+  const selection = window.getSelection();
+  if (!selection || !editorRef.value) return null;
+  
+  const range = selection.getRangeAt(0);
+  const preCaretRange = range.cloneRange();
+  preCaretRange.selectNodeContents(editorRef.value);
+  preCaretRange.setEnd(range.endContainer, range.endOffset);
+  
+  return preCaretRange.toString().length;
 };
 
-const handleBlur = () => {
-  showVariables.value = false;
-};
-
-const formatVariablePreview = (text: string): string => {
-  return text.replace(VARIABLE_PATTERN, (match, name) => {
-    const trimmedName = name.trim();
-    const variable = getVariableInfo(trimmedName);
-    if (variable) {
-      return `<span class="text-accent-blue font-medium">${match}</span>`;
+const restoreSelection = (position: number) => {
+  if (!editorRef.value) return;
+  
+  const treeWalker = document.createTreeWalker(editorRef.value, NodeFilter.SHOW_TEXT, null);
+  let currentPos = 0;
+  let node: Node | null = null;
+  
+  while (treeWalker.nextNode()) {
+    node = treeWalker.currentNode;
+    const nodeLength = node.textContent?.length || 0;
+    
+    if (currentPos + nodeLength >= position) {
+      const range = document.createRange();
+      range.setStart(node, Math.min(position - currentPos, nodeLength));
+      range.collapse(true);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      return;
     }
-    return `<span class="text-accent-orange font-medium">${match}</span>`;
-  });
+    
+    currentPos += nodeLength;
+  }
 };
+
+const handleInput = () => {
+  const content = getEditorText();
+  emit('update:modelValue', content);
+};
+
+watch(() => props.modelValue, (newValue) => {
+  if (editorRef.value && getEditorText() !== newValue) {
+    const savedPos = saveSelection();
+    editorRef.value.innerHTML = highlightedContent.value;
+    
+    if (savedPos !== null) {
+      restoreSelection(savedPos);
+    }
+  }
+});
 </script>
 
 <template>
   <div class="relative variable-textarea-wrapper">
-    <textarea
-      ref="textareaRef"
-      :value="modelValue"
+    <div
+      ref="editorRef"
+      contenteditable="true"
+      :class="['variable-editor', disabled ? 'disabled' : '']"
       :placeholder="placeholder"
       :rows="rows"
       :disabled="disabled"
       @input="handleInput"
-      @focus="handleFocus"
-      @blur="handleBlur"
-      class="variable-textarea"
-    />
-
-    <div 
-      v-if="showVariables && modelValue.includes('{{')"
-      class="variable-preview"
-      v-html="formatVariablePreview(modelValue)"
+      spellcheck="false"
     ></div>
   </div>
 </template>
@@ -87,7 +162,7 @@ const formatVariablePreview = (text: string): string => {
   width: 100%;
 }
 
-.variable-textarea {
+.variable-editor {
   width: 100%;
   min-height: 100px;
   padding: 8px 12px;
@@ -101,35 +176,31 @@ const formatVariablePreview = (text: string): string => {
   outline: none;
   resize: none;
   overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
-.variable-textarea:focus {
+.variable-editor:focus {
   border-color: var(--accent-blue);
 }
 
-.variable-textarea:disabled {
+.variable-editor.disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.variable-textarea::placeholder {
+.variable-editor:empty::before {
+  content: attr(placeholder);
   color: var(--text-muted);
 }
 
-.variable-preview {
-  position: absolute;
-  top: -20px;
-  left: 0;
-  right: 0;
-  padding: 4px 8px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-default);
-  border-radius: 4px;
-  font-family: 'JetBrains Mono', 'SF Mono', monospace;
-  font-size: 11px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  z-index: 10;
+.variable-editor :deep(.var-defined) {
+  color: var(--accent-blue);
+  font-weight: 500;
+}
+
+.variable-editor :deep(.var-undefined) {
+  color: var(--accent-orange);
+  font-weight: 500;
 }
 </style>
