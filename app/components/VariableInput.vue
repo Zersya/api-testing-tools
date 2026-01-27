@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue';
+import { ref, computed, nextTick, onMounted } from 'vue';
 
 interface Variable {
   id: string;
@@ -31,53 +31,14 @@ const inputRef = ref<HTMLInputElement | null>(null);
 const showAutocomplete = ref(false);
 const autocompleteIndex = ref(0);
 const cursorPosition = ref(0);
+const showVariables = ref(false);
 
 const VARIABLE_PATTERN = /\{\{([^{}]+)\}\}/g;
-
-const highlightVariables = computed(() => {
-  if (!props.modelValue) return '';
-
-  let result = '';
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = VARIABLE_PATTERN.exec(props.modelValue)) !== null) {
-    const [fullMatch, variableName] = match;
-    const startIndex = match.index;
-    const endIndex = startIndex + fullMatch.length;
-
-    // Text before the variable
-    result += escapeHtml(props.modelValue.slice(lastIndex, startIndex));
-
-    // Highlight the variable
-    const trimmedName = variableName.trim();
-    const variable = props.variables?.find(v => v.key === trimmedName);
-    const isDefined = !!variable;
-    
-    const colorClass = isDefined ? 'text-accent-blue' : 'text-accent-orange';
-    const cursorClass = isDefined ? 'cursor-pointer' : 'cursor-default';
-    const titleAttr = variable 
-      ? (variable.isSecret ? '••••••••' : variable.value)
-      : 'Undefined variable';
-    
-    result += `<span class="variable-highlight ${colorClass} ${cursorClass}" title="${escapeHtml(titleAttr)}" data-variable="${trimmedName}">${escapeHtml(fullMatch)}</span>`;
-
-    lastIndex = endIndex;
-  }
-
-  // Add remaining text
-  result += escapeHtml(props.modelValue.slice(lastIndex));
-
-  return result;
-});
 
 const filteredVariables = computed(() => {
   if (!props.variables || props.variables.length === 0) return [];
 
-  // Find the current variable being typed
   const beforeCursor = props.modelValue.slice(0, cursorPosition.value);
-  
-  // Check if user is typing after {{
   const lastDoubleBraceIndex = beforeCursor.lastIndexOf('{{');
   if (lastDoubleBraceIndex === -1) return [];
 
@@ -88,10 +49,8 @@ const filteredVariables = computed(() => {
   );
 });
 
-const escapeHtml = (text: string): string => {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+const getVariableInfo = (key: string) => {
+  return props.variables?.find(v => v.key === key);
 };
 
 const handleInput = (event: Event) => {
@@ -99,16 +58,26 @@ const handleInput = (event: Event) => {
   cursorPosition.value = target.selectionStart || 0;
   emit('update:modelValue', target.value);
   
-  // Show autocomplete if typing '{' after '{'
-  const lastTwoChars = target.value.slice(0, cursorPosition.value).slice(-2);
+  const textBeforeCursor = target.value.slice(0, cursorPosition.value);
+  const lastTwoChars = textBeforeCursor.slice(-2);
   if (lastTwoChars === '{{') {
     showAutocomplete.value = true;
     autocompleteIndex.value = 0;
   }
 };
 
-const handleKeyDown = (event: KeyboardEvent) => {
-  if (!showAutocomplete.value) return;
+const handleKeydown = (event: KeyboardEvent) => {
+  if (!showAutocomplete.value) {
+    if (event.key === '{') {
+      const textBeforeCursor = props.modelValue.slice(0, cursorPosition.value);
+      const lastChar = textBeforeCursor.slice(-1);
+      if (lastChar === '{') {
+        showAutocomplete.value = true;
+        autocompleteIndex.value = 0;
+      }
+    }
+    return;
+  }
 
   if (event.key === 'ArrowDown') {
     event.preventDefault();
@@ -122,17 +91,24 @@ const handleKeyDown = (event: KeyboardEvent) => {
   } else if (event.key === 'Escape') {
     showAutocomplete.value = false;
   } else if (event.key === '{') {
-    // Check if previous char is also '{'
-    const lastChar = props.modelValue.slice(0, cursorPosition.value).slice(-1);
+    const textBeforeCursor = props.modelValue.slice(0, cursorPosition.value);
+    const lastChar = textBeforeCursor.slice(-1);
     if (lastChar === '{') {
       showAutocomplete.value = true;
       autocompleteIndex.value = 0;
     }
+  } else {
+    showAutocomplete.value = false;
   }
 };
 
 const handleFocus = () => {
   cursorPosition.value = inputRef.value?.selectionStart || 0;
+  showVariables.value = true;
+};
+
+const handleBlur = () => {
+  showVariables.value = false;
 };
 
 const handleClick = () => {
@@ -142,8 +118,7 @@ const handleClick = () => {
 const selectVariable = (variable: Variable) => {
   const beforeCursor = props.modelValue.slice(0, cursorPosition.value);
   const afterCursor = props.modelValue.slice(cursorPosition.value);
-
-  // Find the last {{ before cursor
+  
   const lastDoubleBraceIndex = beforeCursor.lastIndexOf('{{');
   
   let newValue: string;
@@ -157,7 +132,6 @@ const selectVariable = (variable: Variable) => {
   emit('update:modelValue', newValue);
   showAutocomplete.value = false;
 
-  // Move cursor after the inserted variable
   nextTick(() => {
     const newCursorPos = lastDoubleBraceIndex !== -1 
       ? lastDoubleBraceIndex + variable.key.length + 4 
@@ -167,27 +141,16 @@ const selectVariable = (variable: Variable) => {
   });
 };
 
-const jumpToVariableDefinition = (variableName: string) => {
-  const variable = props.variables?.find(v => v.key === variableName);
-  if (variable) {
-    navigateTo('/admin/environments');
-  }
-};
-
-const closeAutocomplete = () => {
-  setTimeout(() => {
-    showAutocomplete.value = false;
-  }, 200);
-};
-
-// Close autocomplete when clicking outside
-onMounted(() => {
-  document.addEventListener('click', (e) => {
-    if (inputRef.value && !inputRef.value.contains(e.target as Node)) {
-      showAutocomplete.value = false;
+const formatVariablePreview = (text: string): string => {
+  return text.replace(VARIABLE_PATTERN, (match, name) => {
+    const trimmedName = name.trim();
+    const variable = getVariableInfo(trimmedName);
+    if (variable) {
+      return `<span class="text-accent-blue font-medium">${match}</span>`;
     }
+    return `<span class="text-accent-orange font-medium">${match}</span>`;
   });
-});
+};
 </script>
 
 <template>
@@ -200,20 +163,26 @@ onMounted(() => {
       :disabled="disabled"
       :autofocus="autoFocus"
       @input="handleInput"
-      @keydown="handleKeyDown"
+      @keydown="handleKeydown"
       @focus="handleFocus"
+      @blur="handleBlur"
       @click="handleClick"
-      @blur="closeAutocomplete"
-      class="w-full py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed placeholder:text-text-muted"
+      class="variable-input"
     />
+
+    <div 
+      v-if="showVariables && modelValue.includes('{{')"
+      class="variable-preview"
+      v-html="formatVariablePreview(modelValue)"
+    ></div>
 
     <template v-if="showAutocomplete && filteredVariables.length > 0">
       <Teleport to="body">
         <div 
           class="absolute z-50 w-64 max-h-48 overflow-auto bg-bg-secondary border border-border-default rounded-lg shadow-xl variable-autocomplete"
           :style="{
-            top: `${inputRef?.getBoundingClientRect().bottom + 4}px`,
-            left: `${inputRef?.getBoundingClientRect().left}px`
+            top: `${inputRef?.getBoundingClientRect?.()?.bottom + 4 || 0}px`,
+            left: `${inputRef?.getBoundingClientRect?.()?.left || 0}px`
           }"
         >
           <div
@@ -243,18 +212,52 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.variable-input-wrapper :deep(.variable-highlight) {
-  font-weight: 500;
-  background: var(--bg-tertiary);
-  padding: 0 2px;
-  border-radius: 2px;
+.variable-input-wrapper {
+  position: relative;
+  width: 100%;
 }
 
-.variable-input-wrapper :deep(.variable-highlight.cursor-pointer) {
-  text-decoration: underline;
-  text-decoration-style: dotted;
-  text-decoration-color: currentcolor;
-  text-decoration-thickness: 1px;
+.variable-input {
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.variable-input:focus {
+  border-color: var(--accent-blue);
+}
+
+.variable-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.variable-input::placeholder {
+  color: var(--text-muted);
+}
+
+.variable-preview {
+  position: absolute;
+  top: -20px;
+  left: 0;
+  right: 0;
+  padding: 4px 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 10;
 }
 
 .variable-autocomplete {

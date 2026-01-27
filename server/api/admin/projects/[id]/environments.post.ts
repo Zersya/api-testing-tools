@@ -56,7 +56,9 @@ export default defineEventHandler(async (event) => {
   }
 
   const userId = event.context?.user?.id;
-  if (!userId || project.workspaceId !== event.context.user.workspaceId) {
+  const userWorkspaceId = event.context?.user?.workspaceId;
+  
+  if (!userId || (userWorkspaceId && project.workspaceId !== userWorkspaceId)) {
     throw createError({
       statusCode: 403,
       statusMessage: 'Forbidden'

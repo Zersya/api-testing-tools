@@ -12,7 +12,7 @@ import { db } from '../../db';
 import { requestHistories } from '../../db/schema';
 import { environments, environmentVariables } from '../../db/schema';
 import type { HttpMethod, RequestData, ResponseData } from '../../db/schema/requestHistory';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 
 interface EnvironmentVariable {
   id: string;
@@ -20,14 +20,6 @@ interface EnvironmentVariable {
   key: string;
   value: string;
   isSecret: boolean;
-}
-
-interface EnvironmentWithVariables {
-  id: string;
-  projectId: string;
-  name: string;
-  isActive: boolean;
-  variables: EnvironmentVariable[];
 }
 
 interface ProxyRequestBody {
@@ -138,63 +130,70 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
 
     if (body.environmentId) {
       try {
-        const environment = await db.query.environments.findFirst({
-          where: eq(environments.id, body.environmentId),
-          with: {
-            variables: true,
-          },
-        }) as EnvironmentWithVariables | undefined;
+        const environment = db
+          .select()
+          .from(environments)
+          .where(eq(environments.id, body.environmentId))
+          .get();
 
-        if (environment && environment.variables && environment.variables.length > 0) {
-          const variables: Record<string, string> = {};
-          environment.variables.forEach((v: EnvironmentVariable) => {
-            variables[v.key] = v.value;
-          });
+        if (environment) {
+          const environmentVariablesList = db
+            .select()
+            .from(environmentVariables)
+            .where(eq(environmentVariables.environmentId, body.environmentId))
+            .all();
 
-          const substituteWithLimit = (input: string, maxIterations: number = 10): string => {
-            let result = input;
-            let iterations = 0;
-            const variablePattern = /\{\{([^{}]+)\}\}/g;
+          if (environmentVariablesList && environmentVariablesList.length > 0) {
+            const variables: Record<string, string> = {};
+            environmentVariablesList.forEach((v: EnvironmentVariable) => {
+              variables[v.key] = v.value;
+            });
 
-            let match;
-            while ((match = variablePattern.exec(result)) !== null && iterations < maxIterations) {
-              const trimmedName = match[1].trim();
-              if (variables.hasOwnProperty(trimmedName)) {
-                result = result.replace(match[0], variables[trimmedName]);
-                variablePattern.lastIndex = 0;
-                iterations++;
+            const substituteWithLimit = (input: string, maxIterations: number = 10): string => {
+              let result = input;
+              let iterations = 0;
+              const variablePattern = /\{\{([^{}]+)\}\}/g;
+
+              let match;
+              while ((match = variablePattern.exec(result)) !== null && iterations < maxIterations) {
+                const trimmedName = match[1].trim();
+                if (variables.hasOwnProperty(trimmedName)) {
+                  result = result.replace(match[0], variables[trimmedName]);
+                  variablePattern.lastIndex = 0;
+                  iterations++;
+                }
+              }
+
+              if (iterations >= maxIterations) {
+                variableWarnings.push(`Variable substitution limit reached (possible circular reference)`);
+              }
+
+              return result;
+            };
+
+            const originalUrl = body.url;
+            resolvedUrl = substituteWithLimit(body.url);
+            if (resolvedUrl !== originalUrl) {
+              resolvedValues = { ...resolvedValues, url: resolvedUrl };
+            }
+
+            for (const [key, value] of Object.entries(resolvedHeaders)) {
+              if (typeof value === 'string' && value.includes('{{')) {
+                resolvedHeaders[key] = substituteWithLimit(value);
               }
             }
 
-            if (iterations >= maxIterations) {
-              variableWarnings.push(`Variable substitution limit reached (possible circular reference)`);
-            }
-
-            return result;
-          };
-
-          const originalUrl = body.url;
-          resolvedUrl = substituteWithLimit(body.url);
-          if (resolvedUrl !== originalUrl) {
-            resolvedValues = { ...resolvedValues, url: resolvedUrl };
-          }
-
-          for (const [key, value] of Object.entries(resolvedHeaders)) {
-            if (typeof value === 'string' && value.includes('{{')) {
-              resolvedHeaders[key] = substituteWithLimit(value);
-            }
-          }
-
-          if (resolvedBody && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
-            if (typeof resolvedBody === 'string') {
-              resolvedBody = substituteWithLimit(resolvedBody);
-            } else {
-              const bodyStr = JSON.stringify(resolvedBody);
-              const substitutedBody = substituteWithLimit(bodyStr);
-              try {
-                resolvedBody = JSON.parse(substitutedBody);
-              } catch {
-                resolvedBody = substitutedBody;
+            if (resolvedBody && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+              if (typeof resolvedBody === 'string') {
+                resolvedBody = substituteWithLimit(resolvedBody);
+              } else {
+                const bodyStr = JSON.stringify(resolvedBody);
+                const substitutedBody = substituteWithLimit(bodyStr);
+                try {
+                  resolvedBody = JSON.parse(substitutedBody);
+                } catch {
+                  resolvedBody = substitutedBody;
+                }
               }
             }
           }

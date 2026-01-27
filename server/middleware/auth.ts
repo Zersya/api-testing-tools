@@ -1,9 +1,8 @@
 import jwt from 'jsonwebtoken';
 
-export default defineEventHandler((event) => {
+export default defineEventHandler(async (event) => {
     const path = event.path;
 
-    // Only protect /api/admin routes, but exclude login endpoint if it were under admin (it's not)
     if (path.startsWith('/api/admin')) {
         const token = getCookie(event, 'auth_token');
         const config = useRuntimeConfig();
@@ -15,13 +14,20 @@ export default defineEventHandler((event) => {
             });
         }
 
+        let decoded;
         try {
-            jwt.verify(token, config.jwtSecret);
+            decoded = jwt.verify(token, config.jwtSecret) as any;
         } catch (e) {
             throw createError({
                 statusCode: 401,
                 statusMessage: 'Invalid or expired token'
             });
         }
+
+        event.context.user = {
+            id: decoded.sub || decoded.id || 'unknown',
+            email: decoded.email || 'unknown',
+            workspaceId: decoded.workspaceId || 'personal'
+        };
     }
 });

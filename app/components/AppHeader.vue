@@ -263,6 +263,7 @@ onUnmounted(() => {
     <div class="flex items-center gap-2">
       <!-- Environment Switcher -->
       <EnvironmentSwitcher
+        v-if="!isEnvironmentsPage"
         :environments="environments"
         :active-environment-id="activeEnvironmentId"
         @update:active-environment-id="emit('activateEnvironment', $event)"

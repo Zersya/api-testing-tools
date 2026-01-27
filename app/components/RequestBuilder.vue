@@ -879,7 +879,7 @@ const autoRefreshToken = async () => {
 };
 
 const storeTokensInEnvironment = async () => {
-  if (!environmentId.value || !oauth2.value.accessToken) return;
+  if (!props.environmentId || !oauth2.value.accessToken) return;
 
   const tokenVariableName = `OAUTH_ACCESS_TOKEN`;
   const refreshVariableName = `OAUTH_REFRESH_TOKEN`;
@@ -889,7 +889,7 @@ const storeTokensInEnvironment = async () => {
     await $fetch('/api/oauth/store-tokens', {
       method: 'POST',
       body: {
-        environmentId: environmentId.value,
+        environmentId: props.environmentId,
         accessTokenKey: tokenVariableName,
         refreshTokenKey: refreshVariableName,
         expiresAtKey: expiresVariableName,
@@ -907,9 +907,9 @@ const storeTokensInEnvironment = async () => {
 };
 
 const fetchEnvironmentVariables = async () => {
-  if (environmentId.value) {
+  if (props.environmentId) {
     try {
-      const variables = await $fetch<Variable[]>(`/api/admin/environments/${environmentId.value}/variables`);
+      const variables = await $fetch<Variable[]>(`/api/admin/environments/${props.environmentId}/variables`);
       environmentVariables.value = variables;
     } catch (error) {
       console.error('Failed to fetch environment variables:', error);
@@ -2143,8 +2143,8 @@ onUnmounted(() => {
                       </button>
                       <button
                         @click="storeTokensInEnvironment"
-                        :disabled="!environmentId"
-                        class="flex-1 py-2 px-3 bg-bg-input border border-border-default rounded text-xs font-medium text-text-secondary hover:border-accent-green hover:text-accent-green transition-colors duration-fast disabled:opacity-50 disabled:cursor-not-allowed"
+                        :disabled="!props.environmentId"
+                        class="flex-1 py-2 px-3 bg-bg-input border border-border-default rounded text-xs font-medium text-text-secondary hover:border-accent-green hover:text-accent-green transition-colors duration-fast disabled:opacity50 disabled:cursor-not-allowed"
                         title="Store tokens in environment variables"
                       >
                         Store in Env
@@ -2220,7 +2220,7 @@ onUnmounted(() => {
                       </button>
                       <button
                         @click="storeTokensInEnvironment"
-                        :disabled="!environmentId"
+                        :disabled="!props.environmentId"
                         class="flex-1 py-2 px-3 bg-bg-input border border-border-default rounded text-xs font-medium text-text-secondary hover:border-accent-green hover:text-accent-green transition-colors duration-fast disabled:opacity-50 disabled:cursor-not-allowed"
                         title="Store token in environment variables"
                       >

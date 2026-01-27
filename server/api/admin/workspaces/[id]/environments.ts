@@ -1,6 +1,6 @@
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { db } from '../../../../db';
-import { environments, projects } from '../../../../db/schema';
+import { environments, projects, environmentVariables } from '../../../../db/schema';
 
 export default defineEventHandler(async (event) => {
   const workspaceId = getRouterParam(event, 'id');
@@ -24,15 +24,42 @@ export default defineEventHandler(async (event) => {
 
   const environmentsWithProjects = await db.query.environments.findMany({
     where: (environments, { inArray }) => inArray(environments.projectId, projectIds),
-    with: {
-      variables: true,
-    },
   });
 
-  const activeEnvironment = environmentsWithProjects.find(e => e.isActive);
+  if (environmentsWithProjects.length === 0) {
+    return { environments: [], activeEnvironmentId: null };
+  }
+
+  const environmentIds = environmentsWithProjects.map(e => e.id);
+
+  const allVariables = await db.query.environmentVariables.findMany({
+    where: (environmentVariables, { inArray }) => inArray(environmentVariables.environmentId, environmentIds),
+  });
+
+  const variablesByEnvironment = new Map<string, typeof allVariables>();
+  for (const envId of environmentIds) {
+    variablesByEnvironment.set(envId, []);
+  }
+
+  for (const variable of allVariables) {
+    const variables = variablesByEnvironment.get(variable.environmentId);
+    if (variables) {
+      variables.push({
+        ...variable,
+        value: variable.isSecret ? '••••••••' : variable.value
+      });
+    }
+  }
+
+  const environmentsWithVariables = environmentsWithProjects.map(env => ({
+    ...env,
+    variables: variablesByEnvironment.get(env.id) || []
+  }));
+
+  const activeEnvironment = environmentsWithVariables.find(e => e.isActive);
 
   return {
-    environments: environmentsWithProjects,
+    environments: environmentsWithVariables,
     activeEnvironmentId: activeEnvironment?.id || null,
   };
 });

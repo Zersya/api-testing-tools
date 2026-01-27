@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref, computed, onMounted } from 'vue';
 interface Environment {
   id: string;
   projectId: string;
@@ -22,12 +23,15 @@ interface EnvironmentVariable {
   isSecret: boolean;
 }
 
-const { data: workspaces, refresh: refreshWorkspaces } = await useFetch<any[]>('/api/admin/tree');
-
-onMounted(() => {
-  refreshWorkspaces();
-  refreshEnvironments();
-});
+const workspaces = ref<any[]>([]);
+const refreshWorkspaces = async () => {
+  try {
+    const data = await $fetch<any[]>('/api/admin/tree');
+    workspaces.value = data;
+  } catch (e) {
+    console.error('Failed to fetch workspaces:', e);
+  }
+};
 
 const currentProjectId = computed(() => {
   return workspaces.value?.[0]?.projects?.[0]?.id || null;
@@ -35,12 +39,40 @@ const currentProjectId = computed(() => {
 
 const hasProject = computed(() => !!currentProjectId.value);
 
-const { data: environments, refresh: refreshEnvironments } = await useFetch<Environment[]>(
-  computed(() => `/api/admin/projects/${currentProjectId.value}/environments`),
-  {
-    immediate: true
+const environments = ref<Environment[]>([]);
+
+const fetchSecretValues = async (envs: Environment[]) => {
+  for (const env of envs) {
+    for (const variable of env.variables) {
+      if (variable.isSecret && variable.value === '••••••••') {
+        try {
+          const actualValue = await $fetch<{ value: string }>(`/api/admin/variables/${variable.id}/value`);
+          secretValues.value[variable.id] = actualValue.value;
+        } catch (e) {
+          console.error('Failed to fetch secret value:', e);
+        }
+      } else if (variable.isSecret) {
+        secretValues.value[variable.id] = variable.value;
+      }
+    }
   }
-);
+};
+
+const refreshEnvironments = async () => {
+  if (!currentProjectId.value) return;
+  try {
+    const data = await $fetch<Environment[]>(`/api/admin/projects/${currentProjectId.value}/environments`);
+    environments.value = data;
+    await fetchSecretValues(data);
+  } catch (e) {
+    console.error('Failed to fetch environments:', e);
+  }
+};
+
+onMounted(async () => {
+  await refreshWorkspaces();
+  await refreshEnvironments();
+});
 
 const showCreateModal = ref(false);
 const showEditModal = ref(false);
@@ -57,8 +89,10 @@ const createEnvironmentForm = ref({
 });
 
 const renameEnvironmentForm = ref({
-  name: ''
-});
+  name: ''});
+
+// Store actual secret values when fetched/updated
+const secretValues = ref<Record<string, string>>({});
 
 const openCreateModal = () => {
   createEnvironmentForm.value = { name: '' };
@@ -218,12 +252,15 @@ const addVariable = async (environment: Environment) => {
 };
 
 const updateVariable = async (variable: EnvironmentVariable, key: string, value: string, isSecret: boolean) => {
+  if (isSecret) {
+    secretValues.value[variable.id] = value;
+  }
   try {
     await $fetch(`/api/admin/variables/${variable.id}`, {
       method: 'PUT',
       body: {
         key: key.trim(),
-        value,
+        value: isSecret ? secretValues.value[variable.id] : value,
         isSecret
       }
     });
@@ -231,6 +268,53 @@ const updateVariable = async (variable: EnvironmentVariable, key: string, value:
   } catch (e: any) {
     alert('Error updating variable: ' + (e.data?.message || e.message));
   }
+};
+
+const toggleSecret = (environment: Environment, variable: EnvironmentVariable) => {
+  const newIsSecret = !variable.isSecret;
+  
+  if (newIsSecret) {
+    // Hiding - mask the value
+    variable.isSecret = true;
+    secretValues.value[variable.id] = variable.value;
+    variable.value = '••••••••';
+  } else {
+    // Showing - restore actual value if we have it
+    variable.isSecret = false;
+    if (secretValues.value[variable.id]) {
+      variable.value = secretValues.value[variable.id];
+    } else {
+      // Fetch the actual value from API
+      $fetch(`/api/admin/variables/${variable.id}`)
+        .then((data: any) => {
+          secretValues.value[variable.id] = data.value;
+          if (!variable.isSecret) {
+            variable.value = data.value;
+          }
+        })
+        .catch((e: any) => {
+          console.error('Failed to fetch secret value:', e);
+        });
+    }
+  }
+  
+  $fetch(`/api/admin/variables/${variable.id}`, {
+    method: 'PUT',
+    body: {
+      key: variable.key,
+      value: secretValues.value[variable.id] || variable.value,
+      isSecret: newIsSecret
+    }
+  }).catch((e: any) => {
+    // Revert on error
+    variable.isSecret = !newIsSecret;
+    if (newIsSecret) {
+      variable.value = secretValues.value[variable.id] || variable.value;
+    } else {
+      variable.value = '••••••••';
+    }
+    alert('Error toggling secret: ' + (e.data?.message || e.message));
+  });
 };
 
 const deleteVariable = async (variableId: string) => {
@@ -376,20 +460,21 @@ const deleteVariable = async (variableId: string) => {
                   />
                   <div class="flex-1 flex items-center gap-2">
                     <input
+                      :key="`input-${variable.id}-${variable.isSecret ? 'secret' : 'text'}`"
                       v-model="variable.value"
                       @blur="updateVariable(variable, variable.key, variable.value, variable.isSecret)"
                       @keyup.enter="($event.target as HTMLInputElement).blur()"
-                      :type="variable.isSecret && variable.value !== '••••••••' ? 'password' : 'text'"
+                      :type="variable.isSecret ? 'password' : 'text'"
                       class="w-full py-1.5 px-2 bg-bg-input border border-border-default rounded-md text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(59,130,246,0.2)]"
                       placeholder="Variable value"
                     />
                     <button
-                      @click="updateVariable(variable, variable.key, variable.value, !variable.isSecret)"
+                      @click="toggleSecret(environment, variable)"
                       :class="[
                         'flex items-center justify-center w-8 h-8 border-none rounded cursor-pointer transition-all duration-fast',
                         variable.isSecret ? 'bg-accent-yellow/15 text-accent-yellow hover:bg-accent-yellow/25' : 'bg-bg-hover text-text-muted hover:text-text-primary'
                       ]"
-                      :title="variable.isSecret ? 'Secret (toggle to reveal)' : 'Not secret (toggle to hide)'"
+                      :title="variable.isSecret ? 'Secret (click to reveal)' : 'Not secret (click to hide)'"
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>

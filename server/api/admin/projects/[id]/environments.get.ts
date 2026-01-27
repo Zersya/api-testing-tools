@@ -89,7 +89,7 @@ export default defineEventHandler(async (event) => {
     console.error('Error fetching environments:', error);
     throw createError({
       statusCode: 500,
-      statusMessage: 'Failed to fetch environments'
+      statusMessage: 'Failed to fetch environments: ' + error.message
     });
   }
 });
