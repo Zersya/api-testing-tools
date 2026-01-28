@@ -991,7 +991,9 @@ const hasUnsavedChanges = computed(() => {
   const urlChanged = currentUrl !== originalUrl;
   const methodChanged = currentMethod !== originalMethod;
   const headersChanged = JSON.stringify(currentHeaders) !== JSON.stringify(originalHeaders || {});
-  const bodyChanged = JSON.stringify(currentBody) !== JSON.stringify(originalBody);
+  const normalizedCurrentBody = currentBody === undefined ? null : currentBody;
+  const normalizedOriginalBody = originalBody === undefined ? null : originalBody;
+  const bodyChanged = JSON.stringify(normalizedCurrentBody) !== JSON.stringify(normalizedOriginalBody);
   const authChanged = JSON.stringify(currentAuth) !== JSON.stringify(originalAuth || {});
 
   return urlChanged || methodChanged || headersChanged || bodyChanged || authChanged;

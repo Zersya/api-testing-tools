@@ -593,18 +593,50 @@ const goToEdit = (id: string) => {
 };
 
 // Request handlers
-const handleSelectRequest = (request: HttpRequest) => {
+const handleSelectRequest = async (request: HttpRequest) => {
   selectedMock.value = null;
   
-  const existingTab = openTabs.value.find(tab => tab.request.id === request.id);
+  // Refresh workspaces to ensure we have the latest request data
+  await refreshWorkspaces();
+  
+  // Find the latest request data from the refreshed workspaces
+  let latestRequest = request;
+  if (workspaces.value) {
+    for (const workspace of workspaces.value) {
+      for (const project of workspace.projects) {
+        for (const collection of project.collections) {
+          const findRequest = (folders: any[]): HttpRequest | null => {
+            for (const folder of folders) {
+              const found = folder.requests?.find((r: any) => r.id === request.id);
+              if (found) return found;
+              if (folder.children?.length) {
+                const childFound = findRequest(folder.children);
+                if (childFound) return childFound;
+              }
+            }
+            return null;
+          };
+          const found = findRequest(collection.folders);
+          if (found) {
+            latestRequest = found;
+            break;
+          }
+        }
+      }
+    }
+  }
+  
+  const existingTab = openTabs.value.find(tab => tab.request.id === latestRequest.id);
   if (existingTab) {
     activeTabKey.value = existingTab.key;
-    selectedRequest.value = request;
+    // Update the tab with the latest request data
+    existingTab.request = { ...latestRequest };
+    selectedRequest.value = existingTab.request;
   } else {
     const newTabKey = createTabKey();
     const newTab: OpenTab = {
       key: newTabKey,
-      request: { ...request },
+      request: { ...latestRequest },
       hasUnsavedChanges: false
     };
     openTabs.value.push(newTab);
@@ -715,6 +747,9 @@ const handleSaveRequest = async (request: any) => {
       
       // Reset unsaved flag on the tab
       updateTabUnsavedStatus(request, false);
+      
+      // Refresh workspaces to update the tree with latest data
+      await refreshWorkspaces();
       
       return;
     } catch (e: any) {
@@ -858,7 +893,7 @@ const handleSave = async (data: any) => {
 
     showSaveDialog.value = false;
     requestToSave.value = null;
-    refresh();
+    await refreshWorkspaces();
   } catch (e: any) {
     alert('Error saving request: ' + (e.data?.message || e.message));
   }
@@ -906,10 +941,10 @@ const handleSaveAs = async (data: any) => {
 
     showSaveAsDialog.value = false;
     requestToSaveAs.value = null;
-    refresh();
+    await refreshWorkspaces();
 
     // Select the newly created request (this creates a new tab)
-    handleSelectRequest(newRequest);
+    await handleSelectRequest(newRequest);
     
     // Reset unsaved flag on the original tab's request
     if (activeTabKey.value) {

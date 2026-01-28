@@ -90,7 +90,7 @@ const filteredVariables = computed(() => {
 
 const saveSelection = () => {
   const selection = window.getSelection();
-  if (!selection || !editorRef.value) return null;
+  if (!selection || !editorRef.value || selection.rangeCount === 0) return null;
   
   const range = selection.getRangeAt(0);
   const preCaretRange = range.cloneRange();
