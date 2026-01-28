@@ -32,8 +32,9 @@ RUN addgroup -g 1001 -S nodejs && \
 
 COPY --from=builder /app/.output /app/.output
 COPY --from=builder /app/node_modules /app/node_modules
-# Copy drizzle folder (trailing slash prevents error if folder is empty)
+# Copy drizzle folder to both locations for compatibility
 COPY --from=builder /app/drizzle /app/drizzle/
+COPY --from=builder /app/drizzle /app/.output/server/drizzle/
 COPY --from=builder /usr/local/bin/bun /usr/local/bin/bun
 
 # Create necessary directories for SQLite and File Storage with proper permissions

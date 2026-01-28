@@ -4,6 +4,7 @@ import Database from 'better-sqlite3';
 import * as schema from './schema';
 import { existsSync, mkdirSync, readFileSync, readdirSync } from 'fs';
 import { dirname, resolve, join } from 'path';
+import { fileURLToPath } from 'url';
 
 // Use environment variable for database path, fallback to local sqlite.db for development
 const dbPath = process.env.DATABASE_PATH || './data/sqlite.db';
@@ -27,14 +28,17 @@ export const db = drizzle(sqlite, { schema });
 
 // Function to find drizzle migrations directory
 function findMigrationsPath(): string | null {
+  // Get current file directory in ESM
+  const currentFilePath = fileURLToPath(import.meta.url);
+  const currentDir = dirname(currentFilePath);
+  
   // Try multiple possible locations
   const possiblePaths = [
     resolve(process.cwd(), 'drizzle'),
     resolve(process.cwd(), '.output', 'server', 'drizzle'),
     resolve(process.cwd(), '.output', 'drizzle'),
-    resolve(process.cwd(), 'server', 'drizzle'),
-    resolve(__dirname, '..', '..', 'drizzle'),
-    resolve(__dirname, '..', '..', '..', 'drizzle'),
+    resolve(currentDir, '..', '..', 'drizzle'),
+    resolve(currentDir, '..', '..', '..', 'drizzle'),
     '/app/drizzle',
     '/app/.output/server/drizzle',
   ];
@@ -72,7 +76,6 @@ try {
   } else {
     console.error('❌ Migrations folder not found in any location');
     console.log('[Database] Current working directory:', process.cwd());
-    console.log('[Database] __dirname:', __dirname);
     
     // List files in current directory for debugging
     try {

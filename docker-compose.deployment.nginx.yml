@@ -7,13 +7,18 @@ services:
         environment:
             SERVICE_NAME: ${IMAGE_NAME}-${APP_ENV}-application
             SERVICE_TAGS: ${APP_ENV}
-        working_dir: /home/node/app
+            DATABASE_PATH: /app/data/sqlite.db
+        working_dir: /app
         deploy:
             replicas: ${COMPOSE_REPLICAS:-1}
         ports:
           - "${COMPOSE_PUBLIC_PORT}:3000"
         volumes:
           - /etc/localtime:/etc/localtime:ro
-          - ./.env:/home/node/app/.env
-          - /home/mock-api/collections:/home/node/app/collections
-          - /home/mock-api/mocks:/home/node/app/mocks
+          - ./.env:/app/.env
+          - mock-service-data:/app/data
+          - /home/mock-api/collections:/app/collections
+
+volumes:
+    mock-service-data:
+        driver: local
