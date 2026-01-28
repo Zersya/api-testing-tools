@@ -374,14 +374,14 @@ onUnmounted(() => {
 
           <!-- Menu Items -->
           <a
-            href="/admin/keycloak"
+            href="/admin/sso"
             class="flex items-center gap-2 px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors duration-fast"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
               <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
             </svg>
-            Keycloak Settings
+            SSO Settings
           </a>
 
           <a

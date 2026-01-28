@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler((event) => {
     const path = event.path;
 
     if (path.startsWith('/api/admin')) {
@@ -27,7 +27,9 @@ export default defineEventHandler(async (event) => {
         event.context.user = {
             id: decoded.sub || decoded.id || 'unknown',
             email: decoded.email || 'unknown',
-            workspaceId: decoded.workspaceId || 'personal'
+            workspaceId: decoded.workspaceId || 'personal',
+            authMethod: decoded.authMethod || 'credentials',
+            providerId: decoded.providerId || null
         };
     }
 });

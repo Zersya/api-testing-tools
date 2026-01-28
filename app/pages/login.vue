@@ -1,14 +1,21 @@
 <script setup lang="ts">
+import { SSO_PROVIDER_METADATA, type SsoProviderType } from '../types/sso';
+
+interface SsoProviderInfo {
+  id: string;
+  type: SsoProviderType;
+  name: string;
+}
+
+interface SsoProvidersResponse {
+  providers: SsoProviderInfo[];
+  allowMultipleProviders: boolean;
+  defaultProvider?: string;
+}
+
 definePageMeta({
   layout: 'empty'
 });
-
-interface KeycloakConfig {
-  enabled: boolean;
-  realm: string;
-  clientId: string;
-  authUrl: string;
-}
 
 const form = ref({
   email: '',
@@ -17,26 +24,24 @@ const form = ref({
 
 const isLoading = ref(false);
 const errorMessage = ref('');
-const keycloakConfig = ref<KeycloakConfig | null>(null);
+const ssoProviders = ref<SsoProvidersResponse>({ providers: [], allowMultipleProviders: true });
+const isLoadingProviders = ref(true);
 
-const fetchKeycloakConfig = async () => {
+const fetchSsoProviders = async () => {
   try {
-    const settings = await $fetch<any>('/api/admin/settings');
-    if (settings.keycloak?.enabled) {
-      keycloakConfig.value = {
-        enabled: true,
-        realm: settings.keycloak.realm || '',
-        clientId: settings.keycloak.clientId || '',
-        authUrl: settings.keycloak.authUrl || ''
-      };
-    }
+    isLoadingProviders.value = true;
+    const data = await $fetch<SsoProvidersResponse>('/api/auth/sso/providers');
+    ssoProviders.value = data;
   } catch (e) {
-    keycloakConfig.value = null;
+    console.error('Failed to fetch SSO providers:', e);
+  } finally {
+    isLoadingProviders.value = false;
   }
 };
 
-const loginWithKeycloak = async () => {
-  window.location.href = '/api/auth/keycloak/login';
+const loginWithSso = (providerType: string, providerId?: string) => {
+  const params = providerId ? `?providerId=${providerId}` : '';
+  window.location.href = `/api/auth/sso/${providerType}/login${params}`;
 };
 
 const login = async () => {
@@ -57,8 +62,27 @@ const login = async () => {
   }
 };
 
+const getProviderIcon = (type: SsoProviderType) => {
+  const icons: Record<string, string> = {
+    keycloak: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z',
+    google: 'M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032s2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.503,2.988,15.139,2,12.545,2C7.021,2,2.543,6.477,2.543,12s4.478,10,10.002,10c8.396,0,10.249-7.85,9.426-11.748L12.545,10.239z',
+    github: 'M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z',
+    azure: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5',
+    oidc: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z'
+  };
+  return icons[type] || icons.oidc;
+};
+
+const getProviderColor = (type: SsoProviderType) => {
+  return SSO_PROVIDER_METADATA[type]?.color || '#6366F1';
+};
+
+const hasAnySso = computed(() => {
+  return Array.isArray(ssoProviders.value.providers) && ssoProviders.value.providers.length > 0;
+});
+
 onMounted(() => {
-  fetchKeycloakConfig();
+  fetchSsoProviders();
 });
 </script>
 
@@ -95,24 +119,29 @@ onMounted(() => {
           <span>{{ errorMessage }}</span>
         </div>
 
-        <!-- Keycloak SSO Button -->
-        <div v-if="keycloakConfig?.enabled" class="mb-4">
+        <!-- SSO Providers -->
+        <div v-if="hasAnySso" class="space-y-3 mb-4">
           <button
+            v-for="provider in ssoProviders.providers"
+            :key="provider.id"
             type="button"
-            @click="loginWithKeycloak"
-            class="w-full flex items-center justify-center gap-3 py-3.5 px-4 bg-[#005786] hover:bg-[#00456a] text-white rounded-[10px] text-[15px] font-semibold cursor-pointer transition-all duration-normal hover:not-disabled:-translate-y-px hover:not-disabled:shadow-[0_6px_20px_rgba(0,87,134,0.35)] active:not-disabled:translate-y-0 disabled:opacity-70 disabled:cursor-not-allowed"
+            @click="loginWithSso(provider.type, provider.id)"
+            class="w-full flex items-center justify-center gap-3 py-3.5 px-4 rounded-[10px] text-[15px] font-semibold cursor-pointer transition-all duration-normal hover:not-disabled:-translate-y-px hover:not-disabled:shadow-lg active:not-disabled:translate-y-0 disabled:opacity-70 disabled:cursor-not-allowed"
+            :style="{ 
+              backgroundColor: getProviderColor(provider.type),
+              color: 'white',
+              boxShadow: `0 4px 14px ${getProviderColor(provider.type)}40`
+            }"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M20.5 10.5C20.5 15.6 16.4 19.7 11.3 19.7C6.2 19.7 2.1 15.6 2.1 10.5C2.1 5.4 6.2 1.3 11.3 1.3C16.4 1.3 20.5 5.4 20.5 10.5Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M12 6.5V10.5L15 11.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M9 13C9 13 10.5 15 12 15C13.5 15 15 13 15 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path :d="getProviderIcon(provider.type)" />
             </svg>
-            <span>Sign in with Keycloak</span>
+            <span>Sign in with {{ provider.name }}</span>
           </button>
         </div>
 
         <!-- Divider -->
-        <div v-if="keycloakConfig?.enabled" class="flex items-center gap-4 my-4">
+        <div v-if="hasAnySso" class="flex items-center gap-4 my-4">
           <div class="flex-1 h-px bg-border-default"></div>
           <span class="text-xs text-text-muted uppercase tracking-wide">or continue with email</span>
           <div class="flex-1 h-px bg-border-default"></div>

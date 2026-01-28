@@ -17,6 +17,8 @@ interface DecodedToken {
   sub?: string;
   authMethod?: string;
   realm?: string;
+  providerId?: string;
+  providerName?: string;
   exp?: number;
   iat?: number;
 }
@@ -74,6 +76,8 @@ export default defineEventHandler((event) => {
         user: userInfo,
         authMethod: decoded.authMethod || 'credentials',
         realm: decoded.realm || null,
+        providerId: decoded.providerId || null,
+        providerName: decoded.providerName || null,
         tokenExpiry: decoded.exp || null,
         isTokenExpiringSoon: isExpiringSoon || false
     };
