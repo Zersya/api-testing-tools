@@ -1,13 +1,26 @@
+import { db, schema } from '../../db';
+
 export default defineEventHandler(async (event) => {
-    const storage = useStorage('mocks');
-    const keys = await storage.getKeys();
-    const mocks = await Promise.all(keys.map(async (key) => {
-        const mock = await storage.getItem(key) as any;
-        // Ensure collection field exists (backward compatibility)
-        if (mock && !mock.collection) {
-            mock.collection = 'root';
-        }
-        return mock;
+  try {
+    const mocks = await db.select().from(schema.mocks);
+    
+    // Transform to match old format for backward compatibility
+    return mocks.map(mock => ({
+      id: mock.id,
+      collection: mock.collectionId || 'root',
+      path: mock.path,
+      method: mock.method,
+      status: mock.status,
+      response: mock.response,
+      delay: mock.delay,
+      secure: mock.secure,
+      createdAt: mock.createdAt ? new Date(mock.createdAt).toISOString() : null
     }));
-    return mocks;
+  } catch (error) {
+    console.error('Error fetching mocks:', error);
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Failed to fetch mocks'
+    });
+  }
 });

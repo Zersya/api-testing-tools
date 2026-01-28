@@ -25,21 +25,8 @@ export default defineNuxtConfig({
   },
   nitro: {
     storage: {
-      mocks: {
-        driver: process.env.VERCEL || process.env.REDIS_URL ? 'redis' : 'fs',
-        base: 'mocks',
-        url: process.env.REDIS_URL
-      },
-      collections: {
-        driver: process.env.VERCEL || process.env.REDIS_URL ? 'redis' : 'fs',
-        base: 'collections',
-        url: process.env.REDIS_URL
-      },
-      settings: {
-        driver: process.env.VERCEL || process.env.REDIS_URL ? 'redis' : 'fs',
-        base: 'settings',
-        url: process.env.REDIS_URL
-      }
+      // File storage is now deprecated - all data stored in SQLite
+      // Keeping minimal config for any future storage needs
     }
   },
   runtimeConfig: {

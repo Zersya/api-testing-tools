@@ -1,12 +1,26 @@
 import type { SsoConfig, SsoProvider } from '../../../../app/types/sso';
+import { db, schema } from '../../../db';
+import { eq, and, isNull } from 'drizzle-orm';
 
 export default defineEventHandler(async (event) => {
   try {
-    const storage = useStorage('settings');
-    const config = await storage.getItem<SsoConfig>('sso');
+    // Get SSO config from SQLite
+    const setting = await db
+      .select()
+      .from(schema.settings)
+      .where(
+        and(
+          eq(schema.settings.key, 'sso_config'),
+          isNull(schema.settings.workspaceId)
+        )
+      )
+      .get();
     
     // Default empty config if none exists
-    const ssoConfig: SsoConfig = config || { providers: [], allowMultipleProviders: true };
+    const ssoConfig: SsoConfig = (setting?.value as SsoConfig) || { 
+      providers: [], 
+      allowMultipleProviders: true 
+    };
     
     // Ensure providers array exists
     if (!ssoConfig.providers) {

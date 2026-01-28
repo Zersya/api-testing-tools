@@ -1,14 +1,5 @@
-interface Mock {
-    id: string;
-    collection: string;
-    path: string;
-    method: string;
-    status: number;
-    response: any;
-    delay: number;
-    secure?: boolean;
-    createdAt: string;
-}
+import { db, schema } from '../db';
+import { eq, and, or, isNull } from 'drizzle-orm';
 
 interface Collection {
     id: string;
@@ -24,9 +15,6 @@ export default defineEventHandler(async (event) => {
         return;
     }
 
-    const mocksStorage = useStorage('mocks');
-    const collectionsStorage = useStorage('collections');
-
     // Determine if this is a collection-specific request
     // Pattern: /c/{collection-name}/{actual-path}
     let targetCollectionId: string | null = null;
@@ -38,14 +26,15 @@ export default defineEventHandler(async (event) => {
         const collectionName = collectionPathMatch[1];
         targetPath = collectionPathMatch[2] || '/';
 
-        // Find collection by name
-        const collectionKeys = await collectionsStorage.getKeys();
-        for (const key of collectionKeys) {
-            const collection = await collectionsStorage.getItem(key) as Collection;
-            if (collection && collection.name === collectionName) {
-                targetCollectionId = collection.id;
-                break;
-            }
+        // Find collection by name from SQLite
+        const collection = await db
+            .select()
+            .from(schema.collections)
+            .where(eq(schema.collections.name, collectionName))
+            .get();
+
+        if (collection) {
+            targetCollectionId = collection.id;
         }
 
         // If collection name not found, return 404
@@ -56,22 +45,26 @@ export default defineEventHandler(async (event) => {
             });
         }
     } else {
-        // No /c/ prefix - use root collection
-        targetCollectionId = 'root';
+        // No /c/ prefix - use root collection (null in database)
+        targetCollectionId = null;
     }
 
-    const mockKeys = await mocksStorage.getKeys();
+    // Fetch all mocks from SQLite
+    const mocks = await db.select().from(schema.mocks);
 
     // We iterate through all mocks to find a match
-    for (const key of mockKeys) {
-        const mock = await mocksStorage.getItem(key) as Mock;
-
-        if (!mock || mock.method !== method) continue;
-
-        const mockCollection = mock.collection || 'root';
+    for (const mock of mocks) {
+        if (mock.method !== method) continue;
 
         // Check if mock belongs to the target collection
-        if (mockCollection !== targetCollectionId) continue;
+        // For root collection, collectionId should be null
+        // For named collections, collectionId should match
+        const mockCollectionId = mock.collectionId;
+        if (targetCollectionId === null) {
+            if (mockCollectionId !== null) continue;
+        } else {
+            if (mockCollectionId !== targetCollectionId) continue;
+        }
 
         // Convert mock path (e.g. /api/users/:id) to regex
         // Escape special regex chars except :
@@ -89,11 +82,21 @@ export default defineEventHandler(async (event) => {
                     return { error: 'Unauthorized: Bearer token missing' };
                 }
 
-                // Verify token if configured
-                const settings = await useStorage('settings').getItem('global') as any;
-                if (settings && settings.bearerToken) {
+                // Verify token from SQLite settings
+                const setting = await db
+                    .select()
+                    .from(schema.settings)
+                    .where(
+                        and(
+                            eq(schema.settings.key, 'bearerToken'),
+                            isNull(schema.settings.workspaceId)
+                        )
+                    )
+                    .get();
+
+                if (setting?.value) {
                     const token = authHeader.split(' ')[1];
-                    if (token !== settings.bearerToken) {
+                    if (token !== setting.value) {
                         setResponseStatus(event, 403);
                         return { error: 'Forbidden: Invalid token' };
                     }

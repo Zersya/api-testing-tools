@@ -1,6 +1,8 @@
 import jwt from 'jsonwebtoken';
 import type { SsoConfig, SsoProvider, KeycloakProvider, AzureProvider, GenericOIDCProvider } from '../../../../../app/types/sso';
 import { DEFAULT_OAUTH_ENDPOINTS, getAzureEndpoints, getKeycloakEndpoints } from '../../../../../app/types/sso';
+import { db, schema } from '../../../../db';
+import { eq, and, isNull } from 'drizzle-orm';
 
 interface TokenResponse {
   access_token: string;
@@ -33,7 +35,10 @@ export default defineEventHandler(async (event) => {
   const error = query.error as string;
   const errorDescription = query.error_description as string;
 
+  console.log(`[SSO Callback] Provider: ${providerType}, Code: ${code ? 'present' : 'missing'}, State: ${state ? 'present' : 'missing'}, Error: ${error || 'none'}`);
+
   if (error) {
+    console.error(`[SSO Callback] Error from provider: ${errorDescription || error}`);
     throw createError({
       statusCode: 400,
       statusMessage: errorDescription || error
@@ -41,6 +46,7 @@ export default defineEventHandler(async (event) => {
   }
 
   if (!code || !state) {
+    console.error(`[SSO Callback] Missing code or state`);
     throw createError({
       statusCode: 400,
       statusMessage: 'Missing authorization code or state'
@@ -49,7 +55,10 @@ export default defineEventHandler(async (event) => {
 
   // Get session data from cookie
   const stateCookie = getCookie(event, 'sso_oauth_state');
+  console.log(`[SSO Callback] State cookie: ${stateCookie ? 'present' : 'missing'}`);
+  
   if (!stateCookie) {
+    console.error(`[SSO Callback] OAuth state cookie missing`);
     throw createError({
       statusCode: 400,
       statusMessage: 'OAuth state expired. Please try logging in again.'
@@ -67,19 +76,32 @@ export default defineEventHandler(async (event) => {
   }
 
   if (state !== sessionData.state) {
+    console.error(`[SSO Callback] State mismatch. Expected: ${sessionData.state}, Got: ${state}`);
     throw createError({
       statusCode: 400,
       statusMessage: 'State mismatch - potential CSRF attack'
     });
   }
 
+  console.log(`[SSO Callback] State validation successful`);
+
   deleteCookie(event, 'sso_oauth_state');
 
-  // Get provider configuration
-  const storage = useStorage('settings');
-  const config = await storage.getItem<SsoConfig>('sso');
+  // Get provider configuration from SQLite
+  const setting = await db
+    .select()
+    .from(schema.settings)
+    .where(
+      and(
+        eq(schema.settings.key, 'sso_config'),
+        isNull(schema.settings.workspaceId)
+      )
+    )
+    .get();
   
-  if (!config || !config.providers) {
+  const config: SsoConfig = (setting?.value as SsoConfig) || { providers: [], allowMultipleProviders: true };
+  
+  if (!config.providers || config.providers.length === 0) {
     throw createError({
       statusCode: 500,
       statusMessage: 'SSO configuration not found'
@@ -217,18 +239,19 @@ export default defineEventHandler(async (event) => {
   setCookie(event, 'auth_token', token, {
     httpOnly: true,
     secure: runtimeConfig.nodeEnv === 'production',
-    sameSite: 'strict',
+    sameSite: 'lax',
     maxAge: tokenResponse.expires_in || 3600
   });
 
   const userInfoCookie = Buffer.from(JSON.stringify(normalizedUserInfo)).toString('base64');
   setCookie(event, 'user_info', userInfoCookie, {
     httpOnly: false,
-    secure: config.nodeEnv === 'production',
-    sameSite: 'strict',
+    secure: runtimeConfig.nodeEnv === 'production',
+    sameSite: 'lax',
     maxAge: tokenResponse.expires_in || 3600
   });
 
+  console.log(`[SSO Callback] Authentication successful, redirecting to /admin`);
   return sendRedirect(event, '/admin');
 });
 

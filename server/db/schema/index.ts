@@ -7,3 +7,5 @@ export * from './environment';
 export * from './environmentVariable';
 export * from './apiDefinition';
 export * from './requestHistory';
+export * from './mocks';
+export * from './settings';

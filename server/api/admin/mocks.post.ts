@@ -1,46 +1,76 @@
 import { v4 as uuidv4 } from 'uuid';
+import { db, schema } from '../../db';
+import { eq, and } from 'drizzle-orm';
 
 export default defineEventHandler(async (event) => {
+  try {
     const body = await readBody(event);
 
     if (!body.path || !body.method || !body.status) {
-        throw createError({
-            statusCode: 400,
-            statusMessage: 'Missing required fields: path, method, status'
-        });
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Missing required fields: path, method, status'
+      });
     }
 
     const normalizedMethod = body.method.toUpperCase();
     const targetCollection = body.collection || 'root';
-    const storage = useStorage('mocks');
 
     // Check for duplicates within the SAME collection only
-    const keys = await storage.getKeys();
-    for (const key of keys) {
-        const mock: any = await storage.getItem(key);
-        const mockCollection = mock?.collection || 'root';
-        if (mock && mock.path === body.path && mock.method === normalizedMethod && mockCollection === targetCollection) {
-            throw createError({
-                statusCode: 409,
-                statusMessage: `Mock with method ${normalizedMethod} and path ${body.path} already exists in collection "${targetCollection}"`
-            });
-        }
+    const existing = await db
+      .select()
+      .from(schema.mocks)
+      .where(
+        and(
+          eq(schema.mocks.path, body.path),
+          eq(schema.mocks.method, normalizedMethod),
+          targetCollection === 'root' 
+            ? eq(schema.mocks.collectionId, '')
+            : eq(schema.mocks.collectionId, targetCollection)
+        )
+      )
+      .get();
+
+    if (existing) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: `Mock with method ${normalizedMethod} and path ${body.path} already exists in collection "${targetCollection}"`
+      });
     }
 
     const id = uuidv4();
-    const newMock = {
-        id,
-        collection: body.collection || 'root',
-        path: body.path,
-        method: normalizedMethod,
-        status: body.status,
-        response: body.response || {},
-        delay: body.delay || 0,
-        secure: body.secure || false,
-        createdAt: new Date().toISOString()
+    const now = new Date();
+    
+    await db.insert(schema.mocks).values({
+      id,
+      collectionId: targetCollection === 'root' ? null : targetCollection,
+      path: body.path,
+      method: normalizedMethod,
+      status: body.status,
+      response: body.response || {},
+      delay: body.delay || 0,
+      secure: body.secure || false,
+      createdAt: now,
+      updatedAt: now
+    });
+
+    return {
+      id,
+      collection: targetCollection,
+      path: body.path,
+      method: normalizedMethod,
+      status: body.status,
+      response: body.response || {},
+      delay: body.delay || 0,
+      secure: body.secure || false,
+      createdAt: now.toISOString()
     };
-
-    await storage.setItem(id, newMock);
-
-    return newMock;
+  } catch (error: any) {
+    if (error.statusCode) throw error;
+    console.error('Error creating mock:', error);
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Failed to create mock'
+    });
+  }
 });

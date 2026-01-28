@@ -54,37 +54,10 @@ interface AuthState {
   tokenExpiry: number | null;
 }
 
-interface SyncStatus {
-  isOnline: boolean;
-  lastSyncAt: string | null;
-  nextSyncAt: string | null;
-  pendingChanges: number;
-  status: 'idle' | 'syncing' | 'error' | 'conflict';
-  errorMessage: string | null;
-  conflicts: Array<{
-    id: string;
-    type: string;
-    localUpdatedAt: string;
-    remoteUpdatedAt: string;
-  }>;
-}
-
-interface SyncConfig {
-  enabled: boolean;
-  serverUrl: string;
-  apiKey: string;
-  syncInterval: number;
-  autoSync: boolean;
-  conflictResolution: string;
-}
-
 const authState = ref<AuthState | null>(null);
 const isCheckingAuth = ref(true);
 const showUserMenu = ref(false);
 const isLoggingOut = ref(false);
-const syncStatus = ref<SyncStatus | null>(null);
-const syncConfig = ref<SyncConfig | null>(null);
-const isSyncing = ref(false);
 
 const route = useRoute();
 const isEnvironmentsPage = computed(() => route.path === '/admin/environments');
@@ -132,76 +105,10 @@ const getTimeUntilExpiry = (): string => {
   return `${minutes}m ${seconds}s`;
 };
 
-const fetchSyncStatus = async () => {
-  try {
-    const data = await $fetch<SyncStatus>('/api/admin/sync/status');
-    syncStatus.value = data;
-  } catch (e) {
-    console.error('Failed to fetch sync status:', e);
-  }
-};
-
-const fetchSyncConfig = async () => {
-  try {
-    const data = await $fetch<{ config: SyncConfig }>('/api/admin/sync');
-    syncConfig.value = data.config;
-  } catch (e) {
-    console.error('Failed to fetch sync config:', e);
-  }
-};
-
-const triggerSync = async () => {
-  if (isSyncing.value) return;
-
-  isSyncing.value = true;
-  try {
-    await $fetch('/api/admin/sync/trigger', { method: 'POST' });
-    await fetchSyncStatus();
-  } catch (e) {
-    console.error('Sync trigger failed:', e);
-  } finally {
-    isSyncing.value = false;
-  }
-};
-
-const getSyncStatusColor = (): string => {
-  if (!syncConfig.value?.enabled) return 'text-text-muted';
-  if (!syncStatus.value) return 'text-text-muted';
-
-  switch (syncStatus.value.status) {
-    case 'syncing': return 'text-accent-blue';
-    case 'error': return 'text-accent-red';
-    case 'conflict': return 'text-accent-yellow';
-    default: return 'text-accent-green';
-  }
-};
-
-const getSyncStatusIcon = (): string => {
-  if (!syncConfig.value?.enabled) {
-    return '<path d="M21 12a9 9 0 1 1-6.219-8.56"></path>';
-  }
-
-  switch (syncStatus.value?.status) {
-    case 'syncing':
-      return '<path d="M21 12a9 9 0 1 1-6.219-8.56"></path>';
-    case 'error':
-      return '<circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line>';
-    case 'conflict':
-      return '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line>';
-    default:
-      return '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline>';
-  }
-};
-
-const hasConflicts = computed(() => (syncStatus.value?.conflicts?.length || 0) > 0);
-
 let authCheckInterval: ReturnType<typeof setInterval> | null = null;
-let syncStatusInterval: ReturnType<typeof setInterval> | null = null;
 
 onMounted(async () => {
   checkAuth();
-  await fetchSyncConfig();
-  await fetchSyncStatus();
 
   authCheckInterval = setInterval(() => {
     if (authState.value?.tokenExpiry) {
@@ -211,12 +118,6 @@ onMounted(async () => {
       }
     }
   }, 60000);
-
-  syncStatusInterval = setInterval(() => {
-    if (syncConfig.value?.enabled && syncConfig.value?.autoSync) {
-      fetchSyncStatus();
-    }
-  }, 30000);
 
   document.addEventListener('click', closeUserMenu);
 });
@@ -231,9 +132,6 @@ const closeUserMenu = (e: MouseEvent) => {
 onUnmounted(() => {
   if (authCheckInterval) {
     clearInterval(authCheckInterval);
-  }
-  if (syncStatusInterval) {
-    clearInterval(syncStatusInterval);
   }
   document.removeEventListener('click', closeUserMenu);
 });
@@ -314,29 +212,6 @@ onUnmounted(() => {
         </svg>
       </button>
 
-      <!-- Sync Status Button -->
-      <div v-if="syncConfig?.enabled" class="relative">
-        <button
-          @click="triggerSync"
-          :disabled="isSyncing"
-          class="inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 bg-transparent text-text-secondary border border-border-default rounded-md cursor-pointer text-[13px] font-medium transition-all duration-fast hover:bg-bg-hover hover:text-text-primary disabled:opacity-50"
-          :title="syncStatus?.status === 'conflict' ? `${syncStatus?.conflicts?.length || 0} conflicts to resolve` : `Sync status: ${syncStatus?.status || 'unknown'}`"
-        >
-          <svg v-if="isSyncing" class="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
-          </svg>
-          <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="getSyncStatusColor()">
-            <path v-html="getSyncStatusIcon()"></path>
-          </svg>
-          <span v-if="syncStatus?.pendingChanges && syncStatus.status !== 'syncing'" class="text-[10px] font-semibold text-accent-yellow">
-            {{ syncStatus.pendingChanges }}
-          </span>
-          <span v-if="hasConflicts" class="absolute -top-1 -right-1 w-3 h-3 bg-accent-yellow rounded-full flex items-center justify-center">
-            <span class="w-1.5 h-1.5 bg-bg-primary rounded-full"></span>
-          </span>
-        </button>
-      </div>
-
       <!-- User Menu -->
       <div v-if="!isCheckingAuth && authState?.user" class="relative user-menu-container">
         <button
@@ -382,19 +257,6 @@ onUnmounted(() => {
               <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
             </svg>
             SSO Settings
-          </a>
-
-          <a
-            href="/admin/sync"
-            class="flex items-center gap-2 px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors duration-fast"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path v-html="getSyncStatusIcon()"></path>
-            </svg>
-            Cloud Sync Settings
-            <span v-if="hasConflicts" class="ml-auto px-1.5 py-0.5 text-[10px] font-semibold bg-accent-yellow text-bg-primary rounded">
-              {{ syncStatus?.conflicts?.length || 0 }}
-            </span>
           </a>
 
           <button

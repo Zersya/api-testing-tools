@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1769592519579,
+      "tag": "0000_purple_katie_power",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1769593000000,
+      "tag": "0001_remove_sync_and_update_tables",
+      "breakpoints": true
+    }
+  ]
+}

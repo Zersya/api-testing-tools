@@ -1563,38 +1563,8 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
           </div>
         </div>
 
-        <!-- Request Tabs Area -->
-        <div v-if="openTabs.length > 0" class="flex flex-col flex-1 overflow-hidden">
-          <!-- Tabs -->
-          <RequestTabs
-            :open-tabs="openTabs"
-            :active-tab-key="activeTabKey"
-            @select-tab="handleSelectTab"
-            @close-tab="handleCloseTab"
-            @new-tab="handleNewTab"
-            @reorder-tabs="handleReorderTabs"
-          />
-
-          <!-- Request Builder -->
-          <RequestBuilder
-            v-if="selectedRequest && activeTabKey"
-            :request="selectedRequest"
-            :workspace-id="currentWorkspaceId"
-            :environment-id="activeEnvironment?.id"
-            :project-id="currentProjectId"
-            @save-request="handleSaveRequest"
-            @save-as-request="handleSaveAsRequest"
-            @unsaved-changes="updateTabUnsavedStatus"
-          />
-          
-          <!-- Placeholder when no active tab -->
-          <div v-else-if="!selectedRequest" class="flex-1 flex items-center justify-center text-text-muted">
-            Select a request from the tabs
-          </div>
-        </div>
-
         <!-- Selected Mock Details -->
-        <div v-else-if="selectedMock" class="p-5 flex flex-col gap-5 h-[calc(100vh-48px)] overflow-y-auto">
+        <div v-if="selectedMock" class="p-5 flex flex-col gap-5 h-[calc(100vh-48px)] overflow-y-auto">
           <!-- URL Bar -->
           <div class="flex items-center gap-3 p-3 px-4 bg-bg-secondary border border-border-default rounded-lg">
             <MethodBadge :method="selectedMock.method" size="lg" />
@@ -1802,6 +1772,36 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- Request Tabs Area -->
+        <div v-else-if="openTabs.length > 0" class="flex flex-col flex-1 overflow-hidden">
+          <!-- Tabs -->
+          <RequestTabs
+            :open-tabs="openTabs"
+            :active-tab-key="activeTabKey"
+            @select-tab="handleSelectTab"
+            @close-tab="handleCloseTab"
+            @new-tab="handleNewTab"
+            @reorder-tabs="handleReorderTabs"
+          />
+
+          <!-- Request Builder -->
+          <RequestBuilder
+            v-if="selectedRequest && activeTabKey"
+            :request="selectedRequest"
+            :workspace-id="currentWorkspaceId"
+            :environment-id="activeEnvironment?.id"
+            :project-id="currentProjectId"
+            @save-request="handleSaveRequest"
+            @save-as-request="handleSaveAsRequest"
+            @unsaved-changes="updateTabUnsavedStatus"
+          />
+          
+          <!-- Placeholder when no active tab -->
+          <div v-else-if="!selectedRequest" class="flex-1 flex items-center justify-center text-text-muted">
+            Select a request from the tabs
           </div>
         </div>
       </main>

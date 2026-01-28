@@ -1,5 +1,7 @@
 import type { SsoConfig, SsoProvider, KeycloakProvider, AzureProvider, GenericOIDCProvider } from '../../../../../app/types/sso';
 import { DEFAULT_OAUTH_ENDPOINTS, getAzureEndpoints, getKeycloakEndpoints } from '../../../../../app/types/sso';
+import { db, schema } from '../../../../db';
+import { eq, and, isNull } from 'drizzle-orm';
 
 export default defineEventHandler(async (event) => {
   const providerType = getRouterParam(event, 'provider');
@@ -13,8 +15,19 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const storage = useStorage('settings');
-  const config = await storage.getItem<SsoConfig>('sso');
+  // Get SSO config from SQLite
+  const setting = await db
+    .select()
+    .from(schema.settings)
+    .where(
+      and(
+        eq(schema.settings.key, 'sso_config'),
+        isNull(schema.settings.workspaceId)
+      )
+    )
+    .get();
+  
+  const config: SsoConfig = (setting?.value as SsoConfig) || { providers: [], allowMultipleProviders: true };
   
   if (!config || !config.providers || config.providers.length === 0) {
     throw createError({

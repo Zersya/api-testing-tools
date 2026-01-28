@@ -1,10 +1,26 @@
 import type { SsoConfig, SsoProvider } from '../../../../app/types/sso';
+import { db, schema } from '../../../db';
+import { eq, and, isNull } from 'drizzle-orm';
 
 export default defineEventHandler(async (event) => {
-  const storage = useStorage('settings');
   const body = await readBody<Partial<SsoConfig>>(event);
   
-  const existingConfig = await storage.getItem<SsoConfig>('sso') || { providers: [], allowMultipleProviders: true };
+  // Get existing config from SQLite
+  const existingSetting = await db
+    .select()
+    .from(schema.settings)
+    .where(
+      and(
+        eq(schema.settings.key, 'sso_config'),
+        isNull(schema.settings.workspaceId)
+      )
+    )
+    .get();
+  
+  const existingConfig: SsoConfig = existingSetting?.value as SsoConfig || { 
+    providers: [], 
+    allowMultipleProviders: true 
+  };
   
   // Merge the new config with existing
   const newConfig: SsoConfig = {
@@ -13,7 +29,28 @@ export default defineEventHandler(async (event) => {
     providers: body.providers || existingConfig.providers
   };
 
-  await storage.setItem('sso', newConfig);
+  const now = new Date();
+  
+  if (existingSetting) {
+    // Update existing
+    await db
+      .update(schema.settings)
+      .set({
+        value: newConfig,
+        updatedAt: now,
+        lastModifiedAt: now
+      })
+      .where(eq(schema.settings.id, existingSetting.id));
+  } else {
+    // Insert new
+    await db.insert(schema.settings).values({
+      key: 'sso_config',
+      value: newConfig,
+      createdAt: now,
+      updatedAt: now,
+      lastModifiedAt: now
+    });
+  }
   
   return { success: true };
 });
