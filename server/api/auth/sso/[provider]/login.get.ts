@@ -111,7 +111,7 @@ export default defineEventHandler(async (event) => {
 
   setCookie(event, 'sso_oauth_state', JSON.stringify(sessionData), {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: runtimeConfig.nodeEnv === 'production',
     sameSite: 'lax',
     maxAge: 60 * 10 // 10 minutes
   });

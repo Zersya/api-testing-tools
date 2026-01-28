@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
         // Set secure cookie
         setCookie(event, 'auth_token', token, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
+            secure: config.nodeEnv === 'production',
             sameSite: 'strict',
             maxAge: 60 * 60 * 24 // 1 day
         });

@@ -46,6 +46,7 @@ export default defineNuxtConfig({
     adminEmail: process.env.ADMIN_EMAIL || 'admin@mock.com',
     adminPassword: process.env.ADMIN_PASSWORD || 'admin123',
     jwtSecret: process.env.JWT_SECRET || 'super-secret-jwt-key-change-me',
+    nodeEnv: process.env.NODE_ENV || 'development',
     public: {
       appUrl: process.env.APP_URL || 'http://localhost:3000'
     }

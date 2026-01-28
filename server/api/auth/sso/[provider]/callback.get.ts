@@ -216,7 +216,7 @@ export default defineEventHandler(async (event) => {
   // Set cookies
   setCookie(event, 'auth_token', token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: runtimeConfig.nodeEnv === 'production',
     sameSite: 'strict',
     maxAge: tokenResponse.expires_in || 3600
   });
@@ -224,7 +224,7 @@ export default defineEventHandler(async (event) => {
   const userInfoCookie = Buffer.from(JSON.stringify(normalizedUserInfo)).toString('base64');
   setCookie(event, 'user_info', userInfoCookie, {
     httpOnly: false,
-    secure: process.env.NODE_ENV === 'production',
+    secure: config.nodeEnv === 'production',
     sameSite: 'strict',
     maxAge: tokenResponse.expires_in || 3600
   });
