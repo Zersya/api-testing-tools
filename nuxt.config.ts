@@ -27,7 +27,14 @@ export default defineNuxtConfig({
     storage: {
       // File storage is now deprecated - all data stored in SQLite
       // Keeping minimal config for any future storage needs
-    }
+    },
+    // Include drizzle migrations in the build
+    serverAssets: [
+      {
+        baseName: 'drizzle',
+        dir: './drizzle'
+      }
+    ]
   },
   runtimeConfig: {
     adminEmail: process.env.ADMIN_EMAIL || 'admin@mock.com',
