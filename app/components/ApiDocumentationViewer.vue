@@ -676,7 +676,7 @@ onMounted(() => {
                       </div>
                     </div>
                     
-                    <div class="w-80 border-l border-border-default bg-[#1e1e2e] flex flex-col">
+                    <div class="w-[420px] border-l border-border-default bg-[#1e1e2e] flex flex-col">
                       <div class="p-3 border-b border-border-default flex items-center justify-between">
                         <span class="text-xs font-semibold text-[#cdd6f4] uppercase tracking-wide">Code Examples</span>
                       </div>

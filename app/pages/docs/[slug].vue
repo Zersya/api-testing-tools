@@ -671,7 +671,7 @@ watch(() => data.value, () => {
               </div>
             </div>
             
-            <div class="w-80 border-l border-border-default bg-bg-sidebar flex flex-col">
+            <div class="w-[420px] border-l border-border-default bg-bg-sidebar flex flex-col">
               <div class="p-3 border-b border-border-default">
                 <span class="text-xs font-semibold text-text-primary uppercase tracking-wide">Code Examples</span>
               </div>
