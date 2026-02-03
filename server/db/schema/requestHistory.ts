@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core';
+import { pgTable, text, integer, timestamp, index } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { workspaces } from './workspace';
 
@@ -25,20 +25,20 @@ export type ResponseData = {
   body?: Record<string, unknown> | string | null;
 } | null;
 
-export const requestHistories = sqliteTable('request_histories', {
+export const requestHistories = pgTable('request_histories', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   workspaceId: text('workspace_id')
     .notNull()
     .references(() => workspaces.id, { onDelete: 'cascade' }),
   method: text('method').notNull().$type<HttpMethod>(),
   url: text('url').notNull(),
-  requestData: text('request_data', { mode: 'json' }).$type<RequestData>(),
-  responseData: text('response_data', { mode: 'json' }).$type<ResponseData>(),
+  requestData: text('request_data').$type<RequestData>(),
+  responseData: text('response_data').$type<ResponseData>(),
   statusCode: integer('status_code'),
   responseTimeMs: integer('response_time_ms'),
-  timestamp: integer('timestamp', { mode: 'timestamp' })
+  timestamp: timestamp('timestamp')
     .notNull()
-    .default(sql`(unixepoch())`)
+    .defaultNow()
 }, (table) => ({
   timestampIdx: index('request_histories_timestamp_idx').on(table.timestamp),
   workspaceTimestampIdx: index('request_histories_workspace_timestamp_idx').on(table.workspaceId, table.timestamp)

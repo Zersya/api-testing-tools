@@ -1,24 +1,24 @@
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+import { pgTable, text, integer, timestamp, boolean } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { projects } from './project';
 
-export const apiDefinitions = sqliteTable('api_definitions', {
+export const apiDefinitions = pgTable('api_definitions', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   projectId: text('project_id')
     .notNull()
     .references(() => projects.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
-  specFormat: text('spec_format', { enum: ['openapi3', 'postman'] }).notNull(),
+  specFormat: text('spec_format').notNull(),
   specContent: text('spec_content').notNull(),
   sourceUrl: text('source_url'),
-  isPublic: integer('is_public', { mode: 'boolean' }).notNull().default(false),
+  isPublic: boolean('is_public').notNull().default(false),
   publicSlug: text('public_slug'),
-  createdAt: integer('created_at', { mode: 'timestamp' })
+  createdAt: timestamp('created_at')
     .notNull()
-    .default(sql`(unixepoch())`),
-  updatedAt: integer('updated_at', { mode: 'timestamp' })
+    .defaultNow(),
+  updatedAt: timestamp('updated_at')
     .notNull()
-    .default(sql`(unixepoch())`)
+    .defaultNow()
 });
 
 export type ApiDefinition = typeof apiDefinitions.$inferSelect;

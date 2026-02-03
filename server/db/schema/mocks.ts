@@ -1,23 +1,23 @@
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+import { pgTable, text, integer, timestamp, boolean } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { collections } from './collection';
 
-export const mocks = sqliteTable('mocks', {
+export const mocks = pgTable('mocks', {
   id: text('id').primaryKey(),
   collectionId: text('collection_id')
     .references(() => collections.id, { onDelete: 'cascade' }),
   path: text('path').notNull(),
   method: text('method').notNull(),
   status: integer('status').notNull().default(200),
-  response: text('response', { mode: 'json' }).$type<Record<string, unknown>>(),
+  response: text('response').$type<Record<string, unknown>>(),
   delay: integer('delay').notNull().default(0),
-  secure: integer('secure', { mode: 'boolean' }).notNull().default(false),
-  createdAt: integer('created_at', { mode: 'timestamp' })
+  secure: boolean('secure').notNull().default(false),
+  createdAt: timestamp('created_at')
     .notNull()
-    .default(sql`(unixepoch())`),
-  updatedAt: integer('updated_at', { mode: 'timestamp' })
+    .defaultNow(),
+  updatedAt: timestamp('updated_at')
     .notNull()
-    .default(sql`(unixepoch())`)
+    .defaultNow()
 });
 
 export type Mock = typeof mocks.$inferSelect;

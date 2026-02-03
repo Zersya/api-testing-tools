@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+import { pgTable, text, integer, timestamp } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { folders } from './folder';
 
@@ -17,7 +17,7 @@ export type RequestAuth = {
   credentials?: Record<string, string>;
 } | null;
 
-export const savedRequests = sqliteTable('saved_requests', {
+export const savedRequests = pgTable('saved_requests', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   folderId: text('folder_id')
     .notNull()
@@ -25,16 +25,16 @@ export const savedRequests = sqliteTable('saved_requests', {
   name: text('name').notNull(),
   method: text('method').notNull().$type<HttpMethod>(),
   url: text('url').notNull(),
-  headers: text('headers', { mode: 'json' }).$type<RequestHeaders>(),
-  body: text('body', { mode: 'json' }).$type<RequestBody>(),
-  auth: text('auth', { mode: 'json' }).$type<RequestAuth>(),
+  headers: text('headers').$type<RequestHeaders>(),
+  body: text('body').$type<RequestBody>(),
+  auth: text('auth').$type<RequestAuth>(),
   order: integer('order').notNull().default(0),
-  createdAt: integer('created_at', { mode: 'timestamp' })
+  createdAt: timestamp('created_at')
     .notNull()
-    .default(sql`(unixepoch())`),
-  updatedAt: integer('updated_at', { mode: 'timestamp' })
+    .defaultNow(),
+  updatedAt: timestamp('updated_at')
     .notNull()
-    .default(sql`(unixepoch())`)
+    .defaultNow()
 });
 
 export type SavedRequest = typeof savedRequests.$inferSelect;

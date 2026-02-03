@@ -1,19 +1,12 @@
 {
   "version": "7",
-  "dialect": "sqlite",
+  "dialect": "postgresql",
   "entries": [
     {
       "idx": 0,
-      "version": "6",
-      "when": 1769592519579,
-      "tag": "0000_purple_katie_power",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1769593000000,
-      "tag": "0001_remove_sync_and_update_tables",
+      "version": "7",
+      "when": 1770103519674,
+      "tag": "0000_glamorous_the_stranger",
       "breakpoints": true
     }
   ]

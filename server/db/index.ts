@@ -1,30 +1,29 @@
-import { drizzle } from 'drizzle-orm/better-sqlite3';
-import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
-import Database from 'better-sqlite3';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { migrate } from 'drizzle-orm/node-postgres/migrator';
+import { Pool } from 'pg';
 import * as schema from './schema';
-import { existsSync, mkdirSync, readFileSync, readdirSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync } from 'fs';
 import { dirname, resolve, join } from 'path';
 import { fileURLToPath } from 'url';
 
-// Use environment variable for database path, fallback to local sqlite.db for development
-const dbPath = process.env.DATABASE_PATH || './data/sqlite.db';
-const absoluteDbPath = resolve(dbPath);
+// Use environment variable for database URL
+const databaseUrl = process.env.DATABASE_URL;
 
-console.log(`[Database] Using database path: ${absoluteDbPath}`);
-
-// Ensure the directory exists
-const dbDir = dirname(absoluteDbPath);
-if (!existsSync(dbDir)) {
-  console.log(`[Database] Creating directory: ${dbDir}`);
-  mkdirSync(dbDir, { recursive: true });
+if (!databaseUrl) {
+  console.error('[Database] ERROR: DATABASE_URL environment variable is not set');
+  console.error('[Database] Please set DATABASE_URL in your .env file');
+  console.error('[Database] Example: DATABASE_URL=postgresql://user:password@localhost:5432/mock_service');
+  process.exit(1);
 }
 
-// Check if database file exists
-const dbExists = existsSync(absoluteDbPath);
-console.log(`[Database] Database file exists: ${dbExists}`);
+console.log(`[Database] Using PostgreSQL database`);
 
-const sqlite = new Database(absoluteDbPath);
-export const db = drizzle(sqlite, { schema });
+// Create PostgreSQL connection pool
+const pool = new Pool({
+  connectionString: databaseUrl,
+});
+
+export const db = drizzle(pool, { schema });
 
 // Function to find drizzle migrations directory
 function findMigrationsPath(): string | null {
@@ -58,38 +57,40 @@ function findMigrationsPath(): string | null {
 // Always run migrations to ensure database is up to date
 console.log('[Database] Checking if migrations need to run...');
 console.log(`[Database] NODE_ENV: ${process.env.NODE_ENV}`);
-console.log(`[Database] DATABASE_PATH: ${process.env.DATABASE_PATH}`);
+console.log(`[Database] DATABASE_URL: ${databaseUrl ? '***configured***' : 'NOT SET'}`);
 
-try {
-  const migrationsPath = findMigrationsPath();
-  
-  if (migrationsPath) {
-    console.log(`[Database] Running migrations from: ${migrationsPath}`);
-    try {
-      migrate(db, { migrationsFolder: migrationsPath });
-      console.log('✅ Database migrations completed successfully');
-    } catch (migrateError: any) {
-      console.error('❌ Migration failed:', migrateError.message);
-      console.log('[Database] Attempting fallback: creating tables from SQL files...');
-      createTablesFromSQL(migrationsPath);
-    }
-  } else {
-    console.error('❌ Migrations folder not found in any location');
-    console.log('[Database] Current working directory:', process.cwd());
+async function runMigrations() {
+  try {
+    const migrationsPath = findMigrationsPath();
     
-    // List files in current directory for debugging
-    try {
-      const files = readdirSync(process.cwd());
-      console.log('[Database] Files in CWD:', files.join(', '));
-    } catch (e) {
-      console.log('[Database] Could not list CWD files');
+    if (migrationsPath) {
+      console.log(`[Database] Running migrations from: ${migrationsPath}`);
+      try {
+        await migrate(db, { migrationsFolder: migrationsPath });
+        console.log('✅ Database migrations completed successfully');
+      } catch (migrateError: any) {
+        console.error('❌ Migration failed:', migrateError.message);
+        console.log('[Database] Attempting fallback: creating tables from SQL files...');
+        await createTablesFromSQL(migrationsPath);
+      }
+    } else {
+      console.error('❌ Migrations folder not found in any location');
+      console.log('[Database] Current working directory:', process.cwd());
+      
+      // List files in current directory for debugging
+      try {
+        const files = readdirSync(process.cwd());
+        console.log('[Database] Files in CWD:', files.join(', '));
+      } catch (e) {
+        console.log('[Database] Could not list CWD files');
+      }
     }
+  } catch (error: any) {
+    console.error('❌ Failed to setup database:', error.message);
   }
-} catch (error: any) {
-  console.error('❌ Failed to setup database:', error.message);
 }
 
-function createTablesFromSQL(migrationsPath: string) {
+async function createTablesFromSQL(migrationsPath: string) {
   try {
     console.log(`[Database] Creating tables from SQL files in: ${migrationsPath}`);
     const files = readdirSync(migrationsPath)
@@ -108,7 +109,7 @@ function createTablesFromSQL(migrationsPath: string) {
         const trimmed = statement.trim();
         if (trimmed && !trimmed.startsWith('--')) {
           try {
-            sqlite.exec(trimmed);
+            await pool.query(trimmed);
           } catch (e: any) {
             if (!e.message?.includes('already exists')) {
               console.warn(`[Database] Warning executing SQL from ${file}:`, e.message);
@@ -123,11 +124,14 @@ function createTablesFromSQL(migrationsPath: string) {
   }
 }
 
+// Run migrations
+runMigrations();
+
 // Verify tables exist
-setTimeout(() => {
+setTimeout(async () => {
   try {
-    const tables = sqlite.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
-    console.log('[Database] Tables in database:', tables.map((t: any) => t.name).join(', '));
+    const result = await pool.query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'");
+    console.log('[Database] Tables in database:', result.rows.map((r: any) => r.table_name).join(', '));
   } catch (e: any) {
     console.error('[Database] Could not list tables:', e.message);
   }

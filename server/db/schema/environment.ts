@@ -1,17 +1,17 @@
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+import { pgTable, text, integer, timestamp, boolean } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { projects } from './project';
 
-export const environments = sqliteTable('environments', {
+export const environments = pgTable('environments', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   projectId: text('project_id')
     .notNull()
     .references(() => projects.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
-  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(false),
-  createdAt: integer('created_at', { mode: 'timestamp' })
+  isActive: boolean('is_active').notNull().default(false),
+  createdAt: timestamp('created_at')
     .notNull()
-    .default(sql`(unixepoch())`)
+    .defaultNow()
 });
 
 export type Environment = typeof environments.$inferSelect;

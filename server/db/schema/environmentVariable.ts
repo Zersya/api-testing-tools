@@ -1,14 +1,14 @@
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+import { pgTable, text, integer, boolean } from 'drizzle-orm/pg-core';
 import { environments } from './environment';
 
-export const environmentVariables = sqliteTable('environment_variables', {
+export const environmentVariables = pgTable('environment_variables', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   environmentId: text('environment_id')
     .notNull()
     .references(() => environments.id, { onDelete: 'cascade' }),
   key: text('key').notNull(),
   value: text('value').notNull(),
-  isSecret: integer('is_secret', { mode: 'boolean' }).notNull().default(false)
+  isSecret: boolean('is_secret').notNull().default(false)
 });
 
 export type EnvironmentVariable = typeof environmentVariables.$inferSelect;
