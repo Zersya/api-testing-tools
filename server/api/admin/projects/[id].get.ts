@@ -14,11 +14,11 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Get the project
-    const project = db
+    const project = (await db
       .select()
       .from(projects)
       .where(eq(projects.id, id))
-      .get();
+      .limit(1))[0];
 
     if (!project) {
       throw createError({
@@ -28,12 +28,11 @@ export default defineEventHandler(async (event) => {
     }
 
     // Get all collections for this project
-    const projectCollections = db
+    const projectCollections = await db
       .select()
       .from(collections)
       .where(eq(collections.projectId, id))
-      .orderBy(desc(collections.createdAt))
-      .all();
+      .orderBy(desc(collections.createdAt));
 
     return {
       ...project,

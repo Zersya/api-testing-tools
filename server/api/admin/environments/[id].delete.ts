@@ -14,11 +14,11 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Check if environment exists
-    const existing = db
+    const existing = (await db
       .select()
       .from(environments)
       .where(eq(environments.id, id))
-      .get();
+      .limit(1))[0];
 
     if (!existing) {
       throw createError({
@@ -28,32 +28,28 @@ export default defineEventHandler(async (event) => {
     }
 
     // Count variables that will be deleted (for informational purposes)
-    const variablesToDelete = db
+    const variablesToDelete = await db
       .select()
       .from(environmentVariables)
-      .where(eq(environmentVariables.environmentId, id))
-      .all();
+      .where(eq(environmentVariables.environmentId, id));
 
     const variableCount = variablesToDelete.length;
 
     // Delete the environment (cascade will handle variables)
-    db.delete(environments)
-      .where(eq(environments.id, id))
-      .run();
+    await db.delete(environments)
+      .where(eq(environments.id, id));
 
     // If the deleted environment was active, make another environment active
     if (existing.isActive) {
-      const remainingEnvironments = db
+      const remainingEnvironments = await db
         .select()
         .from(environments)
-        .where(eq(environments.projectId, existing.projectId))
-        .all();
+        .where(eq(environments.projectId, existing.projectId));
 
       if (remainingEnvironments.length > 0) {
-        db.update(environments)
+        await db.update(environments)
           .set({ isActive: true })
-          .where(eq(environments.id, remainingEnvironments[0].id))
-          .run();
+          .where(eq(environments.id, remainingEnvironments[0].id));
       }
     }
 

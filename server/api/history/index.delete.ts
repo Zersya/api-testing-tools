@@ -25,25 +25,24 @@ export default defineEventHandler(async (event) => {
     
     if (query.workspaceId) {
       // Count entries for specific workspace
-      countResult = db
+      countResult = (await db
         .select({ count: sql<number>`count(*)` })
         .from(requestHistories)
         .where(eq(requestHistories.workspaceId, query.workspaceId))
-        .get();
+        .limit(1))[0];
 
       // Delete only entries for the specified workspace
-      db.delete(requestHistories)
-        .where(eq(requestHistories.workspaceId, query.workspaceId))
-        .run();
+      await db.delete(requestHistories)
+        .where(eq(requestHistories.workspaceId, query.workspaceId));
     } else {
       // Count all entries
-      countResult = db
+      countResult = (await db
         .select({ count: sql<number>`count(*)` })
         .from(requestHistories)
-        .get();
+        .limit(1))[0];
 
       // Delete all entries
-      db.delete(requestHistories).run();
+      await db.delete(requestHistories);
     }
 
     const deletedCount = countResult?.count || 0;

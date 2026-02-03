@@ -313,11 +313,11 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
     }
 
     // Verify project exists
-    const project = db
+    const project = (await db
       .select()
       .from(projects)
       .where(eq(projects.id, projectId))
-      .get();
+      .limit(1))[0];
 
     if (!project) {
       return {
@@ -397,7 +397,7 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
     const definitionName = name || parsedSpec.info.title || 'Untitled API';
 
     // Store in database
-    const newDefinition = db
+    const newDefinition = (await db
       .insert(apiDefinitions)
       .values({
         projectId,
@@ -407,8 +407,7 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
         sourceUrl: url || null,
         isPublic,
       })
-      .returning()
-      .get();
+      .returning())[0];
 
     // Prepare response with extracted data
     return {

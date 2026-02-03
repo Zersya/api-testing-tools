@@ -19,11 +19,11 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const entry = db
+    const entry = (await db
       .select()
       .from(requestHistories)
       .where(eq(requestHistories.id, id))
-      .get();
+      .limit(1))[0];
 
     if (!entry) {
       throw createError({

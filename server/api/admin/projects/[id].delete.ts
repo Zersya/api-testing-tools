@@ -14,11 +14,11 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Check if project exists
-    const existing = db
+    const existing = (await db
       .select()
       .from(projects)
       .where(eq(projects.id, id))
-      .get();
+      .limit(1))[0];
 
     if (!existing) {
       throw createError({
@@ -28,18 +28,16 @@ export default defineEventHandler(async (event) => {
     }
 
     // Count collections that will be deleted (for informational purposes)
-    const collectionsToDelete = db
+    const collectionsToDelete = await db
       .select()
       .from(collections)
-      .where(eq(collections.projectId, id))
-      .all();
+      .where(eq(collections.projectId, id));
 
     const collectionCount = collectionsToDelete.length;
 
     // Delete the project (cascade will handle collections and their children)
-    db.delete(projects)
-      .where(eq(projects.id, id))
-      .run();
+    await db.delete(projects)
+      .where(eq(projects.id, id));
 
     return {
       success: true,

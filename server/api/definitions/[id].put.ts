@@ -68,11 +68,11 @@ export default defineEventHandler(async (event) => {
         });
       }
       
-      const existing = db
+      const existing = (await db
         .select()
         .from(apiDefinitions)
         .where(eq(apiDefinitions.publicSlug, slug))
-        .get();
+        .limit(1))[0];
       
       if (existing && existing.id !== id) {
         throw createError({ 
@@ -86,12 +86,11 @@ export default defineEventHandler(async (event) => {
       updateData.updatedAt = new Date();
     }
 
-    const updated = db
+    const updated = (await db
       .update(apiDefinitions)
       .set(updateData)
       .where(eq(apiDefinitions.id, id))
-      .returning()
-      .get();
+      .returning())[0];
 
     if (!updated) {
       throw createError({ 

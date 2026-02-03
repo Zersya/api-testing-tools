@@ -9,8 +9,7 @@ export default defineEventHandler(async (event) => {
         const definitions = await db
             .select()
             .from(apiDefinitions)
-            .orderBy(desc(apiDefinitions.updatedAt))
-            .all();
+            .orderBy(desc(apiDefinitions.updatedAt));
         
         const result = definitions.map(def => {
             let endpointCount = 0;

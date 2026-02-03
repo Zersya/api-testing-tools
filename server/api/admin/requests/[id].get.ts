@@ -14,11 +14,11 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Get the request
-    const request = db
+    const request = (await db
       .select()
       .from(savedRequests)
       .where(eq(savedRequests.id, id))
-      .get();
+      .limit(1))[0];
 
     if (!request) {
       throw createError({

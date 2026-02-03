@@ -13,12 +13,11 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const requests = db
+    const requests = await db
       .select()
       .from(savedRequests)
       .where(eq(savedRequests.folderId, folderId))
-      .orderBy(savedRequests.order)
-      .all();
+      .orderBy(savedRequests.order);
 
     return requests;
   } catch (error) {

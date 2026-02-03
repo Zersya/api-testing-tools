@@ -87,32 +87,27 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const allWorkspaces = db
+    const allWorkspaces = await db
       .select()
       .from(workspaces)
-      .orderBy(desc(workspaces.createdAt))
-      .all();
+      .orderBy(desc(workspaces.createdAt));
 
-    const allProjects = db
+    const allProjects = await db
       .select()
-      .from(projects)
-      .all();
+      .from(projects);
 
-    const allCollections = db
+    const allCollections = await db
       .select()
-      .from(collections)
-      .all();
+      .from(collections);
 
-    const allFolders = db
+    const allFolders = await db
       .select()
-      .from(folders)
-      .all();
+      .from(folders);
 
-    const allRequests = db
+    const allRequests = await db
       .select()
       .from(savedRequests)
-      .orderBy(asc(savedRequests.order))
-      .all() as RequestItem[];
+      .orderBy(asc(savedRequests.order)) as RequestItem[];
 
     const workspacesWithProjects: WorkspaceWithProjects[] = allWorkspaces.map(workspace => {
       const workspaceProjects = allProjects.filter(p => p.workspaceId === workspace.id);

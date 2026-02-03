@@ -33,11 +33,11 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Get the folder
-    const folder = db
+    const folder = (await db
       .select()
       .from(folders)
       .where(eq(folders.id, id))
-      .get();
+      .limit(1))[0];
 
     if (!folder) {
       throw createError({
@@ -47,11 +47,10 @@ export default defineEventHandler(async (event) => {
     }
 
     // Get all folders in the same collection to build children tree
-    const allCollectionFolders = db
+    const allCollectionFolders = await db
       .select()
       .from(folders)
-      .where(eq(folders.collectionId, folder.collectionId))
-      .all();
+      .where(eq(folders.collectionId, folder.collectionId));
 
     // Build children tree
     const children = buildFolderTree(allCollectionFolders, id);

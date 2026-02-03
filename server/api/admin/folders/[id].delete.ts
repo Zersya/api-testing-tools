@@ -24,11 +24,11 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Check if folder exists
-    const existing = db
+    const existing = (await db
       .select()
       .from(folders)
       .where(eq(folders.id, id))
-      .get();
+      .limit(1))[0];
 
     if (!existing) {
       throw createError({
@@ -38,18 +38,16 @@ export default defineEventHandler(async (event) => {
     }
 
     // Get all folders in the collection to count descendants
-    const allCollectionFolders = db
+    const allCollectionFolders = await db
       .select()
       .from(folders)
-      .where(eq(folders.collectionId, existing.collectionId))
-      .all();
+      .where(eq(folders.collectionId, existing.collectionId));
 
     const descendantCount = countDescendants(allCollectionFolders, id);
 
     // Delete the folder (cascade will handle child folders)
-    db.delete(folders)
-      .where(eq(folders.id, id))
-      .run();
+    await db.delete(folders)
+      .where(eq(folders.id, id));
 
     return {
       success: true,

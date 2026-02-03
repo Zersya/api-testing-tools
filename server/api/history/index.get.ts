@@ -62,23 +62,22 @@ export default defineEventHandler(async (event) => {
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
     // Get total count for pagination
-    const countResult = db
+    const countResult = (await db
       .select({ count: sql<number>`count(*)` })
       .from(requestHistories)
       .where(whereClause)
-      .get();
+      .limit(1))[0];
 
     const total = countResult?.count || 0;
 
     // Fetch history entries with pagination
-    const items = db
+    const items = await db
       .select()
       .from(requestHistories)
       .where(whereClause)
       .orderBy(desc(requestHistories.timestamp))
       .limit(limit)
-      .offset(offset)
-      .all();
+      .offset(offset);
 
     // Calculate pagination metadata
     const totalPages = Math.ceil(total / limit);

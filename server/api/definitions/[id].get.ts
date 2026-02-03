@@ -11,7 +11,7 @@ export default defineEventHandler(async (event) => {
         throw createError({ statusCode: 400, statusMessage: 'ID is required' });
     }
 
-    const definition = db.select().from(apiDefinitions).where(eq(apiDefinitions.id, id)).get();
+    const definition = (await db.select().from(apiDefinitions).where(eq(apiDefinitions.id, id)).limit(1))[0];
 
     if (!definition) {
         throw createError({ statusCode: 404, statusMessage: 'Definition not found' });

@@ -28,11 +28,11 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Check if environment exists
-    const existing = db
+    const existing = (await db
       .select()
       .from(environments)
       .where(eq(environments.id, id))
-      .get();
+      .limit(1))[0];
 
     if (!existing) {
       throw createError({
@@ -69,11 +69,10 @@ export default defineEventHandler(async (event) => {
       }
 
       // Check for duplicate names within the same project (case-insensitive), excluding current environment
-      const environmentsInProject = db
+      const environmentsInProject = await db
         .select()
         .from(environments)
-        .where(eq(environments.projectId, existing.projectId))
-        .all();
+        .where(eq(environments.projectId, existing.projectId));
 
       const duplicate = environmentsInProject.find(
         e => e.id !== id && e.name.toLowerCase() === trimmedName.toLowerCase()
@@ -90,12 +89,11 @@ export default defineEventHandler(async (event) => {
     }
 
     // Update the environment
-    const updatedEnvironment = db
+    const updatedEnvironment = (await db
       .update(environments)
       .set(updateData)
       .where(eq(environments.id, id))
-      .returning()
-      .get();
+      .returning())[0];
 
     return updatedEnvironment;
   } catch (error: any) {

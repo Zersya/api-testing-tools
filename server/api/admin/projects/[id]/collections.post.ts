@@ -70,11 +70,11 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Verify project exists
-    const project = db
+    const project = (await db
       .select()
       .from(projects)
       .where(eq(projects.id, projectId))
-      .get();
+      .limit(1))[0];
 
     if (!project) {
       throw createError({
@@ -84,11 +84,10 @@ export default defineEventHandler(async (event) => {
     }
 
     // Check for duplicate collection names within the project (case-insensitive)
-    const existingCollections = db
+    const existingCollections = await db
       .select()
       .from(collections)
-      .where(eq(collections.projectId, projectId))
-      .all();
+      .where(eq(collections.projectId, projectId));
 
     const duplicate = existingCollections.find(
       c => c.name.toLowerCase() === trimmedName.toLowerCase()
@@ -102,7 +101,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // Create the collection
-    const newCollection = db
+    const newCollection = (await db
       .insert(collections)
       .values({
         projectId,
@@ -110,8 +109,7 @@ export default defineEventHandler(async (event) => {
         description,
         authConfig
       })
-      .returning()
-      .get();
+      .returning())[0];
 
     return newCollection;
   } catch (error: any) {

@@ -29,11 +29,11 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Check if request exists
-    const existing = db
+    const existing = (await db
       .select()
       .from(savedRequests)
       .where(eq(savedRequests.id, id))
-      .get();
+      .limit(1))[0];
 
     if (!existing) {
       throw createError({
@@ -43,11 +43,11 @@ export default defineEventHandler(async (event) => {
     }
 
     // Check if target folder exists
-    const targetFolder = db
+    const targetFolder = (await db
       .select()
       .from(folders)
       .where(eq(folders.id, body.folderId))
-      .get();
+      .limit(1))[0];
 
     if (!targetFolder) {
       throw createError({
@@ -68,18 +68,17 @@ export default defineEventHandler(async (event) => {
       order = body.order;
     } else {
       // Place at the end of the target folder
-      const existingRequests = db
+      const existingRequests = await db
         .select()
         .from(savedRequests)
-        .where(eq(savedRequests.folderId, body.folderId))
-        .all();
+        .where(eq(savedRequests.folderId, body.folderId));
 
       const maxOrder = existingRequests.reduce((max, r) => Math.max(max, r.order), -1);
       order = maxOrder + 1;
     }
 
     // Move the request to the new folder
-    const movedRequest = db
+    const movedRequest = (await db
       .update(savedRequests)
       .set({
         folderId: body.folderId,
@@ -87,8 +86,7 @@ export default defineEventHandler(async (event) => {
         updatedAt: new Date()
       })
       .where(eq(savedRequests.id, id))
-      .returning()
-      .get();
+      .returning())[0];
 
     return {
       success: true,

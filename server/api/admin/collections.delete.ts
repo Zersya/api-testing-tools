@@ -55,11 +55,10 @@ export default defineEventHandler(async (event) => {
     }
 
     // Delete all folders in this collection from database (cascade will delete requests)
-    const collectionFolders = db
+    const collectionFolders = await db
         .select()
         .from(folders)
-        .where(eq(folders.collectionId, id))
-        .all();
+        .where(eq(folders.collectionId, id));
 
     if (collectionFolders.length > 0) {
         // Delete all saved requests in these folders (cascade should handle this, but let's be explicit)

@@ -14,11 +14,11 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Check if variable exists
-    const existing = db
+    const existing = (await db
       .select()
       .from(environmentVariables)
       .where(eq(environmentVariables.id, id))
-      .get();
+      .limit(1))[0];
 
     if (!existing) {
       throw createError({
@@ -28,9 +28,8 @@ export default defineEventHandler(async (event) => {
     }
 
     // Delete the variable
-    db.delete(environmentVariables)
-      .where(eq(environmentVariables.id, id))
-      .run();
+    await db.delete(environmentVariables)
+      .where(eq(environmentVariables.id, id));
 
     return {
       success: true,

@@ -28,11 +28,11 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Check if workspace exists
-    const existing = db
+    const existing = (await db
       .select()
       .from(workspaces)
       .where(eq(workspaces.id, id))
-      .get();
+      .limit(1))[0];
 
     if (!existing) {
       throw createError({
@@ -69,10 +69,9 @@ export default defineEventHandler(async (event) => {
       }
 
       // Check for duplicate names (case-insensitive), excluding current workspace
-      const allWorkspaces = db
+      const allWorkspaces = await db
         .select()
-        .from(workspaces)
-        .all();
+        .from(workspaces);
 
       const duplicate = allWorkspaces.find(
         w => w.id !== id && w.name.toLowerCase() === trimmedName.toLowerCase()
@@ -89,15 +88,14 @@ export default defineEventHandler(async (event) => {
     }
 
     // Update the workspace
-    const updatedWorkspace = db
+    const updatedWorkspace = (await db
       .update(workspaces)
       .set({
         ...updateData,
         updatedAt: sql`(unixepoch())`
       })
       .where(eq(workspaces.id, id))
-      .returning()
-      .get();
+      .returning())[0];
 
     return updatedWorkspace;
   } catch (error: any) {

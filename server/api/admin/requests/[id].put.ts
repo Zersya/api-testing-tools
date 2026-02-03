@@ -36,11 +36,11 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Check if request exists
-    const existing = db
+    const existing = (await db
       .select()
       .from(savedRequests)
       .where(eq(savedRequests.id, id))
-      .get();
+      .limit(1))[0];
 
     if (!existing) {
       throw createError({
@@ -158,12 +158,11 @@ export default defineEventHandler(async (event) => {
     }
 
     // Update the request
-    const updatedRequest = db
+    const updatedRequest = (await db
       .update(savedRequests)
       .set(updateData)
       .where(eq(savedRequests.id, id))
-      .returning()
-      .get();
+      .returning())[0];
 
     return updatedRequest;
   } catch (error: any) {

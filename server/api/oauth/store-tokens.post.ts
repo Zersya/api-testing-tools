@@ -37,11 +37,11 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const environment = db
+    const environment = (await db
       .select()
       .from(environments)
       .where(eq(environments.id, body.environmentId))
-      .get();
+      .limit(1))[0];
 
     if (!environment) {
       throw createError({
@@ -50,24 +50,22 @@ export default defineEventHandler(async (event) => {
       });
     }
 
-    const existingVars = db
+    const existingVars = await db
       .select()
       .from(environmentVariables)
-      .where(eq(environmentVariables.environmentId, body.environmentId))
-      .all();
+      .where(eq(environmentVariables.environmentId, body.environmentId));
 
     const createOrUpdateVariable = async (key: string, value: string, isSecret: boolean) => {
       const existing = existingVars.find(v => v.key === key);
 
       if (existing) {
-        db
+        await db
           .update(environmentVariables)
           .set({ value, isSecret })
-          .where(eq(environmentVariables.id, existing.id))
-          .run();
+          .where(eq(environmentVariables.id, existing.id));
         return { ...existing, value, isSecret };
       } else {
-        const newVar = db
+        const newVar = (await db
           .insert(environmentVariables)
           .values({
             environmentId: body.environmentId,
@@ -75,8 +73,7 @@ export default defineEventHandler(async (event) => {
             value,
             isSecret
           })
-          .returning()
-          .get();
+          .returning())[0];
         return newVar;
       }
     };

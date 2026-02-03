@@ -50,11 +50,11 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Check if folder exists
-    const existing = db
+    const existing = (await db
       .select()
       .from(folders)
       .where(eq(folders.id, id))
-      .get();
+      .limit(1))[0];
 
     if (!existing) {
       throw createError({
@@ -64,11 +64,10 @@ export default defineEventHandler(async (event) => {
     }
 
     // Get all folders in the collection (for validation)
-    const allCollectionFolders = db
+    const allCollectionFolders = await db
       .select()
       .from(folders)
-      .where(eq(folders.collectionId, existing.collectionId))
-      .all();
+      .where(eq(folders.collectionId, existing.collectionId));
 
     // Prepare update data
     const updateData: Partial<{
@@ -125,13 +124,13 @@ export default defineEventHandler(async (event) => {
         });
       }
 
-      // Verify new parent exists and belongs to the same collection
-      if (newParentId !== null) {
-        const newParent = db
-          .select()
-          .from(folders)
-          .where(eq(folders.id, newParentId))
-          .get();
+        // Verify new parent exists and belongs to the same collection
+        if (newParentId !== null) {
+          const newParent = (await db
+            .select()
+            .from(folders)
+            .where(eq(folders.id, newParentId))
+            .limit(1))[0];
 
         if (!newParent) {
           throw createError({
@@ -192,12 +191,11 @@ export default defineEventHandler(async (event) => {
     }
 
     // Update the folder
-    const updatedFolder = db
+    const updatedFolder = (await db
       .update(folders)
       .set(updateData)
       .where(eq(folders.id, id))
-      .returning()
-      .get();
+      .returning())[0];
 
     return updatedFolder;
   } catch (error: any) {

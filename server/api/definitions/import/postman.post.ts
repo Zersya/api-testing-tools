@@ -349,11 +349,11 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
     }
 
     // Verify project exists
-    const project = db
+    const project = (await db
       .select()
       .from(projects)
       .where(eq(projects.id, projectId))
-      .get();
+      .limit(1))[0];
 
     if (!project) {
       return {
@@ -417,7 +417,7 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
     const collectionName = name || parsedCollection.name || 'Imported Collection';
 
     // Create the collection in database
-    const newCollection = db
+    const newCollection = (await db
       .insert(collections)
       .values({
         projectId,
@@ -425,8 +425,7 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
         description: parsedCollection.description || null,
         authConfig: parsedCollection.auth ? { auth: parsedCollection.auth } : null
       })
-      .returning()
-      .get();
+      .returning())[0];
 
     const createdFolders: ImportedFolder[] = [];
     const createdRequests: ImportedRequest[] = [];
@@ -440,7 +439,7 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
     ): void => {
       for (const parsedFolder of parsedFolders) {
         // Create the folder
-        const newFolder = db
+        const newFolder = (await db
           .insert(folders)
           .values({
             collectionId: newCollection.id,
@@ -448,8 +447,7 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
             name: parsedFolder.name,
             order: parsedFolder.order
           })
-          .returning()
-          .get();
+          .returning())[0];
 
         createdFolders.push({
           id: newFolder.id,
@@ -459,7 +457,7 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
 
         // Create requests in this folder
         for (const parsedRequest of parsedFolder.requests) {
-          const newRequest = db
+          const newRequest = (await db
             .insert(savedRequests)
             .values({
               folderId: newFolder.id,
@@ -471,8 +469,7 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
               auth: parsedRequest.auth,
               order: parsedRequest.order
             })
-            .returning()
-            .get();
+            .returning())[0];
 
           createdRequests.push({
             id: newRequest.id,
@@ -492,7 +489,7 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
 
     // Create a default folder for root-level requests if any exist
     if (parsedCollection.requests.length > 0) {
-      const defaultFolder = db
+      const defaultFolder = (await db
         .insert(folders)
         .values({
           collectionId: newCollection.id,
@@ -500,8 +497,7 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
           name: 'Requests',
           order: 0
         })
-        .returning()
-        .get();
+        .returning())[0];
 
       createdFolders.push({
         id: defaultFolder.id,
@@ -511,7 +507,7 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
 
       // Create root-level requests in the default folder
       for (const parsedRequest of parsedCollection.requests) {
-        const newRequest = db
+        const newRequest = (await db
           .insert(savedRequests)
           .values({
             folderId: defaultFolder.id,
@@ -523,8 +519,7 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
             auth: parsedRequest.auth,
             order: parsedRequest.order
           })
-          .returning()
-          .get();
+          .returning())[0];
 
         createdRequests.push({
           id: newRequest.id,
@@ -543,25 +538,23 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
     if (importEnvironments) {
       // First, check if collection has variables - create as an environment
       if (parsedCollection.variables.length > 0) {
-        const collectionEnv = db
+        const collectionEnv = (await db
           .insert(environments)
           .values({
             projectId,
             name: `${collectionName} Variables`,
             isActive: false
           })
-          .returning()
-          .get();
+          .returning())[0];
 
         for (const variable of parsedCollection.variables) {
-          db.insert(environmentVariables)
+          await db.insert(environmentVariables)
             .values({
               environmentId: collectionEnv.id,
               key: variable.key,
               value: variable.value,
               isSecret: variable.isSecret
-            })
-            .run();
+            });
           totalVariablesCreated++;
         }
 
@@ -585,25 +578,23 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
               const envResult = parsePostmanEnvironment(envItem);
               
               if (envResult.success && envResult.data) {
-                const newEnv = db
+                const newEnv = (await db
                   .insert(environments)
                   .values({
                     projectId,
                     name: envResult.data.name,
                     isActive: false
                   })
-                  .returning()
-                  .get();
+                  .returning())[0];
 
                 for (const variable of envResult.data.variables) {
-                  db.insert(environmentVariables)
+                  await db.insert(environmentVariables)
                     .values({
                       environmentId: newEnv.id,
                       key: variable.key,
                       value: variable.value,
                       isSecret: variable.isSecret
-                    })
-                    .run();
+                    });
                   totalVariablesCreated++;
                 }
 

@@ -7,11 +7,11 @@ const PERSONAL_WORKSPACE_NAME = 'Personal';
 
 export async function seedDefaultWorkspace(): Promise<void> {
   // Check if Personal workspace already exists
-  const existing = await db
+  const existing = (await db
     .select()
     .from(workspaces)
     .where(eq(workspaces.id, PERSONAL_WORKSPACE_ID))
-    .get();
+    .limit(1))[0];
 
   if (!existing) {
     await db.insert(workspaces).values({

@@ -15,11 +15,11 @@ export default defineEventHandler(async (event) => {
       });
     }
 
-    const definition = db
+    const definition = (await db
       .select()
       .from(apiDefinitions)
       .where(eq(apiDefinitions.publicSlug, slug))
-      .get();
+      .limit(1))[0];
 
     if (!definition) {
       throw createError({ 

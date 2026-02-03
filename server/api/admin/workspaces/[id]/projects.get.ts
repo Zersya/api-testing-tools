@@ -14,11 +14,11 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Verify workspace exists
-    const workspace = db
+    const workspace = (await db
       .select()
       .from(workspaces)
       .where(eq(workspaces.id, workspaceId))
-      .get();
+      .limit(1))[0];
 
     if (!workspace) {
       throw createError({
@@ -28,12 +28,11 @@ export default defineEventHandler(async (event) => {
     }
 
     // Get all projects in the workspace
-    const workspaceProjects = db
+    const workspaceProjects = await db
       .select()
       .from(projects)
       .where(eq(projects.workspaceId, workspaceId))
-      .orderBy(desc(projects.createdAt))
-      .all();
+      .orderBy(desc(projects.createdAt));
 
     return workspaceProjects;
   } catch (error: any) {

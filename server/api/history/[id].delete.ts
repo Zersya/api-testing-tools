@@ -20,11 +20,11 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Check if entry exists
-    const existing = db
+    const existing = (await db
       .select()
       .from(requestHistories)
       .where(eq(requestHistories.id, id))
-      .get();
+      .limit(1))[0];
 
     if (!existing) {
       throw createError({
@@ -34,9 +34,8 @@ export default defineEventHandler(async (event) => {
     }
 
     // Delete the entry
-    db.delete(requestHistories)
-      .where(eq(requestHistories.id, id))
-      .run();
+    await db.delete(requestHistories)
+      .where(eq(requestHistories.id, id));
 
     return {
       success: true,

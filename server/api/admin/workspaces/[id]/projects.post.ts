@@ -57,11 +57,11 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Verify workspace exists
-    const workspace = db
+    const workspace = (await db
       .select()
       .from(workspaces)
       .where(eq(workspaces.id, workspaceId))
-      .get();
+      .limit(1))[0];
 
     if (!workspace) {
       throw createError({
@@ -71,11 +71,10 @@ export default defineEventHandler(async (event) => {
     }
 
     // Check for duplicate project names within the workspace (case-insensitive)
-    const existingProjects = db
+    const existingProjects = await db
       .select()
       .from(projects)
-      .where(eq(projects.workspaceId, workspaceId))
-      .all();
+      .where(eq(projects.workspaceId, workspaceId));
 
     const duplicate = existingProjects.find(
       p => p.name.toLowerCase() === trimmedName.toLowerCase()
@@ -89,15 +88,14 @@ export default defineEventHandler(async (event) => {
     }
 
     // Create the project
-    const newProject = db
+    const newProject = (await db
       .insert(projects)
       .values({
         workspaceId,
         name: trimmedName,
         baseUrl
       })
-      .returning()
-      .get();
+      .returning())[0];
 
     return newProject;
   } catch (error: any) {

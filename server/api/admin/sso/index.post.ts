@@ -5,8 +5,8 @@ import { eq, and, isNull } from 'drizzle-orm';
 export default defineEventHandler(async (event) => {
   const body = await readBody<Partial<SsoConfig>>(event);
   
-  // Get existing config from SQLite
-  const existingSetting = await db
+  // Get existing config from database
+  const existingSetting = (await db
     .select()
     .from(schema.settings)
     .where(
@@ -15,7 +15,7 @@ export default defineEventHandler(async (event) => {
         isNull(schema.settings.workspaceId)
       )
     )
-    .get();
+    .limit(1))[0];
   
   const existingConfig: SsoConfig = existingSetting?.value as SsoConfig || { 
     providers: [], 

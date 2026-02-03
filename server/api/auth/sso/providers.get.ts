@@ -4,8 +4,8 @@ import { eq, and, isNull } from 'drizzle-orm';
 
 export default defineEventHandler(async (event) => {
   try {
-    // Get SSO config from SQLite
-    const setting = await db
+    // Get SSO config from database
+    const setting = (await db
       .select()
       .from(schema.settings)
       .where(
@@ -14,7 +14,7 @@ export default defineEventHandler(async (event) => {
           isNull(schema.settings.workspaceId)
         )
       )
-      .get();
+      .limit(1))[0];
     
     // Default empty config if none exists
     const ssoConfig: SsoConfig = (setting?.value as SsoConfig) || { 

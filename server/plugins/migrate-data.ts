@@ -25,8 +25,8 @@ interface OldCollection {
 
 export default defineNitroPlugin(async () => {
   try {
-    // Check if migration already completed using SQLite
-    const migrationStatus = await db
+    // Check if migration already completed
+    const migrationStatus = (await db
       .select()
       .from(schema.settings)
       .where(
@@ -35,7 +35,7 @@ export default defineNitroPlugin(async () => {
           isNull(schema.settings.workspaceId)
         )
       )
-      .get();
+      .limit(1))[0];
 
     if (migrationStatus?.value) {
       console.log('✅ Data migration already completed, skipping...');
@@ -55,16 +55,16 @@ export default defineNitroPlugin(async () => {
     for (const key of collectionKeys) {
       const oldCollection = await collectionsStorage.getItem(key) as OldCollection | null;
       if (oldCollection) {
-        // Check if collection already exists in SQLite
-        const existing = await db
+        // Check if collection already exists
+        const existing = (await db
           .select()
           .from(schema.collections)
           .where(eq(schema.collections.id, oldCollection.id))
-          .get();
+          .limit(1))[0];
 
         if (!existing) {
           // Find a project to associate with (use first available or create default)
-          const project = await db.select().from(schema.projects).limit(1).get();
+          const project = (await db.select().from(schema.projects).limit(1))[0];
           
           if (project) {
             await db.insert(schema.collections).values({
@@ -90,12 +90,12 @@ export default defineNitroPlugin(async () => {
     for (const key of mockKeys) {
       const oldMock = await mocksStorage.getItem(key) as OldMock | null;
       if (oldMock) {
-        // Check if mock already exists in SQLite
-        const existing = await db
+        // Check if mock already exists
+        const existing = (await db
           .select()
           .from(schema.mocks)
           .where(eq(schema.mocks.id, oldMock.id))
-          .get();
+          .limit(1))[0];
 
         if (!existing) {
           // Map collection reference
@@ -127,7 +127,7 @@ export default defineNitroPlugin(async () => {
     // Migrate settings
     const globalSettings = await settingsStorage.getItem('global') as { bearerToken?: string } | null;
     if (globalSettings?.bearerToken) {
-      const existing = await db
+      const existing = (await db
         .select()
         .from(schema.settings)
         .where(
@@ -136,7 +136,7 @@ export default defineNitroPlugin(async () => {
             isNull(schema.settings.workspaceId)
           )
         )
-        .get();
+        .limit(1))[0];
 
       if (!existing) {
         await db.insert(schema.settings).values({

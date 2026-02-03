@@ -36,11 +36,11 @@ export default defineEventHandler(async (event) => {
         });
       }
 
-      const existing = db
+      const existing = (await db
         .select()
         .from(savedRequests)
         .where(eq(savedRequests.id, update.id))
-        .get();
+        .limit(1))[0];
 
       if (!existing) {
         throw createError({
@@ -59,12 +59,11 @@ export default defineEventHandler(async (event) => {
         updatedAt: new Date()
       };
 
-      const updated = db
+      const updated = (await db
         .update(savedRequests)
         .set(updateData)
         .where(eq(savedRequests.id, update.id))
-        .returning()
-        .get();
+        .returning())[0];
 
       updatedRequests.push(updated);
     }

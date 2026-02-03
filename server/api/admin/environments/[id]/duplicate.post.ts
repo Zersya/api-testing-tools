@@ -13,11 +13,11 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const existingEnvironment = db
+    const existingEnvironment = (await db
       .select()
       .from(environments)
       .where(eq(environments.id, environmentId))
-      .get();
+      .limit(1))[0];
 
     if (!existingEnvironment) {
       throw createError({
@@ -30,47 +30,42 @@ export default defineEventHandler(async (event) => {
     let finalName = name;
 
     let counter = 1;
-    const environmentsInProject = db
+    const environmentsInProject = await db
       .select()
       .from(environments)
-      .where(eq(environments.projectId, existingEnvironment.projectId))
-      .all();
+      .where(eq(environments.projectId, existingEnvironment.projectId));
 
     while (environmentsInProject.some(e => e.name.toLowerCase() === finalName.toLowerCase())) {
       finalName = `${name} (${counter})`;
       counter++;
     }
 
-    db.update(environments)
+    await db.update(environments)
       .set({ isActive: false })
-      .where(eq(environments.projectId, existingEnvironment.projectId))
-      .run();
+      .where(eq(environments.projectId, existingEnvironment.projectId));
 
-    const newEnvironment = db
+    const newEnvironment = (await db
       .insert(environments)
       .values({
         projectId: existingEnvironment.projectId,
         name: finalName,
         isActive: true
       })
-      .returning()
-      .get();
+      .returning())[0];
 
-    const variablesToCopy = db
+    const variablesToCopy = await db
       .select()
       .from(environmentVariables)
-      .where(eq(environmentVariables.environmentId, environmentId))
-      .all();
+      .where(eq(environmentVariables.environmentId, environmentId));
 
     for (const variable of variablesToCopy) {
-      db.insert(environmentVariables)
+      await db.insert(environmentVariables)
         .values({
           environmentId: newEnvironment.id,
           key: variable.key,
           value: variable.value,
           isSecret: variable.isSecret
-        })
-        .run();
+        });
     }
 
     return {

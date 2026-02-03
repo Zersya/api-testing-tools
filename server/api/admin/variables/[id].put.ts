@@ -30,11 +30,11 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Check if variable exists
-    const existing = db
+    const existing = (await db
       .select()
       .from(environmentVariables)
       .where(eq(environmentVariables.id, id))
-      .get();
+      .limit(1))[0];
 
     if (!existing) {
       throw createError({
@@ -79,11 +79,10 @@ export default defineEventHandler(async (event) => {
       }
 
       // Check for duplicate keys within the same environment (case-sensitive), excluding current variable
-      const variablesInEnvironment = db
+      const variablesInEnvironment = await db
         .select()
         .from(environmentVariables)
-        .where(eq(environmentVariables.environmentId, existing.environmentId))
-        .all();
+        .where(eq(environmentVariables.environmentId, existing.environmentId));
 
       const duplicate = variablesInEnvironment.find(
         v => v.id !== id && v.key === trimmedKey
@@ -120,12 +119,11 @@ export default defineEventHandler(async (event) => {
     }
 
     // Update the variable
-    const updatedVariable = db
+    const updatedVariable = (await db
       .update(environmentVariables)
       .set(updateData)
       .where(eq(environmentVariables.id, id))
-      .returning()
-      .get();
+      .returning())[0];
 
     return {
       ...updatedVariable,

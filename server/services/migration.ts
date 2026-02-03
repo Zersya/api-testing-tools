@@ -52,11 +52,11 @@ export async function createDefaultWorkspaceAndProject(): Promise<{ workspaceId:
   let workspaceId = PERSONAL_WORKSPACE_ID;
   let projectId = DEFAULT_PROJECT_ID;
 
-  const existingWorkspace = await db
+  const existingWorkspace = (await db
     .select()
     .from(schema.workspaces)
     .where(eq(schema.workspaces.id, PERSONAL_WORKSPACE_ID))
-    .get();
+    .limit(1))[0];
 
   if (!existingWorkspace) {
     await db.insert(schema.workspaces).values({
@@ -66,11 +66,11 @@ export async function createDefaultWorkspaceAndProject(): Promise<{ workspaceId:
     console.log('✅ Created default "Personal" workspace');
   }
 
-  const existingProject = await db
+  const existingProject = (await db
     .select()
     .from(schema.projects)
     .where(eq(schema.projects.id, DEFAULT_PROJECT_ID))
-    .get();
+    .limit(1))[0];
 
   if (!existingProject) {
     await db.insert(schema.projects).values({
@@ -161,14 +161,13 @@ export async function migrateMocksToNewSchema(): Promise<MigrationResult> {
         let folderId: string | undefined;
 
         if (collectionId === 'root') {
-          const rootFolderInProject = await db
+          const rootFolderInProject = (await db
             .select()
             .from(schema.folders)
             .innerJoin(schema.collections, eq(schema.folders.collectionId, schema.collections.id))
             .where(eq(schema.collections.projectId, projectId))
             .orderBy(desc(schema.folders.order))
-            .limit(1)
-            .get();
+            .limit(1))[0];
 
           if (rootFolderInProject) {
             folderId = rootFolderInProject.folders.id;

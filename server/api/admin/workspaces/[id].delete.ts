@@ -24,11 +24,11 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Check if workspace exists
-    const existing = db
+    const existing = (await db
       .select()
       .from(workspaces)
       .where(eq(workspaces.id, id))
-      .get();
+      .limit(1))[0];
 
     if (!existing) {
       throw createError({
@@ -38,18 +38,16 @@ export default defineEventHandler(async (event) => {
     }
 
     // Count projects that will be deleted (for informational purposes)
-    const projectsToDelete = db
+    const projectsToDelete = await db
       .select()
       .from(projects)
-      .where(eq(projects.workspaceId, id))
-      .all();
+      .where(eq(projects.workspaceId, id));
 
     const projectCount = projectsToDelete.length;
 
     // Delete the workspace (cascade will handle projects and their children)
-    db.delete(workspaces)
-      .where(eq(workspaces.id, id))
-      .run();
+    await db.delete(workspaces)
+      .where(eq(workspaces.id, id));
 
     return {
       success: true,

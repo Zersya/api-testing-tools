@@ -62,11 +62,10 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const allCollectionFolders = db
+    const allCollectionFolders = await db
       .select()
       .from(folders)
-      .where(eq(folders.collectionId, body.collectionId))
-      .all();
+      .where(eq(folders.collectionId, body.collectionId));
 
     for (const update of body.updates) {
       const existing = allCollectionFolders.find(f => f.id === update.id);
@@ -122,12 +121,11 @@ export default defineEventHandler(async (event) => {
       }
 
       if (Object.keys(updateData).length > 0) {
-        const updated = db
+        const updated = (await db
           .update(folders)
           .set(updateData)
           .where(eq(folders.id, update.id))
-          .returning()
-          .get();
+          .returning())[0];
 
         updatedFolders.push(updated);
       }

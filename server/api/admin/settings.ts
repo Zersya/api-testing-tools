@@ -4,7 +4,7 @@ import { eq, and, isNull } from 'drizzle-orm';
 export default defineEventHandler(async (event) => {
   try {
     if (event.method === 'GET') {
-      const setting = await db
+      const setting = (await db
         .select()
         .from(schema.settings)
         .where(
@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
             isNull(schema.settings.workspaceId)
           )
         )
-        .get();
+        .limit(1))[0];
 
       return { 
         bearerToken: (setting?.value as string) || '' 
@@ -25,7 +25,7 @@ export default defineEventHandler(async (event) => {
       const now = new Date();
 
       // Check if setting exists
-      const existing = await db
+      const existing = (await db
         .select()
         .from(schema.settings)
         .where(
@@ -34,7 +34,7 @@ export default defineEventHandler(async (event) => {
             isNull(schema.settings.workspaceId)
           )
         )
-        .get();
+        .limit(1))[0];
 
       if (existing) {
         // Update existing

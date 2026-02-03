@@ -29,11 +29,11 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Check if project exists
-    const existing = db
+    const existing = (await db
       .select()
       .from(projects)
       .where(eq(projects.id, id))
-      .get();
+      .limit(1))[0];
 
     if (!existing) {
       throw createError({
@@ -70,11 +70,10 @@ export default defineEventHandler(async (event) => {
       }
 
       // Check for duplicate names within the same workspace (case-insensitive), excluding current project
-      const projectsInWorkspace = db
+      const projectsInWorkspace = await db
         .select()
         .from(projects)
-        .where(eq(projects.workspaceId, existing.workspaceId))
-        .all();
+        .where(eq(projects.workspaceId, existing.workspaceId));
 
       const duplicate = projectsInWorkspace.find(
         p => p.id !== id && p.name.toLowerCase() === trimmedName.toLowerCase()
@@ -104,15 +103,14 @@ export default defineEventHandler(async (event) => {
     }
 
     // Update the project
-    const updatedProject = db
+    const updatedProject = (await db
       .update(projects)
       .set({
         ...updateData,
         updatedAt: sql`(unixepoch())`
       })
       .where(eq(projects.id, id))
-      .returning()
-      .get();
+      .returning())[0];
 
     return updatedProject;
   } catch (error: any) {

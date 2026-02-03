@@ -14,11 +14,11 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Check if environment exists
-    const existing = db
+    const existing = (await db
       .select()
       .from(environments)
       .where(eq(environments.id, id))
-      .get();
+      .limit(1))[0];
 
     if (!existing) {
       throw createError({
@@ -33,18 +33,16 @@ export default defineEventHandler(async (event) => {
     }
 
     // Deactivate all environments in the same project
-    db.update(environments)
+    await db.update(environments)
       .set({ isActive: false })
-      .where(eq(environments.projectId, existing.projectId))
-      .run();
+      .where(eq(environments.projectId, existing.projectId));
 
     // Activate this environment
-    const activatedEnvironment = db
+    const activatedEnvironment = (await db
       .update(environments)
       .set({ isActive: true })
       .where(eq(environments.id, id))
-      .returning()
-      .get();
+      .returning())[0];
 
     return activatedEnvironment;
   } catch (error: any) {

@@ -15,8 +15,8 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  // Get SSO config from SQLite
-  const setting = await db
+  // Get SSO config from database
+  const setting = (await db
     .select()
     .from(schema.settings)
     .where(
@@ -25,7 +25,7 @@ export default defineEventHandler(async (event) => {
         isNull(schema.settings.workspaceId)
       )
     )
-    .get();
+    .limit(1))[0];
   
   const config: SsoConfig = (setting?.value as SsoConfig) || { providers: [], allowMultipleProviders: true };
   

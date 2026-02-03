@@ -14,11 +14,11 @@ export default defineEventHandler(async (event) => {
     }
 
     // Check if mock exists
-    const existing = await db
+    const existing = (await db
       .select()
       .from(schema.mocks)
       .where(eq(schema.mocks.id, id))
-      .get();
+      .limit(1))[0];
 
     if (!existing) {
       throw createError({

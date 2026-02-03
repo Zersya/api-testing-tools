@@ -10,6 +10,7 @@ services:
         environment:
             SERVICE_NAME: ${IMAGE_NAME}-${APP_ENV}-application
             SERVICE_TAGS: dev
+            DATABASE_URL: ${DATABASE_URL}
         working_dir: /app
         deploy:
             replicas: ${COMPOSE_REPLICAS:-1}

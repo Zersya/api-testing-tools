@@ -13,11 +13,11 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const workspace = db
+    const workspace = (await db
       .select()
       .from(workspaces)
       .where(eq(workspaces.id, id))
-      .get();
+      .limit(1))[0];
 
     if (!workspace) {
       throw createError({

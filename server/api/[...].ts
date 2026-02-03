@@ -26,12 +26,12 @@ export default defineEventHandler(async (event) => {
         const collectionName = collectionPathMatch[1];
         targetPath = collectionPathMatch[2] || '/';
 
-        // Find collection by name from SQLite
-        const collection = await db
+        // Find collection by name
+        const collection = (await db
             .select()
             .from(schema.collections)
             .where(eq(schema.collections.name, collectionName))
-            .get();
+            .limit(1))[0];
 
         if (collection) {
             targetCollectionId = collection.id;
@@ -82,8 +82,8 @@ export default defineEventHandler(async (event) => {
                     return { error: 'Unauthorized: Bearer token missing' };
                 }
 
-                // Verify token from SQLite settings
-                const setting = await db
+                // Verify token from database
+                const setting = (await db
                     .select()
                     .from(schema.settings)
                     .where(
@@ -92,7 +92,7 @@ export default defineEventHandler(async (event) => {
                             isNull(schema.settings.workspaceId)
                         )
                     )
-                    .get();
+                    .limit(1))[0];
 
                 if (setting?.value) {
                     const token = authHeader.split(' ')[1];

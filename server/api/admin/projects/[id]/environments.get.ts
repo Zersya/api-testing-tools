@@ -28,11 +28,11 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const project = db
+    const project = (await db
       .select()
       .from(projects)
       .where(eq(projects.id, projectId))
-      .get();
+      .limit(1))[0];
 
     if (!project) {
       throw createError({
@@ -41,12 +41,11 @@ export default defineEventHandler(async (event) => {
       });
     }
 
-    const projectEnvironments = db
+    const projectEnvironments = await db
       .select()
       .from(environments)
       .where(eq(environments.projectId, projectId))
-      .orderBy(desc(environments.createdAt))
-      .all();
+      .orderBy(desc(environments.createdAt));
 
     if (projectEnvironments.length === 0) {
       return [];
@@ -54,11 +53,10 @@ export default defineEventHandler(async (event) => {
 
     const environmentIds = projectEnvironments.map(env => env.id);
 
-    const allVariables = db
+    const allVariables = await db
       .select()
       .from(environmentVariables)
-      .where(inArray(environmentVariables.environmentId, environmentIds))
-      .all();
+      .where(inArray(environmentVariables.environmentId, environmentIds));
 
     const variablesByEnvironment = new Map<string, typeof allVariables>();
     for (const envId of environmentIds) {

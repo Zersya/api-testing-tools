@@ -4,11 +4,10 @@ import { desc } from 'drizzle-orm';
 
 export default defineEventHandler(async (event) => {
   try {
-    const allWorkspaces = db
+    const allWorkspaces = await db
       .select()
       .from(workspaces)
-      .orderBy(desc(workspaces.createdAt))
-      .all();
+      .orderBy(desc(workspaces.createdAt));
 
     return allWorkspaces;
   } catch (error) {

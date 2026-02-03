@@ -43,11 +43,11 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Verify project exists
-    const project = db
+    const project = (await db
       .select()
       .from(projects)
       .where(eq(projects.id, projectId))
-      .get();
+      .limit(1))[0];
 
     if (!project) {
       throw createError({
@@ -57,12 +57,11 @@ export default defineEventHandler(async (event) => {
     }
 
     // Get all collections for this project
-    const projectCollections = db
+    const projectCollections = await db
       .select()
       .from(collections)
       .where(eq(collections.projectId, projectId))
-      .orderBy(desc(collections.createdAt))
-      .all();
+      .orderBy(desc(collections.createdAt));
 
     // Build collections with nested folders
     const collectionsWithFolders: CollectionWithFolders[] = projectCollections.map(collection => {
@@ -70,8 +69,7 @@ export default defineEventHandler(async (event) => {
       const collectionFolders = db
         .select()
         .from(folders)
-        .where(eq(folders.collectionId, collection.id))
-        .all();
+        .where(eq(folders.collectionId, collection.id));
 
       // Build folder tree
       const folderTree = buildFolderTree(collectionFolders);

@@ -35,10 +35,9 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Check for duplicate names (case-insensitive)
-    const existingWorkspaces = db
+    const existingWorkspaces = await db
       .select()
-      .from(workspaces)
-      .all();
+      .from(workspaces);
 
     const duplicate = existingWorkspaces.find(
       w => w.name.toLowerCase() === trimmedName.toLowerCase()
@@ -52,13 +51,12 @@ export default defineEventHandler(async (event) => {
     }
 
     // Create the workspace
-    const newWorkspace = db
+    const newWorkspace = (await db
       .insert(workspaces)
       .values({
         name: trimmedName
       })
-      .returning()
-      .get();
+      .returning())[0];
 
     return newWorkspace;
   } catch (error: any) {

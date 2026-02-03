@@ -14,11 +14,11 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Check if request exists
-    const existing = db
+    const existing = (await db
       .select()
       .from(savedRequests)
       .where(eq(savedRequests.id, id))
-      .get();
+      .limit(1))[0];
 
     if (!existing) {
       throw createError({
@@ -28,9 +28,8 @@ export default defineEventHandler(async (event) => {
     }
 
     // Delete the request
-    db.delete(savedRequests)
-      .where(eq(savedRequests.id, id))
-      .run();
+    await db.delete(savedRequests)
+      .where(eq(savedRequests.id, id));
 
     return {
       success: true,

@@ -130,18 +130,17 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
 
     if (body.environmentId) {
       try {
-        const environment = db
+        const environment = (await db
           .select()
           .from(environments)
           .where(eq(environments.id, body.environmentId))
-          .get();
+          .limit(1))[0];
 
         if (environment) {
-          const environmentVariablesList = db
+          const environmentVariablesList = await db
             .select()
             .from(environmentVariables)
-            .where(eq(environmentVariables.environmentId, body.environmentId))
-            .all();
+            .where(eq(environmentVariables.environmentId, body.environmentId));
 
           if (environmentVariablesList && environmentVariablesList.length > 0) {
             const variables: Record<string, string> = {};
@@ -304,7 +303,7 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
           body: responseBody
         };
 
-        db.insert(requestHistories).values({
+        await db.insert(requestHistories).values({
           workspaceId: body.workspaceId,
           method: method as HttpMethod,
           url: body.url,
@@ -313,7 +312,7 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
           statusCode: response.status,
           responseTimeMs: endTime.getTime() - startTime.getTime(),
           timestamp: startTime
-        }).run();
+        });
       } catch (logError) {
         console.error('Failed to log request to history:', logError);
       }

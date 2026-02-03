@@ -17,7 +17,7 @@ export default defineEventHandler(async (event) => {
     const targetCollection = body.collection || 'root';
 
     // Check for duplicates within the SAME collection only
-    const existing = await db
+    const existing = (await db
       .select()
       .from(schema.mocks)
       .where(
@@ -29,7 +29,7 @@ export default defineEventHandler(async (event) => {
             : eq(schema.mocks.collectionId, targetCollection)
         )
       )
-      .get();
+      .limit(1))[0];
 
     if (existing) {
       throw createError({

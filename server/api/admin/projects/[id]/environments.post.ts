@@ -42,11 +42,11 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const project = db
+  const project = (await db
     .select()
     .from(projects)
     .where(eq(projects.id, projectId))
-    .get();
+    .limit(1))[0];
 
   if (!project) {
     throw createError({
@@ -65,11 +65,10 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const existingEnvironments = db
+  const existingEnvironments = await db
     .select()
     .from(environments)
-    .where(eq(environments.projectId, projectId))
-    .all();
+    .where(eq(environments.projectId, projectId));
 
   const duplicate = existingEnvironments.find(
     e => e.name.toLowerCase() === trimmedName.toLowerCase()
@@ -85,20 +84,18 @@ export default defineEventHandler(async (event) => {
   const shouldBeActive = body.isActive === true || existingEnvironments.length === 0;
   
   if (shouldBeActive) {
-    db.update(environments)
+    await db.update(environments)
       .set({ isActive: false })
-      .where(eq(environments.projectId, projectId))
-      .run();
+      .where(eq(environments.projectId, projectId));
   }
 
-  const insertResult = db.insert(environments)
+  const insertResult = await db.insert(environments)
     .values({
       projectId,
       name: trimmedName,
       isActive: shouldBeActive
     })
-    .returning()
-    .all();
+    .returning();
 
   if (!insertResult || insertResult.length === 0) {
     throw createError({

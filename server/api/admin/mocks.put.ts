@@ -13,11 +13,11 @@ export default defineEventHandler(async (event) => {
     }
 
     // Check if mock exists
-    const existing = await db
+    const existing = (await db
       .select()
       .from(schema.mocks)
       .where(eq(schema.mocks.id, body.id))
-      .get();
+      .limit(1))[0];
 
     if (!existing) {
       throw createError({
@@ -31,7 +31,7 @@ export default defineEventHandler(async (event) => {
     const targetCollection = body.collection ?? existing.collectionId ?? 'root';
 
     // Check for duplicates within the SAME collection only (excluding current ID)
-    const duplicate = await db
+    const duplicate = (await db
       .select()
       .from(schema.mocks)
       .where(
@@ -44,7 +44,7 @@ export default defineEventHandler(async (event) => {
           ne(schema.mocks.id, body.id)
         )
       )
-      .get();
+      .limit(1))[0];
 
     if (duplicate) {
       throw createError({

@@ -8,17 +8,17 @@ const PERSONAL_WORKSPACE_NAME = 'Personal';
 export default defineNitroPlugin(async () => {
   try {
     // Check if Personal workspace already exists
-    const existing = db
+    const existing = (await db
       .select()
       .from(workspaces)
       .where(eq(workspaces.id, PERSONAL_WORKSPACE_ID))
-      .get();
+      .limit(1))[0];
 
     if (!existing) {
-      db.insert(workspaces).values({
+      await db.insert(workspaces).values({
         id: PERSONAL_WORKSPACE_ID,
         name: PERSONAL_WORKSPACE_NAME
-      }).run();
+      });
       console.log('✅ Default "Personal" workspace seeded');
     }
   } catch (error) {

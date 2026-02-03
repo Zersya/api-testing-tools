@@ -141,8 +141,7 @@ function getEnvironmentVariables(environmentId: string): Record<string, string> 
     const variables = db
       .select()
       .from(environmentVariables)
-      .where(eq(environmentVariables.environmentId, environmentId))
-      .all();
+      .where(eq(environmentVariables.environmentId, environmentId));
 
     const result: Record<string, string> = {};
     for (const variable of variables) {
@@ -158,11 +157,11 @@ function getEnvironmentVariables(environmentId: string): Record<string, string> 
 
 function getCollectionVariables(collectionId: string): Record<string, string> {
   try {
-    const collection = db
+    const collection = (db
       .select()
       .from(collections)
       .where(eq(collections.id, collectionId))
-      .get();
+      .limit(1))[0];
 
     if (!collection) {
       return {};
@@ -188,11 +187,11 @@ function getCollectionVariables(collectionId: string): Record<string, string> {
 
 function getProjectVariables(projectId: string): Record<string, string> {
   try {
-    const project = db
+    const project = (db
       .select()
       .from(projects)
       .where(eq(projects.id, projectId))
-      .get();
+      .limit(1))[0];
 
     if (!project) {
       return {};

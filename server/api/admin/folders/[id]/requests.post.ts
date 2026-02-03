@@ -96,11 +96,11 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Verify folder exists
-    const folder = db
+    const folder = (await db
       .select()
       .from(folders)
       .where(eq(folders.id, folderId))
-      .get();
+      .limit(1))[0];
 
     if (!folder) {
       throw createError({
@@ -110,11 +110,10 @@ export default defineEventHandler(async (event) => {
     }
 
     // Get existing requests in folder for order calculation
-    const existingRequests = db
+    const existingRequests = await db
       .select()
       .from(savedRequests)
-      .where(eq(savedRequests.folderId, folderId))
-      .all();
+      .where(eq(savedRequests.folderId, folderId));
 
     // If order is not specified, place at the end
     if (body.order === undefined) {
@@ -123,7 +122,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // Create the request
-    const newRequest = db
+    const newRequest = (await db
       .insert(savedRequests)
       .values({
         folderId,
@@ -135,8 +134,7 @@ export default defineEventHandler(async (event) => {
         auth: body.auth || null,
         order
       })
-      .returning()
-      .get();
+      .returning())[0];
 
     return newRequest;
   } catch (error: any) {

@@ -14,11 +14,11 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Verify environment exists
-    const environment = db
+    const environment = (await db
       .select()
       .from(environments)
       .where(eq(environments.id, environmentId))
-      .get();
+      .limit(1))[0];
 
     if (!environment) {
       throw createError({
@@ -28,11 +28,10 @@ export default defineEventHandler(async (event) => {
     }
 
     // Get all variables for this environment
-    const variables = db
+    const variables = await db
       .select()
       .from(environmentVariables)
-      .where(eq(environmentVariables.environmentId, environmentId))
-      .all();
+      .where(eq(environmentVariables.environmentId, environmentId));
 
     return variables.map(v => ({
       ...v,

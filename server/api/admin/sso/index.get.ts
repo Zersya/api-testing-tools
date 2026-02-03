@@ -3,7 +3,7 @@ import { db, schema } from '../../../db';
 import { eq, and, isNull } from 'drizzle-orm';
 
 export default defineEventHandler(async (event) => {
-  const setting = await db
+  const setting = (await db
     .select()
     .from(schema.settings)
     .where(
@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
         isNull(schema.settings.workspaceId)
       )
     )
-    .get();
+    .limit(1))[0];
   
   const config: SsoConfig = (setting?.value as SsoConfig) || { 
     providers: [], 

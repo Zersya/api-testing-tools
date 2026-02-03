@@ -14,11 +14,11 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Get the variable
-    const variable = db
+    const variable = (await db
       .select()
       .from(environmentVariables)
       .where(eq(environmentVariables.id, id))
-      .get();
+      .limit(1))[0];
 
     if (!variable) {
       throw createError({
