@@ -433,10 +433,10 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
     let totalVariablesCreated = 0;
 
     // Helper function to create folders recursively
-    const createFoldersRecursively = (
+    const createFoldersRecursively = async (
       parsedFolders: ParsedPostmanFolder[],
       parentFolderId: string | null = null
-    ): void => {
+    ): Promise<void> => {
       for (const parsedFolder of parsedFolders) {
         // Create the folder
         const newFolder = (await db
@@ -482,7 +482,7 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
 
         // Recursively create subfolders
         if (parsedFolder.subfolders.length > 0) {
-          createFoldersRecursively(parsedFolder.subfolders, newFolder.id);
+          await createFoldersRecursively(parsedFolder.subfolders, newFolder.id);
         }
       }
     };
@@ -532,7 +532,7 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
     }
 
     // Create folders from parsed collection
-    createFoldersRecursively(parsedCollection.folders);
+    await createFoldersRecursively(parsedCollection.folders);
 
     // Import environments if requested
     if (importEnvironments) {
