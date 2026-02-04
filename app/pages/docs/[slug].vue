@@ -209,8 +209,10 @@ const getCodeExample = computed(() => {
   if (!selectedEndpoint.value || !data.value?.spec?.servers?.[0]) return '';
   
   const ep = selectedEndpoint.value;
-  const server = data.value.spec.servers[0].url;
-  const url = `${server}${ep.path}`;
+  // Clean server URL and path by removing any extra quotes
+  const server = (data.value.spec.servers[0].url || '').replace(/["']/g, '');
+  const path = (ep.path || '').replace(/["']/g, '');
+  const url = `${server}${path.startsWith('/') ? path : '/' + path}`;
   const auth = getAuthHeader.value;
   
   switch (activeLanguage.value) {
@@ -540,7 +542,7 @@ watch(() => data.value, () => {
                       ]"
                     >
                       <MethodBadge :method="endpoint.method" size="sm" />
-                      <span class="truncate font-mono">{{ endpoint.path }}</span>
+                      <span class="truncate font-mono">{{ endpoint.path.replace(/["']/g, '') }}</span>
                     </button>
                   </div>
                 </div>
@@ -582,7 +584,7 @@ watch(() => data.value, () => {
               <div class="mb-4 pb-3 border-b border-border-default">
                 <h3 class="text-lg font-semibold text-text-primary mb-1 flex items-center gap-2">
                   <MethodBadge :method="selectedEndpoint.method" size="lg" />
-                  <span class="font-mono">{{ selectedEndpoint.path }}</span>
+                  <span class="font-mono">{{ selectedEndpoint.path.replace(/["']/g, '') }}</span>
                 </h3>
                 <p v-if="selectedEndpoint.summary" class="text-sm text-text-secondary m-0">{{ selectedEndpoint.summary }}</p>
                 <p v-else-if="selectedEndpoint.description" class="text-sm text-text-secondary m-0">{{ selectedEndpoint.description }}</p>

@@ -10,7 +10,7 @@ export default defineEventHandler(async (event) => {
     }
     
     try {
-        const deleted = db.delete(apiDefinitions).where(eq(apiDefinitions.id, id)).run();
+        const deleted = await db.delete(apiDefinitions).where(eq(apiDefinitions.id, id));
         
         if (deleted.changes === 0) {
             throw createError({ statusCode: 404, statusMessage: 'Definition not found' });

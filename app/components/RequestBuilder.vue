@@ -3,6 +3,7 @@ import { computed, nextTick, watch } from 'vue';
 import JsonNode from './JsonNode.vue';
 import VariableInput from './VariableInput.vue';
 import VariableTextarea from './VariableTextarea.vue';
+import RequestExampleManager from './RequestExampleManager.vue';
 
 interface Variable {
   id: string;
@@ -93,7 +94,7 @@ const emit = defineEmits<{
   unsavedChanges: [request: HttpRequest, hasUnsavedChanges: boolean];
 }>();
 
-type TabType = 'params' | 'headers' | 'body' | 'auth' | 'response';
+type TabType = 'params' | 'headers' | 'body' | 'auth' | 'examples' | 'response';
 type BodyFormat = 'none' | 'json' | 'form-data' | 'urlencoded' | 'raw' | 'binary';
 type ResponseViewType = 'pretty' | 'preview' | 'raw' | 'headers' | 'cookies';
 
@@ -201,72 +202,196 @@ const searchQuery = ref('');
 
 const parseUrlQuery = (url: string) => {
   try {
-    const urlObj = new URL(url);
+    // Handle URLs with environment variables like {{URL}}
+    // Extract the query string part after '?'
+    const queryStringMatch = url.match(/\?(.+)$/);
+    if (!queryStringMatch) return [];
+    
+    const queryString = queryStringMatch[1];
     const params: QueryParam[] = [];
-    urlObj.searchParams.forEach((value, key) => {
-      params.push({
-        id: crypto.randomUUID(),
-        key,
-        value,
-        enabled: true
-      });
-    });
+    
+    // Parse query string manually to handle encoded values
+    const pairs = queryString.split('&');
+    for (const pair of pairs) {
+      const [key, ...valueParts] = pair.split('=');
+      if (key) {
+        const value = valueParts.join('='); // Handle values that contain '='
+        params.push({
+          id: crypto.randomUUID(),
+          key: decodeURIComponent(key),
+          value: decodeURIComponent(value || ''),
+          enabled: true
+        });
+      }
+    }
+    
     return params;
   } catch {
     return [];
   }
 };
 
-watch(() => props.request, (newRequest) => {
-  form.value.method = newRequest.method as typeof HTTP_METHODS[number];
-  form.value.url = newRequest.url;
-  queryParams.value = parseUrlQuery(newRequest.url);
-  if (newRequest.headers) {
+// Track the last loaded request ID to prevent duplicate loads
+const lastLoadedRequestId = ref<string | null>(null);
+
+// Track the serialized version of the last loaded request to detect changes
+const lastLoadedRequestSnapshot = ref<string>('');
+
+// Function to load request data into form state
+const loadRequestData = (request: HttpRequest) => {
+  // Create a snapshot of key fields to detect changes
+  const snapshot = JSON.stringify({
+    id: request.id,
+    url: request.url,
+    headers: request.headers,
+    body: request.body,
+    auth: request.auth
+  });
+  
+  // Skip if exactly the same as what we loaded
+  if (snapshot === lastLoadedRequestSnapshot.value && lastLoadedRequestId.value === request.id) {
+    return;
+  }
+  
+  // Reset all form state first to prevent stale data
+  form.value.method = request.method as typeof HTTP_METHODS[number];
+  form.value.url = request.url;
+  
+  // Reset query params
+  queryParams.value = parseUrlQuery(request.url);
+  
+  // Reset headers
+  if (request.headers) {
     try {
-      const headersObj = typeof newRequest.headers === 'string' 
-        ? JSON.parse(newRequest.headers) 
-        : newRequest.headers;
-      headers.value = Object.entries(headersObj).map(([key, value]) => ({
-        id: crypto.randomUUID(),
-        key,
-        value: String(value),
-        enabled: true
-      }));
-    } catch {
+      let headersObj: Record<string, string>;
+      
+      if (typeof request.headers === 'string') {
+        headersObj = JSON.parse(request.headers);
+      } else {
+        headersObj = request.headers as Record<string, string>;
+      }
+      
+      // Validate that headersObj is actually an object, not an array or other type
+      if (headersObj && typeof headersObj === 'object' && !Array.isArray(headersObj)) {
+        headers.value = Object.entries(headersObj).map(([key, value]) => ({
+          id: crypto.randomUUID(),
+          key,
+          value: String(value),
+          enabled: true
+        }));
+      } else {
+        console.warn('Invalid headers format:', headersObj);
+        headers.value = [];
+      }
+    } catch (e) {
+      console.warn('Failed to parse headers:', e);
       headers.value = [];
     }
   } else {
     headers.value = [];
   }
-  if (newRequest.body) {
+  
+  // Reset ALL body-related state first
+  jsonBody.value = '';
+  rawBody.value = '';
+  formDataParams.value = [];
+  binaryFile.value = null;
+  bodyFormat.value = 'none';
+  
+  // Then set body from request if it exists
+  if (request.body !== null && request.body !== undefined) {
     try {
-      const bodyObj = typeof newRequest.body === 'string' 
-        ? JSON.parse(newRequest.body) 
-        : newRequest.body;
-      jsonBody.value = JSON.stringify(bodyObj, null, 2);
-      bodyFormat.value = 'json';
-    } catch {
+      if (typeof request.body === 'string') {
+        // Try to parse as JSON
+        try {
+          const bodyObj = JSON.parse(request.body);
+          jsonBody.value = JSON.stringify(bodyObj, null, 2);
+          bodyFormat.value = 'json';
+        } catch {
+          // Not JSON, treat as raw
+          rawBody.value = request.body;
+          bodyFormat.value = 'raw';
+        }
+      } else if (typeof request.body === 'object') {
+        jsonBody.value = JSON.stringify(request.body, null, 2);
+        bodyFormat.value = 'json';
+      }
+    } catch (e) {
+      console.error('Error setting body:', e);
       bodyFormat.value = 'none';
+      jsonBody.value = '';
     }
+  } 
+  
+  // Reset auth state
+  const authConfig = request.auth;
+  if (!authConfig) {
+    authType.value = 'none';
+    apiKey.value = { key: '', value: '', addTo: 'header' };
+    bearerToken.value = '';
+    basicAuth.value = { username: '', password: '' };
   } else {
-    bodyFormat.value = 'none';
-    jsonBody.value = '';
+    const type = authConfig.type as AuthType;
+    authType.value = type;
+
+    if (type === 'api-key' && authConfig.credentials) {
+      apiKey.value.key = authConfig.credentials.key || '';
+      apiKey.value.value = authConfig.credentials.value || '';
+      apiKey.value.addTo = (authConfig.credentials.addTo as 'header' | 'query') || 'header';
+    } else if (type === 'bearer' && authConfig.credentials) {
+      bearerToken.value = authConfig.credentials.token || '';
+    } else if (type === 'basic' && authConfig.credentials) {
+      basicAuth.value.username = authConfig.credentials.username || '';
+      basicAuth.value.password = authConfig.credentials.password || '';
+    } else if (type === 'oauth2' && authConfig.credentials) {
+      oauth2.value.authUrl = authConfig.credentials.authUrl || '';
+      oauth2.value.tokenUrl = authConfig.credentials.tokenUrl || '';
+      oauth2.value.clientId = authConfig.credentials.clientId || '';
+      oauth2.value.clientSecret = authConfig.credentials.clientSecret || '';
+      oauth2.value.scopes = authConfig.credentials.scopes || '';
+      oauth2.value.callbackUrl = authConfig.credentials.callbackUrl || '';
+      oauth2.value.accessToken = authConfig.credentials.accessToken || '';
+      oauth2.value.refreshToken = authConfig.credentials.refreshToken || '';
+      oauth2.value.expiresAt = authConfig.credentials.expiresAt || null;
+      oauth2.value.tokenType = authConfig.credentials.tokenType || 'Bearer';
+      oauth2.value.grantType = authConfig.credentials.grantType || 'authorization_code';
+      oauth2.value.PKCE = authConfig.credentials.PKCE || false;
+    }
   }
+  
+  // Clear response when switching requests
+  response.value = null;
+  
+  // Mark as loaded with snapshot
+  lastLoadedRequestId.value = request.id;
+  lastLoadedRequestSnapshot.value = snapshot;
+};
+
+// Watch for request ID changes - this ensures proper triggering on every request switch
+watch(() => props.request.id, () => {
+  loadRequestData(props.request);
 }, { immediate: true });
 
 const updateUrlFromParams = () => {
   try {
-    const urlObj = new URL(form.value.url);
-    urlObj.search = '';
+    // Extract base URL (everything before '?')
+    const baseUrlMatch = form.value.url.match(/^([^?]+)/);
+    const baseUrl = baseUrlMatch ? baseUrlMatch[1] : form.value.url;
     
-    queryParams.value.forEach(param => {
-      if (param.enabled && param.key) {
-        urlObj.searchParams.append(param.key, param.value);
-      }
-    });
+    // Build query string from params
+    const enabledParams = queryParams.value.filter(p => p.enabled && p.key);
+    if (enabledParams.length === 0) {
+      form.value.url = baseUrl;
+      return;
+    }
     
-    form.value.url = urlObj.toString();
+    const queryString = enabledParams
+      .map(param => `${encodeURIComponent(param.key)}=${encodeURIComponent(param.value)}`)
+      .join('&');
+    
+    form.value.url = `${baseUrl}?${queryString}`;
   } catch {
+    // Silently fail if URL manipulation fails
   }
 };
 
@@ -1505,7 +1630,7 @@ onUnmounted(() => {
       <div class="border-b border-border-default bg-bg-secondary">
         <div class="flex gap-0">
           <button
-            v-for="tab in ['params', 'headers', 'body', 'auth', 'response'] as TabType[]"
+            v-for="tab in ['params', 'headers', 'body', 'auth', 'examples', 'response'] as TabType[]"
             :key="tab"
             @click="activeTab = tab"
             class="px-4 py-3 text-xs font-medium capitalize transition-all duration-fast border-b-2 focus:outline-none whitespace-nowrap"
@@ -2249,6 +2374,11 @@ onUnmounted(() => {
               </div>
             </div>
           </div>
+        </div>
+
+        <!-- Examples Tab -->
+        <div v-else-if="activeTab === 'examples'" class="flex-1 flex flex-col overflow-hidden">
+          <RequestExampleManager :request-id="props.request.id" />
         </div>
 
         <div v-else-if="activeTab === 'response'" class="flex-1 flex flex-col overflow-hidden">

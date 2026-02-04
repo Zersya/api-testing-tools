@@ -543,16 +543,43 @@ const saveSettings = async () => {
 };
 
 const exportOpenAPI = async () => {
-   const spec = await $fetch('/api/admin/export');
-   const blob = new Blob([JSON.stringify(spec, null, 2)], { type: 'application/json' });
-   const url = URL.createObjectURL(blob);
-   const a = document.createElement('a');
-   a.href = url;
-   a.download = 'openapi.json';
-   document.body.appendChild(a);
-   a.click();
-   document.body.removeChild(a);
-   URL.revokeObjectURL(url);
+   try {
+      // Fetch the YAML export from the server
+      const response = await fetch('/api/admin/export');
+      
+      if (!response.ok) {
+         const errorData = await response.json().catch(() => ({ message: 'Export failed' }));
+         alert('Export failed: ' + (errorData.statusMessage || errorData.message || 'Unknown error'));
+         return;
+      }
+      
+      // Get the YAML content
+      const yamlContent = await response.text();
+      
+      // Get filename from Content-Disposition header or use default
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = 'workspace-export.yaml';
+      if (contentDisposition) {
+         const match = contentDisposition.match(/filename="(.+)"/);
+         if (match) {
+            filename = match[1];
+         }
+      }
+      
+      // Create blob and download
+      const blob = new Blob([yamlContent], { type: 'application/yaml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+   } catch (error: any) {
+      console.error('Export error:', error);
+      alert('Export failed: ' + error.message);
+   }
 };
 
 const openImportModal = () => {
@@ -593,50 +620,20 @@ const goToEdit = (id: string) => {
 };
 
 // Request handlers
-const handleSelectRequest = async (request: HttpRequest) => {
+const handleSelectRequest = (request: HttpRequest) => {
   selectedMock.value = null;
   
-  // Refresh workspaces to ensure we have the latest request data
-  await refreshWorkspaces();
-  
-  // Find the latest request data from the refreshed workspaces
-  let latestRequest = request;
-  if (workspaces.value) {
-    for (const workspace of workspaces.value) {
-      for (const project of workspace.projects) {
-        for (const collection of project.collections) {
-          const findRequest = (folders: any[]): HttpRequest | null => {
-            for (const folder of folders) {
-              const found = folder.requests?.find((r: any) => r.id === request.id);
-              if (found) return found;
-              if (folder.children?.length) {
-                const childFound = findRequest(folder.children);
-                if (childFound) return childFound;
-              }
-            }
-            return null;
-          };
-          const found = findRequest(collection.folders);
-          if (found) {
-            latestRequest = found;
-            break;
-          }
-        }
-      }
-    }
-  }
-  
-  const existingTab = openTabs.value.find(tab => tab.request.id === latestRequest.id);
+  // Check if tab already exists for this request
+  const existingTab = openTabs.value.find(tab => tab.request.id === request.id);
   if (existingTab) {
     activeTabKey.value = existingTab.key;
-    // Update the tab with the latest request data
-    existingTab.request = { ...latestRequest };
     selectedRequest.value = existingTab.request;
   } else {
+    // Create new tab with the request data we already have
     const newTabKey = createTabKey();
     const newTab: OpenTab = {
       key: newTabKey,
-      request: { ...latestRequest },
+      request: { ...request },
       hasUnsavedChanges: false
     };
     openTabs.value.push(newTab);
@@ -1790,6 +1787,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
           <!-- Request Builder -->
           <RequestBuilder
             v-if="selectedRequest && activeTabKey"
+            :key="activeTabKey"
             :request="selectedRequest"
             :workspace-id="currentWorkspaceId"
             :environment-id="activeEnvironment?.id"

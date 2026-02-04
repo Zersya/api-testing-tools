@@ -1,5 +1,5 @@
 /**
- * OpenAPI Import Endpoint
+ * OpenAPI Import Endpoint - Enhanced Version
  * POST /api/definitions/import
  * 
  * Import OpenAPI specifications from:
@@ -8,17 +8,33 @@
  * - Raw paste (provide content directly in body)
  * 
  * Supports OpenAPI 3.0.x and 3.1.x in both JSON and YAML formats.
+ * 
+ * Enhanced features:
+ * - Imports request examples from responses
+ * - Imports environments from x-environments extension
+ * - Maps security schemes to auth config
+ * - Preserves environment variables in URLs
  */
 
 import { db } from '../../db';
-import { apiDefinitions, projects } from '../../db/schema';
+import { 
+  apiDefinitions, 
+  projects, 
+  collections, 
+  folders, 
+  savedRequests,
+  requestExamples,
+  environments,
+  environmentVariables 
+} from '../../db/schema';
 import { eq } from 'drizzle-orm';
 import { 
   parseOpenAPISpec, 
   detectSpecFormat, 
   isValidUrl,
   type OpenAPIParseResult,
-  type ParsedOpenAPISpec 
+  type ParsedOpenAPISpec,
+  type OpenAPIEndpoint 
 } from '../../utils/openapi-parser';
 import { parseYAML } from '../../utils/yaml-parser';
 
@@ -65,6 +81,32 @@ interface ImportSuccessResponse {
     path: string;
     message: string;
   }>;
+  workspace: {
+    collection: {
+      id: string;
+      name: string;
+      description: string | null;
+    };
+    folders: Array<{
+      id: string;
+      name: string;
+      requestCount: number;
+    }>;
+    requests: Array<{
+      id: string;
+      name: string;
+      method: string;
+      url: string;
+      folderId: string;
+    }>;
+    totalFolders: number;
+    totalRequests: number;
+  };
+  imported: {
+    environments: number;
+    environmentVariables: number;
+    requestExamples: number;
+  };
 }
 
 interface ImportErrorResponse {
@@ -81,6 +123,244 @@ interface ImportErrorResponse {
 
 const FETCH_TIMEOUT = 30000; // 30 seconds
 const MAX_SPEC_SIZE = 10 * 1024 * 1024; // 10MB
+
+// Map OpenAPI security scheme to our auth format
+function mapSecuritySchemeToAuth(securityScheme: any): { type: string; credentials?: Record<string, string> } | null {
+  if (!securityScheme) return null;
+
+  switch (securityScheme.type) {
+    case 'http':
+      if (securityScheme.scheme === 'basic') {
+        return { type: 'basic', credentials: {} };
+      } else if (securityScheme.scheme === 'bearer') {
+        return { type: 'bearer', credentials: { token: '' } };
+      }
+      break;
+    case 'apiKey':
+      return {
+        type: 'api-key',
+        credentials: {
+          keyName: securityScheme.name || 'X-API-Key',
+          in: securityScheme.in || 'header',
+          keyValue: ''
+        }
+      };
+    case 'oauth2':
+      return {
+        type: 'oauth2',
+        credentials: {
+          flows: JSON.stringify(securityScheme.flows || {})
+        }
+      };
+  }
+  return null;
+}
+
+// Extract examples from OpenAPI responses
+function extractExamplesFromResponses(responses: any): Array<{
+  name: string;
+  statusCode: number;
+  headers?: Record<string, string>;
+  body?: Record<string, unknown> | string;
+  isDefault: boolean;
+}> {
+  const examples: Array<{
+    name: string;
+    statusCode: number;
+    headers?: Record<string, string>;
+    body?: Record<string, unknown> | string;
+    isDefault: boolean;
+  }> = [];
+
+  if (!responses || typeof responses !== 'object') return examples;
+
+  for (const [statusCode, response] of Object.entries(responses)) {
+    const statusNum = parseInt(statusCode);
+    if (isNaN(statusNum)) continue;
+
+    const responseObj = response as any;
+    if (!responseObj.content) continue;
+
+    // Look for examples in content
+    for (const [contentType, content] of Object.entries(responseObj.content)) {
+      const contentObj = content as any;
+      
+      // Handle multiple examples
+      if (contentObj.examples && typeof contentObj.examples === 'object') {
+        let isFirst = true;
+        for (const [exampleName, exampleData] of Object.entries(contentObj.examples)) {
+          const example = exampleData as any;
+          examples.push({
+            name: exampleName,
+            statusCode: statusNum,
+            headers: contentType ? { 'Content-Type': contentType } : undefined,
+            body: example.value,
+            isDefault: isFirst
+          });
+          isFirst = false;
+        }
+      }
+      // Handle single example
+      else if (contentObj.example) {
+        examples.push({
+          name: `Response ${statusCode}`,
+          statusCode: statusNum,
+          headers: contentType ? { 'Content-Type': contentType } : undefined,
+          body: contentObj.example,
+          isDefault: true
+        });
+      }
+    }
+  }
+
+  return examples;
+}
+
+// Extract body from requestBody
+function extractBody(requestBody: any): Record<string, unknown> | string | null {
+  if (!requestBody?.content) return null;
+
+  // Prefer application/json
+  const jsonContent = requestBody.content['application/json'];
+  if (jsonContent?.example) {
+    return jsonContent.example;
+  }
+  if (jsonContent?.schema?.example) {
+    return jsonContent.schema.example;
+  }
+  if (jsonContent?.schema) {
+    // Generate sample from schema if no example
+    return generateSampleFromSchema(jsonContent.schema);
+  }
+
+  // Try other content types
+  for (const [contentType, mediaType] of Object.entries(requestBody.content)) {
+    const media = mediaType as any;
+    if (media.example) {
+      return media.example;
+    }
+    if (media.schema?.example) {
+      return media.schema.example;
+    }
+    if (media.schema) {
+      return generateSampleFromSchema(media.schema);
+    }
+  }
+
+  return null;
+}
+
+// Generate a sample object from a JSON schema
+function generateSampleFromSchema(schema: any): Record<string, unknown> | null {
+  if (!schema || typeof schema !== 'object') return null;
+  
+  if (schema.example) return schema.example;
+  
+  if (schema.type === 'object' && schema.properties) {
+    const sample: Record<string, unknown> = {};
+    for (const [key, prop] of Object.entries(schema.properties)) {
+      const propSchema = prop as any;
+      if (propSchema.example !== undefined) {
+        sample[key] = propSchema.example;
+      } else if (propSchema.default !== undefined) {
+        sample[key] = propSchema.default;
+      } else if (propSchema.type === 'string') {
+        sample[key] = propSchema.enum?.[0] || '';
+      } else if (propSchema.type === 'number' || propSchema.type === 'integer') {
+        sample[key] = 0;
+      } else if (propSchema.type === 'boolean') {
+        sample[key] = false;
+      } else if (propSchema.type === 'array') {
+        sample[key] = [];
+      } else if (propSchema.type === 'object') {
+        sample[key] = generateSampleFromSchema(propSchema) || {};
+      }
+    }
+    return sample;
+  }
+  
+  return null;
+}
+
+// Extract Content-Type from requestBody
+function extractContentType(requestBody: any): string | null {
+  if (!requestBody?.content) return null;
+  
+  // Priority order: application/json, then others
+  if (requestBody.content['application/json']) {
+    return 'application/json';
+  }
+  if (requestBody.content['application/x-www-form-urlencoded']) {
+    return 'application/x-www-form-urlencoded';
+  }
+  if (requestBody.content['multipart/form-data']) {
+    return 'multipart/form-data';
+  }
+  if (requestBody.content['text/plain']) {
+    return 'text/plain';
+  }
+  if (requestBody.content['application/xml']) {
+    return 'application/xml';
+  }
+  
+  // Return first available content type
+  const contentTypes = Object.keys(requestBody.content);
+  return contentTypes.length > 0 ? contentTypes[0] : null;
+}
+
+// Extract headers from parameters and requestBody
+function extractHeaders(parameters: any[], requestBody?: any): Record<string, string> | null {
+  const headers: Record<string, string> = {};
+  
+  // Extract header parameters
+  const headerParams = parameters?.filter(p => p.in === 'header');
+  if (headerParams && headerParams.length > 0) {
+    for (const param of headerParams) {
+      headers[param.name] = param.example?.toString() || param.schema?.default?.toString() || '';
+    }
+  }
+  
+  // Add Content-Type from requestBody
+  const contentType = extractContentType(requestBody);
+  if (contentType) {
+    headers['Content-Type'] = contentType;
+  }
+  
+  return Object.keys(headers).length > 0 ? headers : null;
+}
+
+// Extract query parameters from OpenAPI parameters
+function extractQueryParams(parameters: any[]): Array<{ key: string; value: string; description?: string }> {
+  const queryParams: Array<{ key: string; value: string; description?: string }> = [];
+  
+  const queryParamDefs = parameters?.filter(p => p.in === 'query');
+  if (queryParamDefs && queryParamDefs.length > 0) {
+    for (const param of queryParamDefs) {
+      queryParams.push({
+        key: param.name,
+        value: param.example?.toString() || param.schema?.default?.toString() || '',
+        description: param.description
+      });
+    }
+  }
+  
+  return queryParams;
+}
+
+// Build URL with query parameters
+function buildUrlWithQueryParams(baseUrl: string, queryParams: Array<{ key: string; value: string }>): string {
+  if (queryParams.length === 0) return baseUrl;
+  
+  const queryString = queryParams
+    .filter(p => p.key)
+    .map(p => `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value)}`)
+    .join('&');
+  
+  if (!queryString) return baseUrl;
+  
+  // Check if URL already has query string
+  return baseUrl.includes('?') ? `${baseUrl}&${queryString}` : `${baseUrl}?${queryString}`;
+}
 
 export default defineEventHandler(async (event): Promise<ImportSuccessResponse | ImportErrorResponse> => {
   try {
@@ -331,7 +611,7 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
 
     // Detect format and parse
     const format = detectSpecFormat(specContent);
-    let parsedObject: unknown;
+    let parsedObject: any;
 
     try {
       if (format === 'json') {
@@ -403,11 +683,256 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
         projectId,
         name: definitionName,
         specFormat: 'openapi3',
-        specContent: JSON.stringify(parsedObject), // Store as JSON for consistency
+        specContent: JSON.stringify(parsedObject),
         sourceUrl: url || null,
         isPublic,
       })
       .returning())[0];
+
+    // Import environments from x-environments extension
+    let importedEnvironments = 0;
+    let importedVariables = 0;
+    const xEnvironments = parsedObject['x-environments'];
+    
+    if (xEnvironments && Array.isArray(xEnvironments)) {
+      for (const env of xEnvironments) {
+        if (!env.name || !Array.isArray(env.variables)) continue;
+
+        const newEnv = (await db
+          .insert(environments)
+          .values({
+            projectId,
+            name: env.name,
+            isActive: false
+          })
+          .returning())[0];
+
+        importedEnvironments++;
+
+        for (const variable of env.variables) {
+          if (!variable.key) continue;
+
+          await db.insert(environmentVariables).values({
+            environmentId: newEnv.id,
+            key: variable.key,
+            value: variable.value || '',
+            isSecret: variable.isSecret || false
+          });
+
+          importedVariables++;
+        }
+      }
+    }
+
+    // Create workspace structure (collection, folders, savedRequests)
+    const baseUrl = parsedSpec.servers?.[0]?.url || '';
+    
+    // Create collection
+    const newCollection = (await db
+      .insert(collections)
+      .values({
+        projectId,
+        name: definitionName,
+        description: parsedSpec.info.description || null,
+        authConfig: null
+      })
+      .returning())[0];
+
+    // Group endpoints by tags
+    const tagGroups = new Map<string, typeof parsedSpec.endpoints>();
+    const untaggedEndpoints: typeof parsedSpec.endpoints = [];
+    
+    for (const endpoint of parsedSpec.endpoints) {
+      if (endpoint.tags && endpoint.tags.length > 0) {
+        // Use first tag as primary folder
+        const primaryTag = endpoint.tags[0];
+        if (!tagGroups.has(primaryTag)) {
+          tagGroups.set(primaryTag, []);
+        }
+        tagGroups.get(primaryTag)!.push(endpoint);
+      } else {
+        untaggedEndpoints.push(endpoint);
+      }
+    }
+
+    // Create folders and track created items
+    const createdFolders: Array<{ id: string; name: string; requestCount: number }> = [];
+    const createdRequests: Array<{ id: string; name: string; method: string; url: string; folderId: string }> = [];
+    let folderOrder = 0;
+    let importedExamples = 0;
+
+    // Get security schemes from spec
+    const securitySchemes = parsedObject.components?.securitySchemes || {};
+
+    // Helper function to convert endpoint to request name
+    const getRequestName = (endpoint: (typeof parsedSpec.endpoints)[0]): string => {
+      return endpoint.summary || endpoint.operationId || `${endpoint.method.toUpperCase()} ${endpoint.path}`;
+    };
+
+    // Helper function to build full URL (preserve environment variables)
+    const buildUrl = (path: string): string => {
+      // Remove any quotes from the path
+      let cleanPath = path.replace(/["']/g, '');
+      
+      // If path already contains environment variables, preserve them
+      if (cleanPath.includes('{{')) {
+        return cleanPath;
+      }
+      
+      if (baseUrl) {
+        // Remove trailing slash from baseUrl and leading slash from path
+        const cleanBase = baseUrl.replace(/\/$/, '').replace(/["']/g, '');
+        cleanPath = cleanPath.replace(/^\//, '');
+        return `${cleanBase}/${cleanPath}`;
+      }
+      return cleanPath;
+    };
+
+    // Helper function to determine auth from security
+    const determineAuth = (endpoint: OpenAPIEndpoint): any => {
+      if (!endpoint.security || endpoint.security.length === 0) return null;
+
+      // Get first security requirement
+      const securityReq = endpoint.security[0];
+      const schemeName = Object.keys(securityReq)[0];
+      const scheme = securitySchemes[schemeName];
+
+      return mapSecuritySchemeToAuth(scheme);
+    };
+
+    // Create folders for each tag group
+    for (const [tagName, endpoints] of tagGroups) {
+      const newFolder = (await db
+        .insert(folders)
+        .values({
+          collectionId: newCollection.id,
+          parentFolderId: null,
+          name: tagName,
+          order: folderOrder++
+        })
+        .returning())[0];
+
+      let requestOrder = 0;
+      for (const endpoint of endpoints) {
+        const auth = determineAuth(endpoint);
+        const queryParams = extractQueryParams(endpoint.parameters || []);
+        const baseRequestUrl = buildUrl(endpoint.path);
+        const fullUrl = buildUrlWithQueryParams(baseRequestUrl, queryParams);
+        
+        const newRequest = (await db
+          .insert(savedRequests)
+          .values({
+            folderId: newFolder.id,
+            name: getRequestName(endpoint),
+            method: endpoint.method.toUpperCase() as 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS',
+            url: fullUrl,
+            headers: extractHeaders(endpoint.parameters || [], endpoint.requestBody) 
+              ? JSON.stringify(extractHeaders(endpoint.parameters || [], endpoint.requestBody))
+              : null,
+            body: extractBody(endpoint.requestBody)
+              ? JSON.stringify(extractBody(endpoint.requestBody))
+              : null,
+            auth: auth ? JSON.stringify(auth) : null,
+            order: requestOrder++
+          })
+          .returning())[0];
+
+        createdRequests.push({
+          id: newRequest.id,
+          name: newRequest.name,
+          method: newRequest.method,
+          url: newRequest.url,
+          folderId: newRequest.folderId
+        });
+
+        // Import examples from responses
+        const examples = extractExamplesFromResponses(endpoint.responses);
+        for (const example of examples) {
+          await db.insert(requestExamples).values({
+            requestId: newRequest.id,
+            name: example.name,
+            statusCode: example.statusCode,
+            headers: example.headers,
+            body: example.body,
+            isDefault: example.isDefault
+          });
+          importedExamples++;
+        }
+      }
+
+      createdFolders.push({
+        id: newFolder.id,
+        name: newFolder.name,
+        requestCount: endpoints.length
+      });
+    }
+
+    // Create "General" folder for untagged endpoints if any
+    if (untaggedEndpoints.length > 0) {
+      const generalFolder = (await db
+        .insert(folders)
+        .values({
+          collectionId: newCollection.id,
+          parentFolderId: null,
+          name: 'General',
+          order: folderOrder
+        })
+        .returning())[0];
+
+      let requestOrder = 0;
+      for (const endpoint of untaggedEndpoints) {
+        const auth = determineAuth(endpoint);
+        const queryParams = extractQueryParams(endpoint.parameters || []);
+        const baseRequestUrl = buildUrl(endpoint.path);
+        const fullUrl = buildUrlWithQueryParams(baseRequestUrl, queryParams);
+        
+        const newRequest = (await db
+          .insert(savedRequests)
+          .values({
+            folderId: generalFolder.id,
+            name: getRequestName(endpoint),
+            method: endpoint.method.toUpperCase() as 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS',
+            url: fullUrl,
+            headers: extractHeaders(endpoint.parameters || [], endpoint.requestBody)
+              ? JSON.stringify(extractHeaders(endpoint.parameters || [], endpoint.requestBody))
+              : null,
+            body: extractBody(endpoint.requestBody)
+              ? JSON.stringify(extractBody(endpoint.requestBody))
+              : null,
+            auth: auth ? JSON.stringify(auth) : null,
+            order: requestOrder++
+          })
+          .returning())[0];
+
+        createdRequests.push({
+          id: newRequest.id,
+          name: newRequest.name,
+          method: newRequest.method,
+          url: newRequest.url,
+          folderId: newRequest.folderId
+        });
+
+        // Import examples from responses
+        const examples = extractExamplesFromResponses(endpoint.responses);
+        for (const example of examples) {
+          await db.insert(requestExamples).values({
+            requestId: newRequest.id,
+            name: example.name,
+            statusCode: example.statusCode,
+            headers: example.headers,
+            body: example.body,
+            isDefault: example.isDefault
+          });
+          importedExamples++;
+        }
+      }
+
+      createdFolders.push({
+        id: generalFolder.id,
+        name: generalFolder.name,
+        requestCount: untaggedEndpoints.length
+      });
+    }
 
     // Prepare response with extracted data
     return {
@@ -441,7 +966,23 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
       warnings: parseResult.warnings.map(w => ({
         path: w.path,
         message: w.message
-      }))
+      })),
+      workspace: {
+        collection: {
+          id: newCollection.id,
+          name: newCollection.name,
+          description: newCollection.description
+        },
+        folders: createdFolders,
+        requests: createdRequests,
+        totalFolders: createdFolders.length,
+        totalRequests: createdRequests.length
+      },
+      imported: {
+        environments: importedEnvironments,
+        environmentVariables: importedVariables,
+        requestExamples: importedExamples
+      }
     };
 
   } catch (error: any) {

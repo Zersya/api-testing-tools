@@ -3,6 +3,7 @@ export * from './project';
 export * from './collection';
 export * from './folder';
 export * from './savedRequest';
+export * from './requestExample';
 export * from './environment';
 export * from './environmentVariable';
 export * from './apiDefinition';

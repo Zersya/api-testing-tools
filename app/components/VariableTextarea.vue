@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 
 interface Variable {
   id: string;
@@ -128,6 +128,13 @@ const handleInput = () => {
   const content = getEditorText();
   emit('update:modelValue', content);
 };
+
+// Set initial content on mount
+onMounted(() => {
+  if (editorRef.value) {
+    editorRef.value.innerHTML = highlightedContent.value;
+  }
+});
 
 watch(() => props.modelValue, (newValue) => {
   if (editorRef.value && getEditorText() !== newValue) {

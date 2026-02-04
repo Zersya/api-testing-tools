@@ -20,7 +20,8 @@ import {
   projects, 
   collections, 
   folders, 
-  savedRequests, 
+  savedRequests,
+  requestExamples,
   environments, 
   environmentVariables 
 } from '../../../db/schema';
@@ -84,6 +85,7 @@ interface ImportSuccessResponse {
     requestsCreated: number;
     environmentsCreated: number;
     variablesCreated: number;
+    examplesCreated: number;
   };
   folders: ImportedFolder[];
   requests: ImportedRequest[];
@@ -431,6 +433,70 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
     const createdRequests: ImportedRequest[] = [];
     const createdEnvironments: ImportedEnvironment[] = [];
     let totalVariablesCreated = 0;
+    let totalExamplesCreated = 0;
+
+    // Helper function to sanitize strings for PostgreSQL (remove null bytes and invalid UTF-8)
+    const sanitizeForPostgres = (value: unknown): unknown => {
+      if (value === null || value === undefined) {
+        return value;
+      }
+      if (typeof value === 'string') {
+        // Remove null bytes and other control characters that PostgreSQL doesn't accept
+        return value.replace(/\x00/g, '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+      }
+      if (Array.isArray(value)) {
+        return value.map(sanitizeForPostgres);
+      }
+      if (typeof value === 'object') {
+        const sanitized: Record<string, unknown> = {};
+        for (const [key, val] of Object.entries(value)) {
+          sanitized[key] = sanitizeForPostgres(val);
+        }
+        return sanitized;
+      }
+      return value;
+    };
+
+    // Helper function to sanitize headers
+    const sanitizeHeaders = (headers: Record<string, string> | null): Record<string, string> | null => {
+      if (!headers || Object.keys(headers).length === 0) return null;
+      const sanitized: Record<string, string> = {};
+      for (const [key, value] of Object.entries(headers)) {
+        sanitized[sanitizeForPostgres(key) as string] = sanitizeForPostgres(value) as string;
+      }
+      return sanitized;
+    };
+
+    // Helper function to sanitize body
+    const sanitizeBody = (body: unknown): unknown => {
+      return sanitizeForPostgres(body);
+    };
+
+    // Helper function to create response examples for a request
+    const createResponseExamples = async (
+      requestId: string,
+      examples: typeof parsedCollection.requests[0]['responseExamples']
+    ): Promise<number> => {
+      let count = 0;
+      for (let i = 0; i < examples.length; i++) {
+        const example = examples[i];
+        try {
+          await db.insert(requestExamples).values({
+            requestId,
+            name: sanitizeForPostgres(example.name) as string,
+            statusCode: example.statusCode,
+            headers: sanitizeHeaders(example.headers),
+            body: sanitizeBody(example.body),
+            isDefault: i === 0 // First example is default
+          });
+          count++;
+        } catch (err) {
+          // Log and skip problematic examples
+          console.warn(`Skipping response example "${example.name}" due to encoding error:`, err);
+        }
+      }
+      return count;
+    };
 
     // Helper function to create folders recursively
     const createFoldersRecursively = async (
@@ -478,6 +544,11 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
             url: newRequest.url,
             folderId: newRequest.folderId
           });
+
+          // Create response examples for this request
+          if (parsedRequest.responseExamples && parsedRequest.responseExamples.length > 0) {
+            totalExamplesCreated += await createResponseExamples(newRequest.id, parsedRequest.responseExamples);
+          }
         }
 
         // Recursively create subfolders
@@ -528,6 +599,11 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
           url: newRequest.url,
           folderId: newRequest.folderId
         });
+
+        // Create response examples for this request
+        if (parsedRequest.responseExamples && parsedRequest.responseExamples.length > 0) {
+          totalExamplesCreated += await createResponseExamples(newRequest.id, parsedRequest.responseExamples);
+        }
       }
     }
 
@@ -631,7 +707,8 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
         foldersCreated: createdFolders.length,
         requestsCreated: createdRequests.length,
         environmentsCreated: createdEnvironments.length,
-        variablesCreated: totalVariablesCreated
+        variablesCreated: totalVariablesCreated,
+        examplesCreated: totalExamplesCreated
       },
       folders: createdFolders,
       requests: createdRequests,

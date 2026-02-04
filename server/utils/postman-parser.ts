@@ -190,15 +190,29 @@ export interface ParsedPostmanFolder {
   order: number;
 }
 
+export interface ParsedPostmanResponseExample {
+  name: string;
+  statusCode: number;
+  statusText?: string;
+  headers: RequestHeaders;
+  body: string | Record<string, unknown> | null;
+  responseTime?: number;
+}
+
 export interface ParsedPostmanRequest {
   name: string;
   description?: string;
   method: HttpMethod;
   url: string;
   headers: RequestHeaders;
+  queryParams: Array<{ key: string; value: string; description?: string }>;
+  pathVariables: Array<{ key: string; value: string; description?: string }>;
   body: RequestBody;
+  bodyMode?: string;
+  bodyOptions?: { language?: string };
   auth: RequestAuth;
   order: number;
+  responseExamples: ParsedPostmanResponseExample[];
 }
 
 export interface ParsedPostmanVariable {
@@ -510,8 +524,39 @@ function parsePostmanRequest(
     }
   }
 
+  // Parse query parameters
+  const queryParams: Array<{ key: string; value: string; description?: string }> = [];
+  const urlObj = typeof request.url === 'object' ? request.url : null;
+  if (urlObj?.query && Array.isArray(urlObj.query)) {
+    for (const param of urlObj.query) {
+      if (param.key && !param.disabled) {
+        queryParams.push({
+          key: param.key,
+          value: param.value || '',
+          description: extractDescription(param.description)
+        });
+      }
+    }
+  }
+
+  // Parse path variables (URL variables)
+  const pathVariables: Array<{ key: string; value: string; description?: string }> = [];
+  if (urlObj?.variable && Array.isArray(urlObj.variable)) {
+    for (const variable of urlObj.variable) {
+      if (variable.key && !variable.disabled) {
+        pathVariables.push({
+          key: variable.key,
+          value: variable.value || '',
+          description: extractDescription(variable.description)
+        });
+      }
+    }
+  }
+
   // Parse body
   const body = parsePostmanBody(request.body);
+  const bodyMode = request.body?.mode;
+  const bodyOptions = request.body?.options?.raw;
 
   // Parse auth (item-level auth takes precedence over request-level)
   const auth = item.auth ? parsePostmanAuth(item.auth) : 
@@ -520,15 +565,54 @@ function parsePostmanRequest(
   // Get description from item or request
   const description = extractDescription(item.description) || extractDescription(request.description);
 
+  // Parse response examples from item.response
+  const responseExamples: ParsedPostmanResponseExample[] = [];
+  if (item.response && Array.isArray(item.response)) {
+    for (const response of item.response) {
+      const exampleHeaders: RequestHeaders = {};
+      if (Array.isArray(response.header)) {
+        for (const header of response.header) {
+          if (header.key) {
+            exampleHeaders[header.key] = header.value || '';
+          }
+        }
+      }
+
+      // Parse body - try JSON first
+      let parsedBody: string | Record<string, unknown> | null = null;
+      if (response.body) {
+        try {
+          parsedBody = JSON.parse(response.body);
+        } catch {
+          parsedBody = response.body;
+        }
+      }
+
+      responseExamples.push({
+        name: response.name || `Response ${response.code || 200}`,
+        statusCode: response.code || 200,
+        statusText: response.status,
+        headers: exampleHeaders,
+        body: parsedBody,
+        responseTime: response.responseTime
+      });
+    }
+  }
+
   return {
     name: item.name || 'Unnamed Request',
     description,
     method,
     url,
     headers,
+    queryParams,
+    pathVariables,
     body,
+    bodyMode,
+    bodyOptions,
     auth,
-    order
+    order,
+    responseExamples
   };
 }
 

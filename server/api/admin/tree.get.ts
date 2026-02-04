@@ -61,6 +61,20 @@ interface WorkspaceWithProjects {
   projectCount: number;
 }
 
+function parseJsonField<T>(value: unknown): T | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      return null;
+    }
+  }
+  return value as T;
+}
+
 function buildFolderTree(
   allFolders: typeof folders.$inferSelect[],
   allRequests: RequestItem[],
@@ -104,10 +118,18 @@ export default defineEventHandler(async (event) => {
       .select()
       .from(folders);
 
-    const allRequests = await db
+    const allRequestsRaw = await db
       .select()
       .from(savedRequests)
-      .orderBy(asc(savedRequests.order)) as RequestItem[];
+      .orderBy(asc(savedRequests.order));
+
+    // Parse JSON fields from text columns
+    const allRequests: RequestItem[] = allRequestsRaw.map(req => ({
+      ...req,
+      headers: parseJsonField<Record<string, string>>(req.headers),
+      body: parseJsonField<Record<string, unknown> | string>(req.body),
+      auth: parseJsonField<RequestItem['auth']>(req.auth)
+    }));
 
     const workspacesWithProjects: WorkspaceWithProjects[] = allWorkspaces.map(workspace => {
       const workspaceProjects = allProjects.filter(p => p.workspaceId === workspace.id);
