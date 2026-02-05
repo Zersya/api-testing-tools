@@ -6,8 +6,8 @@ export default defineEventHandler(async (event) => {
     const config = useRuntimeConfig();
 
     if (email === config.adminEmail && password === config.adminPassword) {
-        // Generate JWT
-        const token = jwt.sign({ email }, config.jwtSecret, { expiresIn: '24h' });
+        // Generate JWT - use email as sub for consistency
+        const token = jwt.sign({ sub: email, email }, config.jwtSecret, { expiresIn: '24h' });
 
         // Set secure cookie
         setCookie(event, 'auth_token', token, {

@@ -8,6 +8,7 @@ import ApiDocumentationViewer from '~/components/ApiDocumentationViewer.vue';
 import ResponseComparison from '~/components/ResponseComparison.vue';
 import KeyboardShortcutsHelpModal from '~/components/KeyboardShortcutsHelpModal.vue';
 import RenameWorkspaceModal from '~/components/RenameWorkspaceModal.vue';
+import ShareWorkspaceModal from '~/components/ShareWorkspaceModal.vue';
 import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
 interface Collection {
   id: string;
@@ -205,6 +206,18 @@ const showWorkspaceModal = ref(false);
 const showRenameWorkspaceModal = ref(false);
 const workspaceToRename = ref<{ id: string; name: string } | null>(null);
 const selectedWorkspaceId = ref<string | null>(null);
+
+// Share workspace modal state
+const showShareModal = ref(false);
+const shareWorkspaceId = ref('');
+const shareWorkspaceName = ref('');
+
+// Open share workspace modal
+const openShareWorkspace = (workspace: { id: string; name: string }) => {
+  shareWorkspaceId.value = workspace.id;
+  shareWorkspaceName.value = workspace.name;
+  showShareModal.value = true;
+};
 const showFolderModal = ref(false);
 const folderCollectionId = ref<string | null>(null);
 const folderCollectionName = ref<string>('');
@@ -1509,6 +1522,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
         @create-project="openCreateProject"
         @create-workspace="openCreateWorkspace"
         @rename-workspace="openRenameWorkspace"
+        @share-workspace="openShareWorkspace"
         @rename-project="openRenameProject"
         @delete-project="confirmDeleteProject"
         @edit-collection="openEditCollection"
@@ -2175,6 +2189,15 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
       :workspace="workspaceToRename"
       @close="showRenameWorkspaceModal = false; workspaceToRename = null"
       @renamed="refreshWorkspaces"
+    />
+
+    <!-- Share Workspace Modal -->
+    <ShareWorkspaceModal
+      :show="showShareModal"
+      :workspace-id="shareWorkspaceId"
+      :workspace-name="shareWorkspaceName"
+      @close="showShareModal = false"
+      @shared="refreshWorkspaces"
     />
 
     <!-- Create Project Modal -->

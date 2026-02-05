@@ -1,13 +1,21 @@
 import { db } from '../../db';
 import { workspaces } from '../../db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 
 interface CreateWorkspaceBody {
   name: string;
 }
 
 export default defineEventHandler(async (event) => {
+  const user = event.context.user;
   const body = await readBody<CreateWorkspaceBody>(event);
+
+  if (!user?.id) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: 'Unauthorized'
+    });
+  }
 
   // Validate required fields
   if (!body.name || typeof body.name !== 'string') {
@@ -34,13 +42,15 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    // Check for duplicate names (case-insensitive)
-    const existingWorkspaces = await db
-      .select()
+    // Check for duplicate names (case-insensitive) for this user using database query
+    // Also check for workspaces with null ownerId (legacy workspaces)
+    const allWorkspaces = await db
+      .select({ id: workspaces.id, name: workspaces.name, ownerId: workspaces.ownerId })
       .from(workspaces);
-
-    const duplicate = existingWorkspaces.find(
-      w => w.name.toLowerCase() === trimmedName.toLowerCase()
+    
+    const duplicate = allWorkspaces.find(ws => 
+      ws.name.toLowerCase() === trimmedName.toLowerCase() && 
+      (ws.ownerId === user.id || ws.ownerId === null || ws.ownerId === 'unknown' || ws.ownerId === '')
     );
 
     if (duplicate) {
@@ -50,11 +60,13 @@ export default defineEventHandler(async (event) => {
       });
     }
 
-    // Create the workspace
+    // Create the workspace with owner
     const newWorkspace = (await db
       .insert(workspaces)
       .values({
-        name: trimmedName
+        name: trimmedName,
+        ownerId: user.id,
+        visibility: 'private'
       })
       .returning())[0];
 

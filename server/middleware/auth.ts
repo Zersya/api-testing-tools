@@ -25,7 +25,7 @@ export default defineEventHandler((event) => {
         }
 
         event.context.user = {
-            id: decoded.sub || decoded.id || 'unknown',
+            id: decoded.email || decoded.sub || decoded.id || 'unknown',
             email: decoded.email || 'unknown',
             workspaceId: decoded.workspaceId || 'personal',
             authMethod: decoded.authMethod || 'credentials',

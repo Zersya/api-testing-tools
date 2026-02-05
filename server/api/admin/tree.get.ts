@@ -1,6 +1,7 @@
 import { db } from '../../db';
 import { workspaces, projects, collections, folders, savedRequests } from '../../db/schema';
-import { eq, desc, asc } from 'drizzle-orm';
+import { eq, desc, asc, inArray } from 'drizzle-orm';
+import { getAccessibleWorkspaceIds, getWorkspacePermissionsBatch } from '../../utils/permissions';
 
 interface RequestItem {
   id: string;
@@ -59,6 +60,9 @@ interface WorkspaceWithProjects {
   updatedAt: Date;
   projects: ProjectWithCollections[];
   projectCount: number;
+  isOwner: boolean;
+  isShared: boolean;
+  permission: 'owner' | 'edit' | 'view' | null;
 }
 
 function parseJsonField<T>(value: unknown): T | null {
@@ -92,6 +96,7 @@ function buildFolderTree(
 
 export default defineEventHandler(async (event) => {
   const method = getMethod(event);
+  const user = event.context.user;
 
   if (method !== 'GET') {
     throw createError({
@@ -100,10 +105,28 @@ export default defineEventHandler(async (event) => {
     });
   }
 
+  // If no user, return empty
+  if (!user?.id) {
+    return [];
+  }
+
   try {
+    // Get all workspace IDs this user can access
+    const accessibleIds = await getAccessibleWorkspaceIds(user.id);
+    
+    console.log('[Tree API] User ID:', user.id);
+    console.log('[Tree API] Accessible workspace IDs:', accessibleIds);
+
+    if (accessibleIds.length === 0) {
+      console.log('[Tree API] No accessible workspaces found');
+      return [];
+    }
+
+    // Fetch only accessible workspaces
     const allWorkspaces = await db
       .select()
       .from(workspaces)
+      .where(inArray(workspaces.id, accessibleIds))
       .orderBy(desc(workspaces.createdAt));
 
     const allProjects = await db
@@ -126,10 +149,6 @@ export default defineEventHandler(async (event) => {
     // Parse JSON fields from text columns
     const allRequests: RequestItem[] = allRequestsRaw.map(req => {
       const parsedHeaders = parseJsonField<Record<string, string>>(req.headers);
-      if (req.method === 'POST' && parsedHeaders) {
-        console.log('[Tree] Raw headers from DB:', req.headers);
-        console.log('[Tree] Parsed headers:', JSON.stringify(parsedHeaders));
-      }
       return {
         ...req,
         headers: parsedHeaders,
@@ -138,8 +157,15 @@ export default defineEventHandler(async (event) => {
       };
     });
 
-    const workspacesWithProjects: WorkspaceWithProjects[] = allWorkspaces.map(workspace => {
+    // Build workspace tree with permission info (using batch query to avoid N+1)
+    const workspaceIds = allWorkspaces.map(w => w.id);
+    const permissionMap = await getWorkspacePermissionsBatch(user.id, workspaceIds);
+
+    const workspacesWithProjects: WorkspaceWithProjects[] = allWorkspaces.map((workspace) => {
       const workspaceProjects = allProjects.filter(p => p.workspaceId === workspace.id);
+      // For legacy workspaces (ownerId is null, 'unknown', or empty), treat current user as owner
+      const isOwner = workspace.ownerId === user.id || workspace.ownerId === null || workspace.ownerId === 'unknown' || workspace.ownerId === '';
+      const permission = isOwner ? 'owner' : (permissionMap.get(workspace.id) || null);
 
       return {
         ...workspace,
@@ -168,7 +194,10 @@ export default defineEventHandler(async (event) => {
             collectionCount: projectCollections.length
           };
         }),
-        projectCount: workspaceProjects.length
+        projectCount: workspaceProjects.length,
+        isOwner,
+        isShared: !isOwner,
+        permission
       };
     });
 

@@ -1,4 +1,6 @@
 export * from './workspace';
+export * from './workspaceShare';
+export * from './workspaceAccess';
 export * from './project';
 export * from './collection';
 export * from './folder';

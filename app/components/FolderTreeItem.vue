@@ -34,9 +34,14 @@ interface FolderTreeItemProps {
     id: string;
     position: 'before' | 'after' | 'inside';
   } | null;
+  permission?: 'owner' | 'edit' | 'view' | null;
+  selectedRequestId?: string | null;
 }
 
-const props = defineProps<FolderTreeItemProps>();
+const props = withDefaults(defineProps<FolderTreeItemProps>(), {
+  permission: 'owner',
+  selectedRequestId: null
+});
 
 const emit = defineEmits<{
   toggleFolder: [folderId: string];
@@ -49,6 +54,10 @@ const emit = defineEmits<{
   dragLeave: [];
   drop: [event: DragEvent, type: 'folder' | 'request', id: string, position: 'before' | 'after' | 'inside'];
 }>();
+
+// Permission checks
+const canEdit = computed(() => props.permission === 'owner' || props.permission === 'edit');
+const canDrag = computed(() => props.permission === 'owner' || props.permission === 'edit');
 
 const getMethodColor = (method: string) => {
   const colors: Record<string, string> = {
@@ -66,6 +75,10 @@ const getMethodColor = (method: string) => {
 const isExpanded = (folderId: string) => props.expandedFolderIds.has(folderId);
 
 const handleDragStart = (event: DragEvent, type: 'folder' | 'request', id: string) => {
+  if (!canDrag.value) {
+    event.preventDefault();
+    return;
+  }
   if (event.dataTransfer) {
     event.dataTransfer.effectAllowed = 'move';
     event.dataTransfer.setData('application/json', JSON.stringify({ type, id }));
@@ -78,6 +91,7 @@ const handleDragEnd = () => {
 };
 
 const handleDragOver = (event: DragEvent, type: 'folder' | 'request', id: string, position: 'before' | 'after' | 'inside') => {
+  if (!canEdit.value) return;
   event.preventDefault();
   if (event.dataTransfer) {
     event.dataTransfer.dropEffect = 'move';
@@ -90,11 +104,13 @@ const handleDragLeave = () => {
 };
 
 const handleDrop = (event: DragEvent, type: 'folder' | 'request', id: string, position: 'before' | 'after' | 'inside') => {
+  if (!canEdit.value) return;
   event.preventDefault();
   emit('drop', event, type, id, position);
 };
 
 const isValidDropTarget = (): boolean => {
+  if (!canEdit.value) return false;
   if (props.draggingFolderId === props.folder.id) return false;
   if (props.draggingFolderId && isDescendant(props.draggingFolderId, props.folder.id)) return false;
   return true;
@@ -127,7 +143,7 @@ const isDescendant = (ancestorId: string, descendantId: string): boolean => {
         dropTarget?.type === 'folder' && dropTarget?.id === folder.id && dropTarget?.position === 'inside' ? 'bg-accent-blue/10 border border-dashed border-accent-blue rounded' : '',
         !isValidDropTarget() && (draggingFolderId || draggingRequestId) ? 'opacity-40' : ''
       ]"
-      :draggable="true"
+      :draggable="canDrag"
       @dragstart="handleDragStart($event, 'folder', folder.id)"
       @dragend="handleDragEnd"
       @click="emit('toggleFolder', folder.id)"
