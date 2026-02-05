@@ -17,10 +17,18 @@ export default defineEventHandler(async (event) => {
     )
     .limit(1))[0];
   
-  const existingConfig: SsoConfig = existingSetting?.value as SsoConfig || { 
-    providers: [], 
-    allowMultipleProviders: true 
+  let rawConfig = existingSetting?.value;
+  if (typeof rawConfig === 'string') {
+    rawConfig = JSON.parse(rawConfig);
+  }
+  const existingConfig: SsoConfig = (rawConfig as SsoConfig) || {
+    providers: [],
+    allowMultipleProviders: true
   };
+
+  if (!Array.isArray(existingConfig.providers)) {
+    existingConfig.providers = [];
+  }
   
   // Merge the new config with existing
   const newConfig: SsoConfig = {

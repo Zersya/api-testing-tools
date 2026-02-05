@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import Modal from './Modal.vue';
 
+const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'] as const;
+
 interface RequestHistoryEntry {
   id: string;
   workspaceId: string;

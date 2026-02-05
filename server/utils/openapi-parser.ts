@@ -207,6 +207,18 @@ export function parseOpenAPISpec(spec: unknown): OpenAPIParseResult {
     return { success: false, errors, warnings, rawSpec: spec };
   }
 
+  // Helper to clean string values (remove surrounding quotes if present)
+  const cleanString = (value: unknown): string | undefined => {
+    if (typeof value !== 'string') return undefined;
+    const trimmed = value.trim();
+    // Remove surrounding quotes if present (handles values like '"List"')
+    if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || 
+        (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+      return trimmed.slice(1, -1);
+    }
+    return trimmed;
+  };
+
   // Extract endpoints from paths
   const endpoints: OpenAPIEndpoint[] = [];
   const paths = specObj.paths as Record<string, Record<string, unknown>> | undefined;
@@ -229,11 +241,11 @@ export function parseOpenAPISpec(spec: unknown): OpenAPIParseResult {
         if (!operation || typeof operation !== 'object') continue;
 
         const endpoint: OpenAPIEndpoint = {
-          path,
+          path: cleanString(path) || path,
           method: method.toUpperCase(),
-          operationId: operation.operationId as string | undefined,
-          summary: operation.summary as string | undefined,
-          description: operation.description as string | undefined,
+          operationId: cleanString(operation.operationId),
+          summary: cleanString(operation.summary),
+          description: cleanString(operation.description),
           tags: operation.tags as string[] | undefined,
           parameters: extractParameters(operation.parameters, pathItem.parameters),
           requestBody: operation.requestBody as OpenAPIRequestBody | undefined,

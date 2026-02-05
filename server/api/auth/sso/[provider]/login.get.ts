@@ -27,7 +27,12 @@ export default defineEventHandler(async (event) => {
     )
     .limit(1))[0];
   
-  const config: SsoConfig = (setting?.value as SsoConfig) || { providers: [], allowMultipleProviders: true };
+  // Parse SSO config, handling both string and object formats
+  let rawConfig = setting?.value;
+  if (typeof rawConfig === 'string') {
+    rawConfig = JSON.parse(rawConfig);
+  }
+  const config: SsoConfig = (rawConfig as SsoConfig) || { providers: [], allowMultipleProviders: true };
   
   if (!config || !config.providers || config.providers.length === 0) {
     throw createError({

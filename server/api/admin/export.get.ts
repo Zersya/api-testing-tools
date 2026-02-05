@@ -245,11 +245,24 @@ export default defineEventHandler(async (event) => {
             // Skip if key is a numeric index (indicates array-like structure)
             if (!isNaN(Number(key))) continue;
             
+            // Clean up the value - remove surrounding quotes if present
+            let cleanValue = String(value);
+            if (cleanValue.startsWith('"') && cleanValue.endsWith('"') && cleanValue.length >= 2) {
+              try {
+                const parsed = JSON.parse(cleanValue);
+                if (typeof parsed === 'string') {
+                  cleanValue = parsed;
+                }
+              } catch {
+                // If parsing fails, keep original value
+              }
+            }
+            
             parameters.push({
               name: key,
               in: 'header',
               schema: { type: 'string' },
-              example: String(value)
+              example: cleanValue
             });
           }
         }

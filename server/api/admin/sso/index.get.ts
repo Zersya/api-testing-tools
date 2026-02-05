@@ -14,13 +14,20 @@ export default defineEventHandler(async (event) => {
     )
     .limit(1))[0];
   
-  const config: SsoConfig = (setting?.value as SsoConfig) || { 
-    providers: [], 
-    allowMultipleProviders: true 
+  let rawConfig = setting?.value;
+  if (typeof rawConfig === 'string') {
+    rawConfig = JSON.parse(rawConfig);
+  }
+  const config: SsoConfig = (rawConfig as SsoConfig) || {
+    providers: [],
+    allowMultipleProviders: true
   };
-  
+
+  // Ensure providers is always an array
+  const providers: SsoProvider[] = Array.isArray(config?.providers) ? config.providers : [];
+
   // Don't return client secrets in the response
-  const sanitizedProviders = config.providers.map((provider: SsoProvider) => ({
+  const sanitizedProviders = providers.map((provider: SsoProvider) => ({
     ...provider,
     clientSecret: provider.clientSecret ? '••••••••' : ''
   }));

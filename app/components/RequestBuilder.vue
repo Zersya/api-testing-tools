@@ -273,12 +273,23 @@ const loadRequestData = (request: HttpRequest) => {
       
       // Validate that headersObj is actually an object, not an array or other type
       if (headersObj && typeof headersObj === 'object' && !Array.isArray(headersObj)) {
-        headers.value = Object.entries(headersObj).map(([key, value]) => ({
-          id: crypto.randomUUID(),
-          key,
-          value: String(value),
-          enabled: true
-        }));
+        headers.value = Object.entries(headersObj).map(([key, value]) => {
+          let strValue = String(value);
+          // Strip surrounding quotes if present (handles double-quoted strings from import)
+          if (strValue.startsWith('"') && strValue.endsWith('"') && strValue.length >= 2) {
+            try {
+              strValue = JSON.parse(strValue);
+            } catch {
+              // If parsing fails, keep original value
+            }
+          }
+          return {
+            id: crypto.randomUUID(),
+            key,
+            value: strValue,
+            enabled: true
+          };
+        });
       } else {
         console.warn('Invalid headers format:', headersObj);
         headers.value = [];
@@ -1431,9 +1442,32 @@ const openSaveAsDialog = () => {
 
 watch(() => form.value.url, (newUrl) => {
   const params = parseUrlQuery(newUrl);
-  if (params.length !== queryParams.value.length ||
-      JSON.stringify(params) !== JSON.stringify(queryParams.value.map(p => ({ key: p.key, value: p.value, enabled: p.enabled })))) {
-    queryParams.value = params;
+  // Only update params if the URL params are different from current params
+  // and we're not currently editing params (to avoid losing focus)
+  const currentParamsStr = JSON.stringify(queryParams.value.map(p => ({ key: p.key, value: p.value, enabled: p.enabled })));
+  const newParamsStr = JSON.stringify(params.map(p => ({ key: p.key, value: p.value, enabled: p.enabled })));
+  
+  if (currentParamsStr !== newParamsStr) {
+    // Merge params: keep existing params with their IDs, add new ones, remove deleted ones
+    const mergedParams: QueryParam[] = [];
+    const existingParamsMap = new Map(queryParams.value.map(p => [p.key, p]));
+    
+    for (const newParam of params) {
+      const existingParam = existingParamsMap.get(newParam.key);
+      if (existingParam) {
+        // Update existing param value if changed
+        if (existingParam.value !== newParam.value || existingParam.enabled !== newParam.enabled) {
+          existingParam.value = newParam.value;
+          existingParam.enabled = newParam.enabled;
+        }
+        mergedParams.push(existingParam);
+      } else {
+        // Add new param
+        mergedParams.push(newParam);
+      }
+    }
+    
+    queryParams.value = mergedParams;
   }
 }, { immediate: true });
 

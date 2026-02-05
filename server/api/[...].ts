@@ -108,7 +108,19 @@ export default defineEventHandler(async (event) => {
             }
 
             setResponseStatus(event, mock.status);
-            return mock.response;
+            
+            // Parse response if it's a string (JSON stored in database)
+            let responseData = mock.response;
+            if (typeof mock.response === 'string') {
+                try {
+                    responseData = JSON.parse(mock.response);
+                } catch {
+                    // If parsing fails, return as-is
+                    responseData = mock.response;
+                }
+            }
+            
+            return responseData;
         }
     }
 

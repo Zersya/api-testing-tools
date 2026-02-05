@@ -124,12 +124,19 @@ export default defineEventHandler(async (event) => {
       .orderBy(asc(savedRequests.order));
 
     // Parse JSON fields from text columns
-    const allRequests: RequestItem[] = allRequestsRaw.map(req => ({
-      ...req,
-      headers: parseJsonField<Record<string, string>>(req.headers),
-      body: parseJsonField<Record<string, unknown> | string>(req.body),
-      auth: parseJsonField<RequestItem['auth']>(req.auth)
-    }));
+    const allRequests: RequestItem[] = allRequestsRaw.map(req => {
+      const parsedHeaders = parseJsonField<Record<string, string>>(req.headers);
+      if (req.method === 'POST' && parsedHeaders) {
+        console.log('[Tree] Raw headers from DB:', req.headers);
+        console.log('[Tree] Parsed headers:', JSON.stringify(parsedHeaders));
+      }
+      return {
+        ...req,
+        headers: parsedHeaders,
+        body: parseJsonField<Record<string, unknown> | string>(req.body),
+        auth: parseJsonField<RequestItem['auth']>(req.auth)
+      };
+    });
 
     const workspacesWithProjects: WorkspaceWithProjects[] = allWorkspaces.map(workspace => {
       const workspaceProjects = allProjects.filter(p => p.workspaceId === workspace.id);

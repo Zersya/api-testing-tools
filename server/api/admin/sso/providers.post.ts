@@ -25,10 +25,18 @@ export default defineEventHandler(async (event) => {
     )
     .limit(1))[0];
   
-  const config: SsoConfig = (setting?.value as SsoConfig) || { 
-    providers: [], 
-    allowMultipleProviders: true 
+  let rawConfig = setting?.value;
+  if (typeof rawConfig === 'string') {
+    rawConfig = JSON.parse(rawConfig);
+  }
+  let config: SsoConfig = (rawConfig as SsoConfig) || {
+    providers: [],
+    allowMultipleProviders: true
   };
+
+  if (!Array.isArray(config.providers)) {
+    config.providers = [];
+  }
   
   const newProvider: SsoProvider = {
     ...body,

@@ -17,10 +17,19 @@ export default defineEventHandler(async (event) => {
       .limit(1))[0];
     
     // Default empty config if none exists
-    const ssoConfig: SsoConfig = (setting?.value as SsoConfig) || { 
-      providers: [], 
-      allowMultipleProviders: true 
-    };
+    let ssoConfig: SsoConfig;
+    if (setting?.value) {
+      // Handle case where value might be stored as JSON string
+      const parsedValue = typeof setting.value === 'string' 
+        ? JSON.parse(setting.value) 
+        : setting.value;
+      ssoConfig = parsedValue as SsoConfig;
+    } else {
+      ssoConfig = { 
+        providers: [], 
+        allowMultipleProviders: true 
+      };
+    }
     
     // Ensure providers array exists
     if (!ssoConfig.providers) {

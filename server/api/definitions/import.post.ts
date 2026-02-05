@@ -282,30 +282,83 @@ function generateSampleFromSchema(schema: any): Record<string, unknown> | null {
   return null;
 }
 
+// Helper function to clean content type keys (remove surrounding quotes if present)
+function cleanContentTypeKey(key: string): string {
+  const cleaned = key.trim();
+  // Remove surrounding quotes if present (handles keys like '"application/json"')
+  if ((cleaned.startsWith('"') && cleaned.endsWith('"')) || 
+      (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
+    return cleaned.slice(1, -1);
+  }
+  return cleaned;
+}
+
 // Extract Content-Type from requestBody
 function extractContentType(requestBody: any): string | null {
   if (!requestBody?.content) return null;
   
+  const contentKeys = Object.keys(requestBody.content);
+  console.log('[Import] Raw content keys:', contentKeys);
+  
+  // Clean all content type keys
+  const cleanedKeys = contentKeys.map(cleanContentTypeKey);
+  console.log('[Import] Cleaned content types:', cleanedKeys);
+  
   // Priority order: application/json, then others
-  if (requestBody.content['application/json']) {
+  const contentTypes = cleanedKeys.map(key => {
+    // Match cleaned key back to original
+    const originalKey = contentKeys.find(k => cleanContentTypeKey(k) === key);
+    return {
+      cleaned: key,
+      original: originalKey || key
+    };
+  });
+  
+  const jsonType = contentTypes.find(ct => ct.cleaned === 'application/json');
+  if (jsonType) {
+    console.log('[Import] Found application/json, using key:', jsonType.original);
     return 'application/json';
   }
-  if (requestBody.content['application/x-www-form-urlencoded']) {
+  
+  const urlencodedType = contentTypes.find(ct => ct.cleaned === 'application/x-www-form-urlencoded');
+  if (urlencodedType) {
     return 'application/x-www-form-urlencoded';
   }
-  if (requestBody.content['multipart/form-data']) {
+  
+  const formDataType = contentTypes.find(ct => ct.cleaned === 'multipart/form-data');
+  if (formDataType) {
     return 'multipart/form-data';
   }
-  if (requestBody.content['text/plain']) {
+  
+  const textType = contentTypes.find(ct => ct.cleaned === 'text/plain');
+  if (textType) {
     return 'text/plain';
   }
-  if (requestBody.content['application/xml']) {
+  
+  const xmlType = contentTypes.find(ct => ct.cleaned === 'application/xml');
+  if (xmlType) {
     return 'application/xml';
   }
   
-  // Return first available content type
-  const contentTypes = Object.keys(requestBody.content);
-  return contentTypes.length > 0 ? contentTypes[0] : null;
+  // Return first available cleaned content type
+  return cleanedKeys.length > 0 ? cleanedKeys[0] : null;
+}
+
+// Helper function to clean up header values by removing surrounding quotes
+function cleanHeaderValue(value: string): string {
+  // Remove surrounding quotes if present (handles double-quoted strings)
+  if (value.startsWith('"') && value.endsWith('"') && value.length >= 2) {
+    try {
+      const parsed = JSON.parse(value);
+      if (typeof parsed === 'string') {
+        return parsed;
+      }
+    } catch {
+      // If parsing fails, remove quotes manually
+      return value.slice(1, -1);
+    }
+  }
+  return value;
 }
 
 // Extract headers from parameters and requestBody
@@ -316,7 +369,8 @@ function extractHeaders(parameters: any[], requestBody?: any): Record<string, st
   const headerParams = parameters?.filter(p => p.in === 'header');
   if (headerParams && headerParams.length > 0) {
     for (const param of headerParams) {
-      headers[param.name] = param.example?.toString() || param.schema?.default?.toString() || '';
+      const rawValue = param.example?.toString() || param.schema?.default?.toString() || '';
+      headers[param.name] = cleanHeaderValue(rawValue);
     }
   }
   
@@ -819,6 +873,9 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
         const baseRequestUrl = buildUrl(endpoint.path);
         const fullUrl = buildUrlWithQueryParams(baseRequestUrl, queryParams);
         
+        const extractedHeaders = extractHeaders(endpoint.parameters || [], endpoint.requestBody);
+        const headersJson = extractedHeaders ? JSON.stringify(extractedHeaders) : null;
+        
         const newRequest = (await db
           .insert(savedRequests)
           .values({
@@ -826,9 +883,7 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
             name: getRequestName(endpoint),
             method: endpoint.method.toUpperCase() as 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS',
             url: fullUrl,
-            headers: extractHeaders(endpoint.parameters || [], endpoint.requestBody) 
-              ? JSON.stringify(extractHeaders(endpoint.parameters || [], endpoint.requestBody))
-              : null,
+            headers: headersJson,
             body: extractBody(endpoint.requestBody)
               ? JSON.stringify(extractBody(endpoint.requestBody))
               : null,
