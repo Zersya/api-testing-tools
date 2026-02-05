@@ -256,8 +256,11 @@ export default defineEventHandler(async (event) => {
     maxAge: tokenResponse.expires_in || 3600
   });
 
-  console.log(`[SSO Callback] Authentication successful, redirecting to /admin`);
-  return sendRedirect(event, '/admin');
+  // Get redirect URL from session data
+  let redirectUrl = sessionData.redirectUrl || '/admin';
+  
+  console.log(`[SSO Callback] Authentication successful, redirecting to ${redirectUrl}`);
+  return sendRedirect(event, redirectUrl);
 });
 
 function normalizeUserInfo(userInfo: UserInfo | null, providerType: string): {

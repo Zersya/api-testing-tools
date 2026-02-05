@@ -3,9 +3,7 @@ import RequestBuilder from '~/components/RequestBuilder.vue';
 import MethodBadge from '~/components/MethodBadge.vue';
 import FolderTreeItem from '~/components/FolderTreeItem.vue';
 
-definePageMeta({
-  middleware: 'auth'
-});
+
 
 const route = useRoute();
 const token = computed(() => route.params.token as string);
@@ -65,13 +63,23 @@ interface SharedWorkspace {
   isShared: boolean;
 }
 
-const { data: workspace, error, refresh } = await useFetch<SharedWorkspace>(`/api/shared-workspace/${token.value}`);
+const workspace = ref<SharedWorkspace | null>(null);
+const error = ref<any>(null);
 
-if (error.value) {
-  if (error.value.statusCode === 401) {
-    await navigateTo('/login');
+onMounted(async () => {
+  try {
+    const response = await $fetch<SharedWorkspace>(`/api/shared-workspace/${token.value}`, {
+      credentials: 'include'
+    });
+    workspace.value = response;
+  } catch (err: any) {
+    error.value = err;
+    if (err?.statusCode === 401) {
+      const returnUrl = encodeURIComponent(window.location.pathname);
+      navigateTo(`/login?redirect=${returnUrl}`);
+    }
   }
-}
+});
 
 // Current selected request
 const selectedRequest = ref<HttpRequest | null>(null);
@@ -124,7 +132,15 @@ const selectRequest = (request: HttpRequest) => {
 const canEdit = computed(() => workspace.value?.permission === 'edit');
 
 const handleRequestSave = async () => {
-  await refresh();
+  // Refresh workspace data
+  try {
+    const response = await $fetch<SharedWorkspace>(`/api/shared-workspace/${token.value}`, {
+      credentials: 'include'
+    });
+    workspace.value = response;
+  } catch (err) {
+    console.error('Failed to refresh workspace:', err);
+  }
 };
 
 const goBack = () => {
@@ -236,7 +252,10 @@ const goBack = () => {
                   <template v-for="folder in collection.folders" :key="folder.id">
                     <FolderTreeItem
                       :folder="folder"
-                      :expanded-folders="expandedFolders"
+                      :expanded-folder-ids="expandedFolders"
+                      :dragging-folder-id="null"
+                      :dragging-request-id="null"
+                      :drop-target="null"
                       :selected-request-id="selectedRequest?.id"
                       :permission="workspace?.permission || 'view'"
                       @toggle-folder="toggleFolder"
@@ -262,11 +281,8 @@ const goBack = () => {
       <main class="flex-1 flex flex-col overflow-hidden bg-bg-primary">
         <div v-if="selectedRequest" class="flex-1 overflow-auto">
           <RequestBuilder
-            :initial-request="selectedRequest"
-            :can-edit="canEdit"
-            :is-shared="true"
-            :share-token="token"
-            @saved="handleRequestSave"
+            :request="selectedRequest"
+            @save-request="handleRequestSave"
           />
         </div>
         

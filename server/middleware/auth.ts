@@ -3,7 +3,8 @@ import jwt from 'jsonwebtoken';
 export default defineEventHandler((event) => {
     const path = event.path;
 
-    if (path.startsWith('/api/admin')) {
+    // Protect admin and shared-workspace API routes
+    if (path.startsWith('/api/admin') || path.startsWith('/api/shared-workspace')) {
         const token = getCookie(event, 'auth_token');
         const config = useRuntimeConfig();
 

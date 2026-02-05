@@ -40,7 +40,17 @@ const fetchSsoProviders = async () => {
 };
 
 const loginWithSso = (providerType: string, providerId?: string) => {
-  const params = providerId ? `?providerId=${providerId}` : '';
+  const urlParams = new URLSearchParams(window.location.search);
+  const redirectUrl = urlParams.get('redirect');
+  
+  let params = '';
+  if (providerId) {
+    params += `?providerId=${providerId}`;
+  }
+  if (redirectUrl) {
+    params += params ? `&redirect=${encodeURIComponent(redirectUrl)}` : `?redirect=${encodeURIComponent(redirectUrl)}`;
+  }
+  
   window.location.href = `/api/auth/sso/${providerType}/login${params}`;
 };
 
@@ -53,7 +63,16 @@ const login = async () => {
       method: 'POST',
       body: form.value
     });
-    await navigateTo('/admin', { external: true });
+    
+    // Check for redirect URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const redirectUrl = urlParams.get('redirect');
+    
+    if (redirectUrl) {
+      await navigateTo(decodeURIComponent(redirectUrl), { external: true });
+    } else {
+      await navigateTo('/admin', { external: true });
+    }
   } catch (e: any) {
     console.error('Login error:', e);
     errorMessage.value = e.response?._data?.statusMessage || e.message || 'Login failed';
@@ -83,7 +102,32 @@ const hasAnySso = computed(() => {
 
 onMounted(() => {
   fetchSsoProviders();
+  
+  // Check if user is already logged in
+  checkAuthAndRedirect();
 });
+
+const checkAuthAndRedirect = async () => {
+  // Check for redirect URL in query params
+  const urlParams = new URLSearchParams(window.location.search);
+  const redirectUrl = urlParams.get('redirect');
+  
+  try {
+    const response = await $fetch('/api/auth/check');
+    if (response.status === 'logged_in') {
+      // User is already logged in, redirect to intended destination or admin
+      if (redirectUrl) {
+        console.log('[Login] User already logged in, redirecting to:', decodeURIComponent(redirectUrl));
+        await navigateTo(decodeURIComponent(redirectUrl), { external: true });
+      } else {
+        await navigateTo('/admin', { external: true });
+      }
+    }
+  } catch (e) {
+    // User is not logged in, stay on login page
+    console.log('[Login] User not logged in, staying on login page');
+  }
+};
 </script>
 
 <template>

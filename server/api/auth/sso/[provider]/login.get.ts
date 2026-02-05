@@ -118,13 +118,17 @@ export default defineEventHandler(async (event) => {
   authorizationUrl.searchParams.set('code_challenge', codeChallenge);
   authorizationUrl.searchParams.set('code_challenge_method', 'S256');
 
+  // Get redirect URL from query params (if user was trying to access a shared workspace)
+  const redirectUrl = query.redirect as string | undefined;
+  
   // Store session data in cookie
   const sessionData = {
     state,
     codeVerifier,
     callbackUrl,
     providerId: provider.id,
-    providerType: provider.type
+    providerType: provider.type,
+    redirectUrl: redirectUrl || '/admin'
   };
 
   setCookie(event, 'sso_oauth_state', JSON.stringify(sessionData), {
