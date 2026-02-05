@@ -1,6 +1,6 @@
 import { db } from '../../db';
-import { workspaces, projects, collections, folders, savedRequests } from '../../db/schema';
-import { eq, asc } from 'drizzle-orm';
+import { workspaces, projects, collections, folders, savedRequests, environments, environmentVariables } from '../../db/schema';
+import { eq, asc, and } from 'drizzle-orm';
 import { validateShareToken, recordSharedAccess } from '../../utils/permissions';
 
 interface RequestItem {
@@ -42,6 +42,22 @@ interface CollectionWithFolders {
   requestCount: number;
 }
 
+interface EnvironmentVariable {
+  id: string;
+  key: string;
+  value: string;
+  isSecret: boolean;
+}
+
+interface EnvironmentWithVariables {
+  id: string;
+  projectId: string;
+  name: string;
+  isActive: boolean;
+  createdAt: Date;
+  variables: EnvironmentVariable[];
+}
+
 interface ProjectWithCollections {
   id: string;
   workspaceId: string;
@@ -51,6 +67,8 @@ interface ProjectWithCollections {
   updatedAt: Date;
   collections: CollectionWithFolders[];
   collectionCount: number;
+  environments: EnvironmentWithVariables[];
+  activeEnvironmentId: string | null;
 }
 
 interface SharedWorkspaceResponse {
@@ -180,6 +198,16 @@ export default defineEventHandler(async (event) => {
       .from(savedRequests)
       .orderBy(asc(savedRequests.order));
 
+    // Fetch all environments for workspace projects
+    const allEnvironments = await db
+      .select()
+      .from(environments);
+
+    // Fetch all environment variables
+    const allEnvVariables = await db
+      .select()
+      .from(environmentVariables);
+
     // Parse JSON fields from text columns
     const allRequests: RequestItem[] = allRequestsRaw.map(req => ({
       ...req,
@@ -193,6 +221,25 @@ export default defineEventHandler(async (event) => {
 
     const projectsWithCollections: ProjectWithCollections[] = workspaceProjects.map(project => {
       const projectCollections = allCollections.filter(c => c.projectId === project.id);
+      
+      // Get environments for this project
+      const projectEnvironments = allEnvironments.filter(e => e.projectId === project.id);
+      const environmentsWithVariables: EnvironmentWithVariables[] = projectEnvironments.map(env => {
+        const envVars = allEnvVariables.filter(v => v.environmentId === env.id);
+        return {
+          ...env,
+          variables: envVars.map(v => ({
+            id: v.id,
+            key: v.key,
+            // Mask secret values for security
+            value: v.isSecret ? '••••••••' : v.value,
+            isSecret: v.isSecret
+          }))
+        };
+      });
+      
+      // Find active environment
+      const activeEnv = projectEnvironments.find(e => e.isActive);
 
       return {
         ...project,
@@ -213,7 +260,9 @@ export default defineEventHandler(async (event) => {
             requestCount
           };
         }),
-        collectionCount: projectCollections.length
+        collectionCount: projectCollections.length,
+        environments: environmentsWithVariables,
+        activeEnvironmentId: activeEnv?.id || null
       };
     });
 

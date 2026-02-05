@@ -45,6 +45,21 @@ interface Collection {
   requestCount: number;
 }
 
+interface EnvironmentVariable {
+  id: string;
+  key: string;
+  value: string;
+  isSecret: boolean;
+}
+
+interface Environment {
+  id: string;
+  projectId: string;
+  name: string;
+  isActive: boolean;
+  variables: EnvironmentVariable[];
+}
+
 interface Project {
   id: string;
   workspaceId: string;
@@ -52,6 +67,8 @@ interface Project {
   baseUrl: string | null;
   collections: Collection[];
   collectionCount: number;
+  environments: Environment[];
+  activeEnvironmentId: string | null;
 }
 
 interface SharedWorkspace {
@@ -66,12 +83,26 @@ interface SharedWorkspace {
 const workspace = ref<SharedWorkspace | null>(null);
 const error = ref<any>(null);
 
+// Environment state - track selected environment per project
+const selectedEnvironments = ref<Record<string, string>>({});
+
 onMounted(async () => {
   try {
     const response = await $fetch<SharedWorkspace>(`/api/shared-workspace/${token.value}`, {
       credentials: 'include'
     });
     workspace.value = response;
+    
+    // Initialize selected environments with active ones
+    if (response.projects) {
+      for (const project of response.projects) {
+        if (project.activeEnvironmentId) {
+          selectedEnvironments.value[project.id] = project.activeEnvironmentId;
+        } else if (project.environments?.length) {
+          selectedEnvironments.value[project.id] = project.environments[0].id;
+        }
+      }
+    }
   } catch (err: any) {
     error.value = err;
     if (err?.statusCode === 401) {
@@ -84,6 +115,7 @@ onMounted(async () => {
 // Current selected request
 const selectedRequest = ref<HttpRequest | null>(null);
 const selectedFolderId = ref<string | null>(null);
+const selectedProjectId = ref<string | null>(null);
 
 // Expanded states
 const expandedCollections = ref<Set<string>>(new Set());
@@ -124,22 +156,91 @@ const toggleFolder = (folderId: string) => {
   }
 };
 
+// Find which project a request belongs to
+const findProjectForRequest = (request: HttpRequest): Project | null => {
+  if (!workspace.value?.projects) return null;
+  
+  for (const project of workspace.value.projects) {
+    for (const collection of project.collections) {
+      const findInFolder = (folders: FolderWithRequests[]): boolean => {
+        for (const folder of folders) {
+          if (folder.requests.some(r => r.id === request.id)) {
+            return true;
+          }
+          if (findInFolder(folder.children)) {
+            return true;
+          }
+        }
+        return false;
+      };
+      
+      if (findInFolder(collection.folders)) {
+        return project;
+      }
+    }
+  }
+  return null;
+};
+
 const selectRequest = (request: HttpRequest) => {
   selectedRequest.value = request;
   selectedFolderId.value = request.folderId;
+  
+  // Find and set the project for this request
+  const project = findProjectForRequest(request);
+  if (project) {
+    selectedProjectId.value = project.id;
+  }
 };
 
 const canEdit = computed(() => workspace.value?.permission === 'edit');
 
-const handleRequestSave = async () => {
-  // Refresh workspace data
+// Read-only mode for view permission
+const isReadOnly = computed(() => workspace.value?.permission === 'view');
+
+// Get the current environment ID for the selected project
+const currentEnvironmentId = computed(() => {
+  if (!selectedProjectId.value) return undefined;
+  return selectedEnvironments.value[selectedProjectId.value];
+});
+
+// Get environments for the selected project
+const currentProjectEnvironments = computed(() => {
+  if (!selectedProjectId.value || !workspace.value?.projects) return [];
+  const project = workspace.value.projects.find(p => p.id === selectedProjectId.value);
+  return project?.environments || [];
+});
+
+// Handle environment change
+const onEnvironmentChange = (projectId: string, environmentId: string) => {
+  selectedEnvironments.value[projectId] = environmentId;
+};
+
+const handleRequestSave = async (request: HttpRequest) => {
+  if (!canEdit.value || !selectedRequest.value) return;
+  
   try {
+    // Save via shared workspace API
+    await $fetch(`/api/shared-workspace/${token.value}/requests/${request.id}`, {
+      method: 'PUT',
+      credentials: 'include',
+      body: {
+        name: request.name,
+        method: request.method,
+        url: request.url,
+        headers: request.headers,
+        body: request.body,
+        auth: request.auth
+      }
+    });
+    
+    // Refresh workspace data
     const response = await $fetch<SharedWorkspace>(`/api/shared-workspace/${token.value}`, {
       credentials: 'include'
     });
     workspace.value = response;
   } catch (err) {
-    console.error('Failed to refresh workspace:', err);
+    console.error('Failed to save request:', err);
   }
 };
 
@@ -279,9 +380,28 @@ const goBack = () => {
 
       <!-- Main Area -->
       <main class="flex-1 flex flex-col overflow-hidden bg-bg-primary">
+        <!-- Environment Selector Bar -->
+        <div v-if="selectedRequest && currentProjectEnvironments.length > 0" class="flex items-center gap-3 px-4 py-2 border-b border-border-default bg-bg-secondary">
+          <span class="text-xs text-text-secondary">Environment:</span>
+          <select
+            :value="currentEnvironmentId"
+            @change="(e) => selectedProjectId && onEnvironmentChange(selectedProjectId, (e.target as HTMLSelectElement).value)"
+            class="px-2 py-1 text-xs bg-bg-input border border-border-default rounded text-text-primary focus:outline-none focus:border-accent-blue"
+          >
+            <option v-for="env in currentProjectEnvironments" :key="env.id" :value="env.id">
+              {{ env.name }}
+            </option>
+          </select>
+          <span class="text-[10px] text-text-muted">
+            ({{ currentProjectEnvironments.find(e => e.id === currentEnvironmentId)?.variables?.length || 0 }} variables)
+          </span>
+        </div>
+        
         <div v-if="selectedRequest" class="flex-1 overflow-auto">
           <RequestBuilder
             :request="selectedRequest"
+            :environment-id="currentEnvironmentId"
+            :read-only="isReadOnly"
             @save-request="handleRequestSave"
           />
         </div>

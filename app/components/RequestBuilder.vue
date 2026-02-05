@@ -84,9 +84,12 @@ interface Props {
   environmentId?: string;
   collectionId?: string;
   projectId?: string;
+  readOnly?: boolean;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  readOnly: false
+});
 
 const emit = defineEmits<{
   saveRequest: [request: HttpRequest];
@@ -236,6 +239,37 @@ const lastLoadedRequestId = ref<string | null>(null);
 
 // Track the serialized version of the last loaded request to detect changes
 const lastLoadedRequestSnapshot = ref<string>('');
+
+// Track the last saved state to detect unsaved changes after save
+const lastSavedState = ref<{
+  method: string;
+  url: string;
+  headers: Record<string, string> | null;
+  body: any;
+  auth: any;
+} | null>(null);
+
+// Function to capture current state as saved
+const captureCurrentStateAsSaved = () => {
+  lastSavedState.value = {
+    method: form.value.method,
+    url: form.value.url,
+    headers: buildHeadersRecord(),
+    body: buildBody(),
+    auth: {
+      type: authType.value,
+      credentials: authType.value === 'api-key' ? { 
+        key: apiKey.value.key, 
+        value: apiKey.value.value,
+        addTo: apiKey.value.addTo
+      } : authType.value === 'bearer' ? { token: bearerToken.value } 
+        : authType.value === 'basic' ? {
+          username: basicAuth.value.username,
+          password: basicAuth.value.password
+        } : undefined
+    }
+  };
+};
 
 // Function to load request data into form state
 const loadRequestData = (request: HttpRequest) => {
@@ -1103,13 +1137,9 @@ const responseCookies = computed(() => parseResponseCookies());
 
 const hasUnsavedChanges = computed(() => {
   const currentUrl = form.value.url;
-  const originalUrl = props.request.url;
   const currentMethod = form.value.method;
-  const originalMethod = props.request.method;
   const currentHeaders = buildHeadersRecord();
-  const originalHeaders = props.request.headers;
   const currentBody = buildBody();
-  const originalBody = props.request.body;
   const currentAuth = {
     type: authType.value,
     credentials: authType.value === 'api-key' ? { 
@@ -1122,15 +1152,23 @@ const hasUnsavedChanges = computed(() => {
         password: basicAuth.value.password
       } : undefined
   } || null;
-  const originalAuth = props.request.auth;
 
-  const urlChanged = currentUrl !== originalUrl;
-  const methodChanged = currentMethod !== originalMethod;
-  const headersChanged = JSON.stringify(currentHeaders) !== JSON.stringify(originalHeaders || {});
+  // Use lastSavedState if available (after a save), otherwise use props.request
+  const compareState = lastSavedState.value || {
+    method: props.request.method,
+    url: props.request.url,
+    headers: props.request.headers,
+    body: props.request.body,
+    auth: props.request.auth
+  };
+
+  const urlChanged = currentUrl !== compareState.url;
+  const methodChanged = currentMethod !== compareState.method;
+  const headersChanged = JSON.stringify(currentHeaders) !== JSON.stringify(compareState.headers || {});
   const normalizedCurrentBody = currentBody === undefined ? null : currentBody;
-  const normalizedOriginalBody = originalBody === undefined ? null : originalBody;
+  const normalizedOriginalBody = compareState.body === undefined ? null : compareState.body;
   const bodyChanged = JSON.stringify(normalizedCurrentBody) !== JSON.stringify(normalizedOriginalBody);
-  const authChanged = JSON.stringify(currentAuth) !== JSON.stringify(originalAuth || {});
+  const authChanged = JSON.stringify(currentAuth) !== JSON.stringify(compareState.auth || {});
 
   return urlChanged || methodChanged || headersChanged || bodyChanged || authChanged;
 });
@@ -1398,6 +1436,9 @@ const openSaveDialog = () => {
     createdAt: props.request.createdAt,
     updatedAt: new Date()
   });
+  
+  // Capture current state as saved to immediately update UI feedback
+  captureCurrentStateAsSaved();
 };
 
 const openSaveAsDialog = () => {
@@ -1595,7 +1636,7 @@ onUnmounted(() => {
           <h2 class="text-sm font-semibold text-text-primary flex items-center gap-2">
             {{ request.name }}
             <span 
-              v-if="hasUnsavedChanges"
+              v-if="hasUnsavedChanges && !readOnly"
               class="w-2 h-2 rounded-full bg-accent-orange"
               title="Unsaved changes"
             ></span>
@@ -1607,21 +1648,32 @@ onUnmounted(() => {
             {{ form.method }}
           </span>
         </div>
-        <div class="flex items-center gap-2">
+        <div v-if="!readOnly" class="flex items-center gap-2">
           <button 
             @click="openSaveAsDialog"
-            class="py-1.5 px-3 bg-bg-input text-text-secondary rounded border border-border-default cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-text-primary text-xs font-medium"
+            class="py-1.5 px-3 bg-bg-input text-text-secondary rounded border border-border-default cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-text-primary text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             title="Save as new request (Cmd+Shift+S)"
           >
             Save As
           </button>
           <button 
             @click="openSaveDialog"
-            class="py-1.5 px-3 bg-accent-blue text-white rounded border-none cursor-pointer transition-all duration-fast hover:bg-[#1976D2] text-xs font-medium"
-            title="Save request (Cmd+S)"
+            :disabled="!hasUnsavedChanges"
+            :class="[
+              'py-1.5 px-3 rounded border-none text-xs font-medium transition-all duration-fast',
+              hasUnsavedChanges 
+                ? 'bg-accent-blue text-white cursor-pointer hover:bg-[#1976D2]' 
+                : 'bg-bg-tertiary text-text-muted cursor-not-allowed'
+            ]"
+            :title="hasUnsavedChanges ? 'Save request (Cmd+S)' : 'No changes to save'"
           >
             Save
           </button>
+        </div>
+        <div v-else class="flex items-center gap-2">
+          <span class="text-xs text-text-muted px-2 py-1 bg-bg-tertiary rounded">
+            View Only
+          </span>
         </div>
       </div>
     </div>
