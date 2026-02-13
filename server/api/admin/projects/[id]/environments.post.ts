@@ -1,6 +1,7 @@
 import { db } from '../../../../db';
 import { projects, environments } from '../../../../db/schema';
 import { eq } from 'drizzle-orm';
+import { getAccessibleWorkspaceIds } from '../../../../utils/permissions';
 
 interface CreateEnvironmentBody {
   name: string;
@@ -9,6 +10,14 @@ interface CreateEnvironmentBody {
 
 export default defineEventHandler(async (event) => {
   const projectId = getRouterParam(event, 'id');
+  const user = event.context.user;
+
+  if (!user?.id) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: 'Unauthorized'
+    });
+  }
 
   if (!projectId) {
     throw createError({
@@ -55,13 +64,12 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const userId = event.context?.user?.id;
-  const userWorkspaceId = event.context?.user?.workspaceId;
-  
-  if (!userId || (userWorkspaceId && project.workspaceId !== userWorkspaceId)) {
+  // Check if user has access to this workspace
+  const accessibleIds = await getAccessibleWorkspaceIds(user.id);
+  if (!accessibleIds.includes(project.workspaceId)) {
     throw createError({
       statusCode: 403,
-      statusMessage: 'Forbidden'
+      statusMessage: 'You do not have access to this workspace'
     });
   }
 

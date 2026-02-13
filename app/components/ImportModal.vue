@@ -79,6 +79,37 @@ const currentProject = computed(() => {
   return currentWorkspace.value?.projects.find(p => p.id === selectedProjectId.value) || null;
 });
 
+watch(() => props.workspaces, (newWorkspaces) => {
+  if (newWorkspaces && newWorkspaces.length > 0) {
+    const validWorkspaces = newWorkspaces.filter(w => w && w.projects && w.projects.length > 0);
+    if (validWorkspaces.length > 0) {
+      if (!selectedWorkspaceId.value) {
+        selectedWorkspaceId.value = validWorkspaces[0].id;
+      }
+      const ws = newWorkspaces.find(w => w.id === selectedWorkspaceId.value);
+      if (ws && ws.projects && ws.projects.length > 0) {
+        if (!selectedProjectId.value || !ws.projects.find(p => p.id === selectedProjectId.value)) {
+          selectedProjectId.value = ws.projects[0].id;
+        }
+      }
+    }
+  }
+}, { immediate: true });
+
+watch(selectedWorkspaceId, (newWorkspaceId) => {
+  if (newWorkspaceId && props.workspaces) {
+    const ws = props.workspaces.find(w => w.id === newWorkspaceId);
+    if (ws && ws.projects && ws.projects.length > 0) {
+      const currentProjectStillExists = ws.projects.some(p => p.id === selectedProjectId.value);
+      if (!currentProjectStillExists) {
+        selectedProjectId.value = ws.projects[0].id;
+      }
+    } else {
+      selectedProjectId.value = null;
+    }
+  }
+});
+
 onMounted(() => {
   if (props.workspaces.length > 0) {
     selectedWorkspaceId.value = props.workspaces[0].id;

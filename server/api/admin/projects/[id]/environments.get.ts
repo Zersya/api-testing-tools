@@ -1,6 +1,7 @@
 import { db } from '../../../../db';
 import { projects, environments, environmentVariables } from '../../../../db/schema';
 import { eq, desc, inArray } from 'drizzle-orm';
+import { getAccessibleWorkspaceIds } from '../../../../utils/permissions';
 
 interface EnvironmentWithVariables {
   id: string;
@@ -19,6 +20,14 @@ interface EnvironmentWithVariables {
 
 export default defineEventHandler(async (event) => {
   const projectId = getRouterParam(event, 'id');
+  const user = event.context.user;
+
+  if (!user?.id) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: 'Unauthorized'
+    });
+  }
 
   if (!projectId) {
     throw createError({
@@ -38,6 +47,15 @@ export default defineEventHandler(async (event) => {
       throw createError({
         statusCode: 404,
         statusMessage: 'Project not found'
+      });
+    }
+
+    // Check if user has access to this workspace
+    const accessibleIds = await getAccessibleWorkspaceIds(user.id);
+    if (!accessibleIds.includes(project.workspaceId)) {
+      throw createError({
+        statusCode: 403,
+        statusMessage: 'You do not have access to this workspace'
       });
     }
 

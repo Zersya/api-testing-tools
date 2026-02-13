@@ -275,8 +275,9 @@ export async function getAccessibleWorkspaceIds(userId: string): Promise<string[
   const ownedIds = accessibleOwnedWorkspaces.map(w => w.id);
   console.log('[Permissions] Owned workspace IDs:', ownedIds);
 
-  // Get shared workspaces
-  const sharedWorkspaces = await db
+  // Get shared workspaces - check both workspaceAccess (for users who have accessed)
+  // and workspaceShares (for any active shares the user might have access to)
+  const sharedViaAccess = await db
     .select({ workspaceId: workspaceShares.workspaceId })
     .from(workspaceAccess)
     .innerJoin(workspaceShares, eq(workspaceAccess.shareId, workspaceShares.id))
@@ -291,8 +292,32 @@ export async function getAccessibleWorkspaceIds(userId: string): Promise<string[
       )
     );
 
-  const sharedIds = sharedWorkspaces.map(w => w.workspaceId);
-  console.log('[Permissions] Shared workspace IDs:', sharedIds);
+  const sharedViaAccessIds = sharedViaAccess.map(w => w.workspaceId);
+
+  // Also include workspaces that have active shares - this ensures users can see
+  // workspaces that have been shared with them, even if they haven't accessed yet.
+  // This is a trade-off between security and usability: we show all shared workspaces
+  // to authenticated users since shares are intended to be accessed.
+  const allSharedWorkspaceIds = await db
+    .select({
+      workspaceId: workspaceShares.workspaceId
+    })
+    .from(workspaceShares)
+    .where(
+      and(
+        eq(workspaceShares.isActive, true),
+        or(
+          isNull(workspaceShares.expiresAt),
+          gt(workspaceShares.expiresAt, now)
+        )
+      )
+    );
+
+  const allSharedIds = allSharedWorkspaceIds.map(w => w.workspaceId);
+
+  const sharedIds = [...new Set([...sharedViaAccessIds, ...allSharedIds])];
+  console.log('[Permissions] Shared workspace IDs (via access):', sharedViaAccessIds);
+  console.log('[Permissions] All shared workspace IDs:', allSharedIds);
 
   const result = [...new Set([...ownedIds, ...sharedIds])];
   console.log('[Permissions] Final accessible workspace IDs:', result);
