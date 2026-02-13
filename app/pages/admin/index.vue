@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { watch } from 'vue';
 import RequestBuilder from '~/components/RequestBuilder.vue';
 import SaveRequestDialog from '~/components/SaveRequestDialog.vue';
 import RequestTabs, { type OpenTab } from '~/components/RequestTabs.vue';
@@ -51,13 +52,66 @@ const { data: collections, refresh: refreshCollections } = await useFetch<Collec
 const { data: workspaces, refresh: refreshWorkspaces } = await useFetch<any[]>('/api/admin/tree');
 const { data: definitions, refresh: refreshDefinitions } = await useFetch<any[]>('/api/definitions');
 
-const currentWorkspaceId = computed(() => {
-  return workspaces.value?.[0]?.id;
+const selectedWorkspaceId = ref<string | null>(null);
+const selectedProjectId = ref<string | null>(null);
+
+// Initialize from localStorage or find first workspace with projects
+const initSelectedWorkspace = () => {
+  if (workspaces.value && workspaces.value.length > 0) {
+    const savedWorkspaceId = typeof window !== 'undefined' ? localStorage.getItem('selectedWorkspaceId') : null;
+    
+    // Try saved workspace first
+    if (savedWorkspaceId) {
+      const savedWs = workspaces.value.find((w: any) => w.id === savedWorkspaceId);
+      if (savedWs && savedWs.projects?.length > 0) {
+        selectedWorkspaceId.value = savedWs.id;
+        selectedProjectId.value = savedWs.projects[0].id;
+        return;
+      }
+    }
+    
+    // Find first workspace with projects
+    const firstWsWithProjects = workspaces.value.find((w: any) => w.projects?.length > 0);
+    if (firstWsWithProjects) {
+      selectedWorkspaceId.value = firstWsWithProjects.id;
+      selectedProjectId.value = firstWsWithProjects.projects[0].id;
+    }
+  }
+};
+
+// Watch for workspaces loaded
+watch(workspaces, () => {
+  if (workspaces.value) {
+    initSelectedWorkspace();
+  }
+}, { immediate: true });
+
+// Watch for workspace changes and save to localStorage
+watch(selectedWorkspaceId, (newId) => {
+  if (newId && typeof window !== 'undefined') {
+    localStorage.setItem('selectedWorkspaceId', newId);
+  }
 });
 
-const currentProjectId = computed(() => {
-  return workspaces.value?.[0]?.projects?.[0]?.id;
+// Handle workspace selection from sidebar
+const handleWorkspaceSelect = (workspaceId: string) => {
+  const ws = workspaces.value?.find((w: any) => w.id === workspaceId);
+  if (ws && ws.projects?.length > 0) {
+    selectedWorkspaceId.value = workspaceId;
+    selectedProjectId.value = ws.projects[0].id;
+  } else {
+    selectedWorkspaceId.value = workspaceId;
+    selectedProjectId.value = null;
+  }
+};
+
+const currentWorkspace = computed(() => {
+  return workspaces.value?.find((w: any) => w.id === selectedWorkspaceId.value);
 });
+
+const currentWorkspaceId = computed(() => selectedWorkspaceId.value);
+
+const currentProjectId = computed(() => selectedProjectId.value);
 
 interface EnvironmentVariable {
   id: string;
@@ -79,7 +133,8 @@ interface Environment {
 const { data: environments, refresh: refreshEnvironments } = await useFetch<Environment[]>(
   computed(() => `/api/admin/projects/${currentProjectId.value}/environments`),
   {
-    immediate: true
+    immediate: true,
+    watch: [currentProjectId]
   }
 );
 
@@ -205,7 +260,6 @@ const projectWorkspaceId = ref<string | null>(null);
 const showWorkspaceModal = ref(false);
 const showRenameWorkspaceModal = ref(false);
 const workspaceToRename = ref<{ id: string; name: string } | null>(null);
-const selectedWorkspaceId = ref<string | null>(null);
 
 // Share workspace modal state
 const showShareModal = ref(false);
@@ -1539,7 +1593,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
         @reimport-definition="handleReimportDefinition"
         @reorder-folders="handleReorderFolders"
         @reorder-requests="handleReorderRequests"
-        @select-workspace="selectedWorkspaceId = $event"
+        @select-workspace="handleWorkspaceSelect($event)"
         @import-complete="definitionsRefreshTrigger++"
       />
 
