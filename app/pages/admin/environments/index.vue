@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 interface Environment {
   id: string;
   projectId: string;
@@ -24,18 +24,40 @@ interface EnvironmentVariable {
 }
 
 const workspaces = ref<any[]>([]);
+const selectedWorkspaceId = ref<string | null>(null);
+const selectedProjectId = ref<string | null>(null);
+
 const refreshWorkspaces = async () => {
   try {
     const data = await $fetch<any[]>('/api/admin/tree');
     workspaces.value = data;
+    
+    // Auto-select first workspace with projects if nothing selected
+    if (!selectedWorkspaceId.value && data.length > 0) {
+      const firstWorkspaceWithProjects = data.find((w: any) => w.projects?.length > 0);
+      if (firstWorkspaceWithProjects) {
+        selectedWorkspaceId.value = firstWorkspaceWithProjects.id;
+        selectedProjectId.value = firstWorkspaceWithProjects.projects[0].id;
+      }
+    }
   } catch (e) {
     console.error('Failed to fetch workspaces:', e);
   }
 };
 
-const currentProjectId = computed(() => {
-  return workspaces.value?.[0]?.projects?.[0]?.id || null;
+const currentWorkspace = computed(() => {
+  return workspaces.value.find((w: any) => w.id === selectedWorkspaceId.value);
 });
+
+const currentProjectId = computed(() => {
+  return selectedProjectId.value;
+});
+
+const selectProject = (workspaceId: string, projectId: string) => {
+  selectedWorkspaceId.value = workspaceId;
+  selectedProjectId.value = projectId;
+  refreshEnvironments();
+};
 
 const hasProject = computed(() => !!currentProjectId.value);
 
@@ -72,6 +94,13 @@ const refreshEnvironments = async () => {
 onMounted(async () => {
   await refreshWorkspaces();
   await refreshEnvironments();
+});
+
+// Watch for project changes and refresh environments
+watch(currentProjectId, async (newProjectId) => {
+  if (newProjectId) {
+    await refreshEnvironments();
+  }
 });
 
 const showCreateModal = ref(false);
@@ -354,13 +383,36 @@ const deleteVariable = async (variableId: string) => {
             <h1 class="text-2xl font-semibold text-text-primary mb-1">Environments</h1>
             <p class="text-sm text-text-secondary">Manage environments and their variables for your project</p>
           </div>
-          <button v-if="hasProject" class="btn btn-primary" @click="openCreateModal">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-            New Environment
-          </button>
+          <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2">
+              <select 
+                v-model="selectedWorkspaceId" 
+                @change="selectedProjectId = currentWorkspace?.projects?.[0]?.id || null; refreshEnvironments()"
+                class="py-2 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue"
+              >
+                <option v-for="workspace in workspaces" :key="workspace.id" :value="workspace.id">
+                  {{ workspace.name }}
+                </option>
+              </select>
+              <select 
+                v-if="currentWorkspace?.projects?.length > 0"
+                v-model="selectedProjectId" 
+                @change="refreshEnvironments()"
+                class="py-2 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue"
+              >
+                <option v-for="project in currentWorkspace?.projects" :key="project.id" :value="project.id">
+                  {{ project.name }}
+                </option>
+              </select>
+            </div>
+            <button v-if="hasProject" class="btn btn-primary" @click="openCreateModal">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              New Environment
+            </button>
+          </div>
         </div>
 
         <div v-if="!hasProject" class="flex flex-col items-center justify-center flex-1 text-center">
@@ -369,9 +421,9 @@ const deleteVariable = async (variableId: string) => {
               <path d="M3 21h18M5 21V7l8-4 8 4v14M13 10v11M9 19h6M9 14h6"></path>
             </svg>
           </div>
-          <h2 class="text-lg font-semibold text-text-primary mb-2">No project found</h2>
-          <p class="text-text-secondary mb-6 max-w-sm">Please create a project first to manage environments.</p>
-          <button class="btn btn-primary" @click="navigateTo('/admin')">
+          <h2 class="text-lg font-semibold text-text-primary mb-2">{{ workspaces.length === 0 ? 'No workspaces found' : (currentWorkspace?.projects?.length === 0 ? 'No projects in this workspace' : 'No project selected') }}</h2>
+          <p class="text-text-secondary mb-6 max-w-sm">{{ workspaces.length === 0 ? 'Please create a workspace first.' : (currentWorkspace?.projects?.length === 0 ? 'Please create a project in this workspace first.' : 'Please select a workspace and project from the dropdowns above.') }}</p>
+          <button v-if="workspaces.length === 0 || currentWorkspace?.projects?.length === 0" class="btn btn-primary" @click="navigateTo('/admin')">
             Go to Dashboard
           </button>
         </div>
