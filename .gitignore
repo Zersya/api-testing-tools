@@ -23,8 +23,8 @@ logs
 .env.*
 !.env.example
 .vercel
-collections
-mocks
+/collections
+/mocks
 
 *.db
 *.db-journal
