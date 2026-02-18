@@ -51,6 +51,14 @@ export default defineEventHandler(async (event) => {
     });
   }
 
+  // Prevent manual creation of reserved CLOUD MOCK environment
+  if (trimmedName.toUpperCase() === 'CLOUD MOCK') {
+    throw createError({
+      statusCode: 400,
+      statusMessage: '"CLOUD MOCK" is a reserved environment name and is automatically created for each project'
+    });
+  }
+
   const project = (await db
     .select()
     .from(projects)

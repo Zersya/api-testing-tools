@@ -15,6 +15,13 @@ interface RequestItem {
     type: string;
     credentials?: Record<string, string>;
   } | null;
+  mockConfig: {
+    isEnabled: boolean;
+    statusCode: number;
+    delay: number;
+    responseBody: Record<string, unknown> | string | null;
+    responseHeaders: Record<string, string>;
+  } | null;
   order: number;
   createdAt: Date;
   updatedAt: Date;
@@ -54,6 +61,7 @@ interface EnvironmentWithVariables {
   projectId: string;
   name: string;
   isActive: boolean;
+  isMockEnvironment: boolean;
   createdAt: Date;
   variables: EnvironmentVariable[];
 }
@@ -213,7 +221,8 @@ export default defineEventHandler(async (event) => {
       ...req,
       headers: parseJsonField<Record<string, string>>(req.headers),
       body: parseJsonField<Record<string, unknown> | string>(req.body),
-      auth: parseJsonField<RequestItem['auth']>(req.auth)
+      auth: parseJsonField<RequestItem['auth']>(req.auth),
+      mockConfig: parseJsonField<RequestItem['mockConfig']>(req.mockConfig)
     }));
 
     // Build the workspace tree

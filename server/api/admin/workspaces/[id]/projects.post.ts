@@ -1,5 +1,5 @@
 import { db } from '../../../../db';
-import { workspaces, projects } from '../../../../db/schema';
+import { workspaces, projects, environments } from '../../../../db/schema';
 import { eq } from 'drizzle-orm';
 
 interface CreateProjectBody {
@@ -96,6 +96,19 @@ export default defineEventHandler(async (event) => {
         baseUrl
       })
       .returning())[0];
+
+    // Automatically create CLOUD MOCK environment for the project
+    try {
+      await db.insert(environments).values({
+        projectId: newProject.id,
+        name: 'CLOUD MOCK',
+        isActive: false,
+        isMockEnvironment: true
+      });
+    } catch (mockEnvError) {
+      console.error('Failed to create CLOUD MOCK environment:', mockEnvError);
+      // Don't fail the project creation if mock env creation fails
+    }
 
     return newProject;
   } catch (error: any) {

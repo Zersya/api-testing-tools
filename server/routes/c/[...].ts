@@ -1,15 +1,15 @@
+/**
+ * Mock Server Route
+ * Pattern: /c/{collection-name}/{path}
+ * 
+ * Serves mock responses from savedRequests.mockConfig
+ * Used when CLOUD MOCK environment is active
+ */
 
-interface Mock {
-    id: string;
-    collection: string;
-    path: string;
-    method: string;
-    status: number;
-    response: any;
-    delay: number;
-    secure?: boolean;
-    createdAt: string;
-}
+import { db } from '../../db';
+import { savedRequests, folders, collections } from '../../db/schema';
+import type { MockConfig } from '../../db/schema/savedRequest';
+import { eq, and } from 'drizzle-orm';
 
 interface Collection {
     id: string;
@@ -19,9 +19,6 @@ interface Collection {
 export default defineEventHandler(async (event) => {
     const originalPath = event.path;
     const method = event.method;
-
-    const mocksStorage = useStorage('mocks');
-    const collectionsStorage = useStorage('collections');
 
     // Determine if this is a collection-specific request
     // Pattern: /c/{collection-name}/{actual-path}
@@ -35,13 +32,14 @@ export default defineEventHandler(async (event) => {
         targetPath = collectionPathMatch[2] || '/';
 
         // Find collection by name
-        const collectionKeys = await collectionsStorage.getKeys();
-        for (const key of collectionKeys) {
-            const collection = await collectionsStorage.getItem(key) as Collection;
-            if (collection && collection.name === collectionName) {
-                targetCollectionId = collection.id;
-                break;
-            }
+        const collectionResult = await db
+            .select()
+            .from(collections)
+            .where(eq(collections.name, collectionName))
+            .limit(1);
+
+        if (collectionResult.length > 0) {
+            targetCollectionId = collectionResult[0].id;
         }
 
         // If collection name not found, return 404
@@ -59,57 +57,91 @@ export default defineEventHandler(async (event) => {
         });
     }
 
-    const mockKeys = await mocksStorage.getKeys();
+    try {
+        // Find all requests in the target collection
+        const requestsWithFolders = await db
+            .select({
+                request: savedRequests,
+                folder: folders
+            })
+            .from(savedRequests)
+            .innerJoin(folders, eq(savedRequests.folderId, folders.id))
+            .where(eq(folders.collectionId, targetCollectionId));
 
-    // We iterate through all mocks to find a match
-    for (const key of mockKeys) {
-        const mock = await mocksStorage.getItem(key) as Mock;
+        // Find matching request by URL path and method
+        const matchingRequest = requestsWithFolders.find(({ request }) => {
+            // Match method
+            if (request.method !== method) return false;
 
-        if (!mock || mock.method !== method) continue;
+            // Match URL path (extract path from URL)
+            const requestUrl = request.url;
+            const requestPath = requestUrl.split('?')[0]; // Remove query params
+            
+            // Convert path pattern to regex for matching
+            // Support path params like :id
+            const regexPath = requestPath
+                .replace(/:[^\s/]+/g, '([^/]+)') // Replace :param with capture group
+                .replace(/\//g, '\\/'); // Escape slashes
 
-        const mockCollection = mock.collection || 'root';
+            const regex = new RegExp(`^${regexPath}$`);
+            return regex.test(targetPath);
+        });
 
-        // Check if mock belongs to the target collection
-        if (mockCollection !== targetCollectionId) continue;
-
-        // Convert mock path (e.g. /api/users/:id) to regex
-        // Escape special regex chars except :
-        const regexPath = mock.path
-            .replace(/:[^\s/]+/g, '([^/]+)') // Replace :param with capture group
-            .replace(/\//g, '\\/'); // Escape slashes
-
-        const regex = new RegExp(`^${regexPath}$`);
-
-        if (regex.test(targetPath)) {
-            if (mock.secure) {
-                const authHeader = getHeader(event, 'authorization');
-                if (!authHeader || !authHeader.startsWith('Bearer ')) {
-                    setResponseStatus(event, 401);
-                    return { error: 'Unauthorized: Bearer token missing' };
-                }
-
-                // Verify token if configured
-                const settings = await useStorage('settings').getItem('global') as any;
-                if (settings && settings.bearerToken) {
-                    const token = authHeader.split(' ')[1];
-                    if (token !== settings.bearerToken) {
-                        setResponseStatus(event, 403);
-                        return { error: 'Forbidden: Invalid token' };
-                    }
-                }
-            }
-
-            if (mock.delay > 0) {
-                await new Promise(resolve => setTimeout(resolve, mock.delay));
-            }
-
-            setResponseStatus(event, mock.status);
-            return mock.response;
+        if (!matchingRequest) {
+            throw createError({
+                statusCode: 404,
+                statusMessage: 'Mock not found'
+            });
         }
-    }
 
-    throw createError({
-        statusCode: 404,
-        statusMessage: 'Mock not found'
-    });
+        const { request } = matchingRequest;
+
+        // Parse mockConfig
+        let mockConfig: MockConfig = null;
+        if (request.mockConfig) {
+            try {
+                mockConfig = typeof request.mockConfig === 'string'
+                    ? JSON.parse(request.mockConfig)
+                    : request.mockConfig;
+            } catch (error) {
+                console.error('Failed to parse mockConfig:', error);
+            }
+        }
+
+        // Check if mock is enabled
+        if (!mockConfig || !mockConfig.isEnabled) {
+            throw createError({
+                statusCode: 404,
+                statusMessage: 'Mock not configured for this request'
+            });
+        }
+
+        // Apply delay if specified
+        if (mockConfig.delay > 0) {
+            await new Promise(resolve => setTimeout(resolve, mockConfig.delay));
+        }
+
+        // Set response headers
+        if (mockConfig.responseHeaders) {
+            Object.entries(mockConfig.responseHeaders).forEach(([key, value]) => {
+                setHeader(event, key, value);
+            });
+        }
+
+        // Set status and return response
+        setResponseStatus(event, mockConfig.statusCode || 200);
+        return mockConfig.responseBody;
+
+    } catch (error: any) {
+        // Re-throw if it's already an H3 error
+        if (error.statusCode) {
+            throw error;
+        }
+
+        console.error('Error serving mock:', error);
+        throw createError({
+            statusCode: 500,
+            statusMessage: 'Internal server error'
+        });
+    }
 });

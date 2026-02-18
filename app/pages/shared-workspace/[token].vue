@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import RequestBuilder from '~/components/RequestBuilder.vue';
+import CodeExamples from '~/components/CodeExamples.vue';
 import MethodBadge from '~/components/MethodBadge.vue';
 import FolderTreeItem from '~/components/FolderTreeItem.vue';
 
@@ -57,6 +58,7 @@ interface Environment {
   projectId: string;
   name: string;
   isActive: boolean;
+  isMockEnvironment: boolean;
   variables: EnvironmentVariable[];
 }
 
@@ -116,6 +118,9 @@ onMounted(async () => {
 const selectedRequest = ref<HttpRequest | null>(null);
 const selectedFolderId = ref<string | null>(null);
 const selectedProjectId = ref<string | null>(null);
+
+// RequestBuilder ref for accessing current request state
+const requestBuilderRef = ref<any>(null);
 
 // Expanded states
 const expandedCollections = ref<Set<string>>(new Set());
@@ -209,6 +214,55 @@ const currentProjectEnvironments = computed(() => {
   if (!selectedProjectId.value || !workspace.value?.projects) return [];
   const project = workspace.value.projects.find(p => p.id === selectedProjectId.value);
   return project?.environments || [];
+});
+
+// Get current environment variables as a key-value map
+const currentEnvironmentVariables = computed(() => {
+  if (!currentEnvironmentId.value || !workspace.value?.projects) return {};
+  const project = workspace.value.projects.find(p => p.id === selectedProjectId.value);
+  if (!project?.environments) return {};
+  const env = project.environments.find(e => e.id === currentEnvironmentId.value);
+  if (!env?.variables) return {};
+  const variables: Record<string, string> = {};
+  env.variables.forEach(v => {
+    if (!v.isSecret) {
+      variables[v.key] = v.value;
+    }
+  });
+  return variables;
+});
+
+// Check if current environment is CLOUD MOCK
+const isCurrentEnvironmentMock = computed(() => {
+  if (!currentEnvironmentId.value || !workspace.value?.projects) return false;
+  const project = workspace.value.projects.find(p => p.id === selectedProjectId.value);
+  if (!project?.environments) return false;
+  const env = project.environments.find(e => e.id === currentEnvironmentId.value);
+  return env?.isMockEnvironment || false;
+});
+
+// Find collection name for the selected request
+const currentCollectionName = computed(() => {
+  if (!selectedRequest.value || !workspace.value?.projects) return '';
+  
+  for (const project of workspace.value.projects) {
+    for (const collection of project.collections) {
+      const findInFolder = (folders: FolderWithRequests[]): string | null => {
+        for (const folder of folders) {
+          if (folder.requests.some(r => r.id === selectedRequest.value?.id)) {
+            return collection.name;
+          }
+          const found = findInFolder(folder.children);
+          if (found) return found;
+        }
+        return null;
+      };
+      
+      const found = findInFolder(collection.folders);
+      if (found) return found;
+    }
+  }
+  return '';
 });
 
 // Handle environment change
@@ -389,21 +443,46 @@ const goBack = () => {
             class="px-2 py-1 text-xs bg-bg-input border border-border-default rounded text-text-primary focus:outline-none focus:border-accent-blue"
           >
             <option v-for="env in currentProjectEnvironments" :key="env.id" :value="env.id">
-              {{ env.name }}
+              {{ env.isMockEnvironment ? '☁️ ' : '' }}{{ env.name }}
             </option>
           </select>
-          <span class="text-[10px] text-text-muted">
+          <span v-if="currentProjectEnvironments.find(e => e.id === currentEnvironmentId)?.isMockEnvironment" class="text-[10px] text-purple-400 font-medium">
+            Cloud Mock
+          </span>
+          <span v-else class="text-[10px] text-text-muted">
             ({{ currentProjectEnvironments.find(e => e.id === currentEnvironmentId)?.variables?.length || 0 }} variables)
           </span>
         </div>
         
-        <div v-if="selectedRequest" class="flex-1 overflow-auto">
-          <RequestBuilder
-            :request="selectedRequest"
-            :environment-id="currentEnvironmentId"
-            :read-only="isReadOnly"
-            @save-request="handleRequestSave"
-          />
+        <div v-if="selectedRequest" class="flex-1 flex overflow-hidden">
+          <div class="flex-1 overflow-auto">
+            <RequestBuilder
+              ref="requestBuilderRef"
+              :request="selectedRequest"
+              :environment-id="currentEnvironmentId"
+              :read-only="isReadOnly"
+              @save-request="handleRequestSave"
+            />
+          </div>
+          
+          <!-- Code Examples Sidebar -->
+          <div class="w-[380px] border-l border-border-default bg-bg-sidebar flex flex-col flex-shrink-0">
+            <CodeExamples
+              :method="requestBuilderRef?.form?.method || selectedRequest.method"
+              :url="requestBuilderRef?.form?.url || selectedRequest.url"
+              :headers="requestBuilderRef?.headers || []"
+              :query-params="requestBuilderRef?.queryParams || []"
+              :body="requestBuilderRef?.bodyFormat === 'json' ? requestBuilderRef?.jsonBody : requestBuilderRef?.bodyFormat === 'raw' ? requestBuilderRef?.rawBody : null"
+              :body-format="requestBuilderRef?.bodyFormat || 'none'"
+              :auth-type="requestBuilderRef?.authType || 'none'"
+              :bearer-token="requestBuilderRef?.bearerToken"
+              :basic-auth="requestBuilderRef?.basicAuth"
+              :api-key="requestBuilderRef?.apiKey"
+              :variables="currentEnvironmentVariables"
+              :is-mock-environment="isCurrentEnvironmentMock"
+              :collection-name="currentCollectionName"
+            />
+          </div>
         </div>
         
         <div v-else class="flex-1 flex flex-col items-center justify-center text-center p-8">

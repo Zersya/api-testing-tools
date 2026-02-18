@@ -1,0 +1,376 @@
+<script setup lang="ts">
+import { ref, computed } from 'vue';
+
+interface HeaderParam {
+  key: string;
+  value: string;
+  enabled?: boolean;
+}
+
+interface QueryParam {
+  key: string;
+  value: string;
+  enabled?: boolean;
+}
+
+interface Props {
+  method: string;
+  url: string;
+  headers?: HeaderParam[];
+  queryParams?: QueryParam[];
+  body?: string | Record<string, unknown> | null;
+  bodyFormat?: 'none' | 'json' | 'form-data' | 'urlencoded' | 'raw' | 'binary';
+  authType?: string;
+  bearerToken?: string;
+  basicAuth?: { username: string; password: string };
+  apiKey?: { key: string; value: string; addTo: 'header' | 'query' };
+  variables?: Record<string, string>;
+  isMockEnvironment?: boolean;
+  collectionName?: string;
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  headers: () => [],
+  queryParams: () => [],
+  body: null,
+  bodyFormat: 'none',
+  authType: 'none',
+  bearerToken: '',
+  basicAuth: () => ({ username: '', password: '' }),
+  apiKey: () => ({ key: '', value: '', addTo: 'header' as const }),
+  variables: () => ({}),
+  isMockEnvironment: false,
+  collectionName: ''
+});
+
+type Language = 'curl' | 'javascript' | 'python' | 'go' | 'ruby' | 'http';
+
+const activeLanguage = ref<Language>('curl');
+
+// Function to substitute variables in a string
+const substituteVariables = (input: string): string => {
+  if (!input || !props.variables || Object.keys(props.variables).length === 0) {
+    return input;
+  }
+  
+  let result = input;
+  const variablePattern = /\{\{([^{}]+)\}\}/g;
+  
+  // Replace variables with their values
+  result = result.replace(variablePattern, (match, varName) => {
+    const trimmedName = varName.trim();
+    if (props.variables[trimmedName]) {
+      return props.variables[trimmedName];
+    }
+    return match; // Keep original if not found
+  });
+  
+  return result;
+};
+
+const languages: { value: Language; label: string }[] = [
+  { value: 'curl', label: 'cURL' },
+  { value: 'javascript', label: 'JavaScript' },
+  { value: 'python', label: 'Python' },
+  { value: 'go', label: 'Go' },
+  { value: 'ruby', label: 'Ruby' },
+  { value: 'http', label: 'HTTP' },
+];
+
+const getMockUrl = (originalUrl: string): string => {
+  // Build mock server URL
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const collection = props.collectionName || 'default';
+  
+  // Extract path from URL (remove protocol, domain, etc.)
+  let path = originalUrl;
+  try {
+    const urlObj = new URL(originalUrl);
+    path = urlObj.pathname + urlObj.search;
+  } catch {
+    // If URL is relative, use as-is
+    path = originalUrl.startsWith('/') ? originalUrl : '/' + originalUrl;
+  }
+  
+  // Remove leading slash if present to avoid double slashes
+  path = path.replace(/^\//, '');
+  
+  return `${origin}/c/${collection}/${path}`;
+};
+
+const getFullUrl = computed(() => {
+  // First substitute environment variables in the URL
+  let url = substituteVariables(props.url);
+  
+  // If CLOUD MOCK environment, transform to mock URL
+  if (props.isMockEnvironment) {
+    url = getMockUrl(url);
+  }
+  
+  const enabledParams = (props.queryParams || []).filter(p => p.enabled !== false && p.key);
+  
+  // Add auth query param if API key is set to query
+  if (props.authType === 'api-key' && props.apiKey?.addTo === 'query' && props.apiKey.key) {
+    enabledParams.push({
+      key: props.apiKey.key,
+      value: substituteVariables(props.apiKey.value),
+      enabled: true
+    });
+  }
+  
+  if (enabledParams.length > 0) {
+    const queryString = enabledParams
+      .map(p => `${encodeURIComponent(p.key)}=${encodeURIComponent(substituteVariables(p.value))}`)
+      .join('&');
+    url += (url.includes('?') ? '&' : '?') + queryString;
+  }
+  
+  return url;
+});
+
+const getEnabledHeaders = computed(() => {
+  const headers = (props.headers || []).filter(h => h.enabled !== false && h.key).map(h => ({
+    ...h,
+    value: substituteVariables(h.value)
+  }));
+  
+  // Add auth headers
+  if (props.authType === 'bearer' && props.bearerToken) {
+    headers.push({ key: 'Authorization', value: `Bearer ${substituteVariables(props.bearerToken)}`, enabled: true });
+  } else if (props.authType === 'basic' && props.basicAuth?.username) {
+    const credentials = typeof window !== 'undefined' ? btoa(`${props.basicAuth.username}:${props.basicAuth.password}`) : Buffer.from(`${props.basicAuth.username}:${props.basicAuth.password}`).toString('base64');
+    headers.push({ key: 'Authorization', value: `Basic ${credentials}`, enabled: true });
+  } else if (props.authType === 'api-key' && props.apiKey?.addTo === 'header' && props.apiKey.key) {
+    headers.push({ key: props.apiKey.key, value: substituteVariables(props.apiKey.value), enabled: true });
+  }
+  
+  // Add Content-Type header based on body format
+  if (props.bodyFormat === 'json' && props.body) {
+    const hasContentType = headers.some(h => h.key.toLowerCase() === 'content-type');
+    if (!hasContentType) {
+      headers.push({ key: 'Content-Type', value: 'application/json', enabled: true });
+    }
+  } else if (props.bodyFormat === 'urlencoded' && props.body) {
+    const hasContentType = headers.some(h => h.key.toLowerCase() === 'content-type');
+    if (!hasContentType) {
+      headers.push({ key: 'Content-Type', value: 'application/x-www-form-urlencoded', enabled: true });
+    }
+  }
+  
+  return headers;
+});
+
+const getBodyString = computed(() => {
+  if (!props.body || props.bodyFormat === 'none' || props.bodyFormat === 'binary') {
+    return null;
+  }
+  
+  let bodyStr: string;
+  if (typeof props.body === 'string') {
+    bodyStr = props.body;
+  } else {
+    bodyStr = JSON.stringify(props.body, null, 2);
+  }
+  
+  // Substitute variables in body
+  return substituteVariables(bodyStr);
+});
+
+const getCodeExample = computed(() => {
+  const url = getFullUrl.value;
+  const method = props.method?.toUpperCase() || 'GET';
+  const headers = getEnabledHeaders.value;
+  const body = getBodyString.value;
+  
+  switch (activeLanguage.value) {
+    case 'curl': {
+      let code = `curl -X ${method} "${url}"`;
+      headers.forEach(h => {
+        code += ` \\\n  -H "${h.key}: ${h.value}"`;
+      });
+      if (body) {
+        code += ` \\\n  -d '${body.replace(/'/g, "'\"'\"'")}'`;
+      }
+      return code;
+    }
+    
+    case 'javascript': {
+      let headerCode = '';
+      if (headers.length > 0) {
+        const headerEntries = headers.map(h => `    "${h.key}": "${h.value}"`).join(',\n');
+        headerCode = `\n  headers: {\n${headerEntries}\n  }`;
+      }
+      
+      let bodyCode = '';
+      if (body) {
+        try {
+          JSON.parse(body);
+          bodyCode = `,\n  body: JSON.stringify(${body})`;
+        } catch {
+          bodyCode = `,\n  body: '${body.replace(/'/g, "\\'").replace(/\n/g, '\\n')}'`;
+        }
+      }
+      
+      return `const response = await fetch("${url}", {
+  method: "${method}"${headerCode}${bodyCode}
+});
+
+const data = await response.json();
+console.log(data);`;
+    }
+    
+    case 'python': {
+      let code = `import requests\n\n`;
+      
+      if (headers.length > 0) {
+        code += `headers = {\n`;
+        headers.forEach(h => {
+          code += `    "${h.key}": "${h.value}",\n`;
+        });
+        code += `}\n\n`;
+      }
+      
+      const hasBody = body && ['POST', 'PUT', 'PATCH'].includes(method);
+      const bodyArg = hasBody ? `, data=${body.startsWith('{') ? body : `"${body}"`}` : '';
+      const headersArg = headers.length > 0 ? ', headers=headers' : '';
+      
+      code += `response = requests.${method.toLowerCase()}("${url}"${headersArg}${bodyArg})\n`;
+      code += `print(response.json())`;
+      
+      return code;
+    }
+    
+    case 'go': {
+      let code = `package main\n\n`;
+      code += `import (\n`;
+      code += `    "fmt"\n`;
+      code += `    "net/http"\n`;
+      if (body) {
+        code += `    "strings"\n`;
+      }
+      code += `)\n\n`;
+      
+      code += `func main() {\n`;
+      
+      if (body) {
+        code += `    payload := strings.NewReader(\`${body}\`)\n`;
+        code += `    req, _ := http.NewRequest("${method}", "${url}", payload)\n`;
+      } else {
+        code += `    req, _ := http.NewRequest("${method}", "${url}", nil)\n`;
+      }
+      
+      headers.forEach(h => {
+        code += `    req.Header.Add("${h.key}", "${h.value}")\n`;
+      });
+      
+      code += `\n`;
+      code += `    res, _ := http.DefaultClient.Do(req)\n`;
+      code += `    defer res.Body.Close()\n`;
+      code += `}`;
+      
+      return code;
+    }
+    
+    case 'ruby': {
+      let code = `require 'net/http'\n`;
+      code += `require 'uri'\n\n`;
+      code += `uri = URI.parse("${url}")\n`;
+      code += `http = Net::HTTP.new(uri.host, uri.port)\n`;
+      code += `http.use_ssl = (uri.scheme == 'https')\n\n`;
+      
+      const methodClass = method.charAt(0) + method.slice(1).toLowerCase();
+      code += `request = Net::HTTP::${methodClass}.new(uri.request_uri)\n`;
+      
+      headers.forEach(h => {
+        code += `request["${h.key}"] = "${h.value}"\n`;
+      });
+      
+      if (body && ['POST', 'PUT', 'PATCH'].includes(method)) {
+        code += `request.body = '${body.replace(/'/g, "'\"'\"'")}'\n`;
+      }
+      
+      code += `\nresponse = http.request(request)\n`;
+      code += `puts response.body`;
+      
+      return code;
+    }
+    
+    case 'http': {
+      let code = `${method} ${url} HTTP/1.1\n`;
+      
+      // Extract host from URL
+      try {
+        const urlObj = new URL(url);
+        code += `Host: ${urlObj.hostname}\n`;
+      } catch {
+        code += `Host: example.com\n`;
+      }
+      
+      headers.forEach(h => {
+        code += `${h.key}: ${h.value}\n`;
+      });
+      
+      if (body) {
+        code += `\n${body}`;
+      }
+      
+      return code;
+    }
+    
+    default:
+      return '';
+  }
+});
+
+const copyCode = () => {
+  navigator.clipboard.writeText(getCodeExample.value);
+};
+</script>
+
+<template>
+  <div class="flex flex-col h-full bg-bg-sidebar">
+    <!-- Header -->
+    <div class="p-3 border-b border-border-default">
+      <span class="text-xs font-semibold text-text-primary uppercase tracking-wide">Code Examples</span>
+    </div>
+    
+    <!-- Language Tabs -->
+    <div class="flex border-b border-border-default overflow-x-auto">
+      <button
+        v-for="lang in languages"
+        :key="lang.value"
+        @click="activeLanguage = lang.value"
+        :class="[
+          'flex-shrink-0 py-2 px-3 bg-transparent border-none border-b-2 text-[11px] font-medium cursor-pointer -mb-px transition-all duration-fast whitespace-nowrap',
+          activeLanguage === lang.value 
+            ? 'text-accent-orange border-b-accent-orange' 
+            : 'text-text-secondary border-b-transparent hover:text-text-primary hover:bg-bg-hover'
+        ]"
+      >
+        {{ lang.label }}
+      </button>
+    </div>
+    
+    <!-- Code Display -->
+    <div class="flex-1 overflow-auto p-3 bg-bg-tertiary">
+      <div v-if="getCodeExample" class="code-highlight-block font-mono text-[10px] leading-normal text-text-primary m-0 whitespace-pre-wrap break-words">{{ getCodeExample }}</div>
+      <div v-else class="text-xs text-text-muted h-full flex items-center justify-center">
+        Select a request to see code examples
+      </div>
+    </div>
+    
+    <!-- Copy Button -->
+    <div v-if="getCodeExample" class="p-3 border-t border-border-default">
+      <button
+        @click="copyCode"
+        class="w-full flex items-center justify-center gap-2 py-2 px-4 bg-bg-input text-text-secondary rounded border border-border-default text-xs font-medium transition-all duration-fast hover:bg-bg-hover hover:text-text-primary"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+        </svg>
+        Copy Code
+      </button>
+    </div>
+  </div>
+</template>

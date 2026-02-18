@@ -1,5 +1,5 @@
 import { db } from '../../../db';
-import { savedRequests, type HttpMethod, type RequestHeaders, type RequestBody, type RequestAuth } from '../../../db/schema';
+import { savedRequests, type HttpMethod, type RequestHeaders, type RequestBody, type RequestAuth, type MockConfig } from '../../../db/schema';
 import { eq, sql } from 'drizzle-orm';
 
 interface UpdateRequestBody {
@@ -9,6 +9,7 @@ interface UpdateRequestBody {
   headers?: RequestHeaders;
   body?: RequestBody;
   auth?: RequestAuth;
+  mockConfig?: MockConfig;
   order?: number;
 }
 
@@ -25,6 +26,9 @@ export default defineEventHandler(async (event) => {
   }
 
   const body = await readBody<UpdateRequestBody>(event);
+
+  console.log('[Request PUT] Received body:', JSON.stringify(body, null, 2));
+  console.log('[Request PUT] mockConfig received:', body.mockConfig);
 
   // Validate that at least one field is provided
   if (!body || Object.keys(body).length === 0) {
@@ -57,6 +61,7 @@ export default defineEventHandler(async (event) => {
       headers: RequestHeaders | null;
       body: RequestBody;
       auth: RequestAuth;
+      mockConfig: MockConfig;
       order: number;
       updatedAt: Date;
     }> = {
@@ -146,6 +151,14 @@ export default defineEventHandler(async (event) => {
       updateData.auth = body.auth;
     }
 
+    // Set mockConfig (can be null or object)
+    if (body.mockConfig !== undefined) {
+      console.log('[Request PUT] Setting mockConfig:', body.mockConfig);
+      updateData.mockConfig = body.mockConfig;
+    } else {
+      console.log('[Request PUT] mockConfig is undefined, not updating');
+    }
+
     // Validate and set order
     if (body.order !== undefined) {
       if (typeof body.order !== 'number' || !Number.isInteger(body.order)) {
@@ -158,11 +171,15 @@ export default defineEventHandler(async (event) => {
     }
 
     // Update the request
+    console.log('[Request PUT] Updating with data:', JSON.stringify(updateData, null, 2));
+    
     const updatedRequest = (await db
       .update(savedRequests)
       .set(updateData)
       .where(eq(savedRequests.id, id))
       .returning())[0];
+    
+    console.log('[Request PUT] Updated request mockConfig:', updatedRequest.mockConfig);
 
     return updatedRequest;
   } catch (error: any) {

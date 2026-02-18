@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ParsedOpenAPISpec } from '~types/openapi';
 import MethodBadge from '~/components/MethodBadge.vue';
+import CodeExamples from '~/components/CodeExamples.vue';
 
 const slug = useRoute().params.slug as string;
 
@@ -29,58 +30,7 @@ const selectedEndpoint = ref<ParsedOpenAPISpec['endpoints'][0] | null>(null);
 const selectedSchema = ref<string | null>(null);
 const expandedTags = ref<Set<string>>(new Set());
 const expandedProperties = ref<Set<string>>(new Set());
-const activeLanguage = ref<'curl' | 'javascript' | 'python' | 'go' | 'ruby' | 'http'>('curl');
 const activeSection = ref<'endpoints' | 'schemas'>('endpoints');
-
-let highlightModule: any = null;
-
-const getLanguageClass = (lang?: string): string => {
-  const language = lang || activeLanguage.value;
-  switch (language) {
-    case 'curl':
-      return 'shj-lang-bash';
-    case 'javascript':
-      return 'shj-lang-js';
-    case 'python':
-      return 'shj-lang-py';
-    case 'go':
-      return 'shj-lang-go';
-    case 'ruby':
-      return 'shj-lang-plain';
-    case 'http':
-      return 'shj-lang-http';
-    default:
-      return 'shj-lang-plain';
-  }
-};
-
-const applySyntaxHighlighting = () => {
-  if (typeof window === 'undefined') return;
-  
-  const codeElements = document.querySelectorAll('.code-highlight-block');
-  if (codeElements.length === 0) return;
-  
-  if (!highlightModule) {
-    import('@speed-highlight/core').then((mod) => {
-      highlightModule = mod;
-      codeElements.forEach((el) => {
-        const languageClass = getLanguageClass();
-        el.className = languageClass;
-        if (mod.highlightElement) {
-          mod.highlightElement(el, languageClass.replace('shj-lang-', ''));
-        }
-      });
-    });
-  } else {
-    codeElements.forEach((el) => {
-      const languageClass = getLanguageClass();
-      el.className = languageClass;
-      if (highlightModule.highlightElement) {
-        highlightModule.highlightElement(el, languageClass.replace('shj-lang-', ''));
-      }
-    });
-  }
-};
 
 const allTags = computed(() => {
   if (!data.value?.spec?.tags) return [];
@@ -205,118 +155,32 @@ const getAuthHeader = computed(() => {
   return null;
 });
 
-const getCodeExample = computed(() => {
+
+
+// Computed properties for CodeExamples component
+const codeExampleUrl = computed(() => {
   if (!selectedEndpoint.value || !data.value?.spec?.servers?.[0]) return '';
   
   const ep = selectedEndpoint.value;
-  // Clean server URL and path by removing any extra quotes
   const server = (data.value.spec.servers[0].url || '').replace(/["']/g, '');
   const path = (ep.path || '').replace(/["']/g, '');
-  const url = `${server}${path.startsWith('/') ? path : '/' + path}`;
-  const auth = getAuthHeader.value;
+  return `${server}${path.startsWith('/') ? path : '/' + path}`;
+});
+
+const codeExampleHeaders = computed(() => {
+  const headers: { key: string; value: string; enabled: boolean }[] = [];
   
-  switch (activeLanguage.value) {
-    case 'curl': {
-      const headers = auth ? `\n  -H "${auth.header}: ${auth.value}"` : '';
-      return `curl -X ${ep.method} "${url}" \\${headers}
-  -H "Content-Type: application/json"`;
-    }
-    
-    case 'javascript': {
-      const headers = auth ? `\n    "${auth.header}": "${auth.value}",\n` : '';
-      return `const response = await fetch("${url}", {
-  method: "${ep.method}",
-  headers: {${headers}    "Content-Type": "application/json"
+  // Add Content-Type header
+  headers.push({ key: 'Content-Type', value: 'application/json', enabled: true });
+  
+  // Add auth header if present
+  const auth = getAuthHeader.value;
+  if (auth) {
+    headers.push({ key: auth.header, value: auth.value, enabled: true });
   }
+  
+  return headers;
 });
-
-const data = await response.json();`;
-    }
-    
-    case 'python': {
-      const headers = auth ? `\n        "${auth.header}": "${auth.value}",` : '';
-      return `import requests
-
-response = requests.${ep.method.toLowerCase()}(
-    "${url}",
-    headers={${headers}
-        "Content-Type": "application/json"
-    }
-)
-
-print(response.json())`;
-    }
-    
-    case 'go': {
-      const authLine = auth ? `\n    req.Header.Set("${auth.header}", "${auth.value}")` : '';
-      return `package main
-
-import (
-    "bytes"
-    "encoding/json"
-    "fmt"
-    "io"
-    "net/http"
-)
-
-func main() {
-    url := "${url}"
-    
-    req, err := http.NewRequest("${ep.method.toUpperCase()}", url, nil)
-    if err != nil {
-        panic(err)
-    }
-    
-    req.Header.Set("Content-Type", "application/json")${authLine}
-    
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    if err != nil {
-        panic(err)
-    }
-    defer resp.Body.Close()
-    
-    body, err := io.ReadAll(resp.Body)
-    if err != nil {
-        panic(err)
-    }
-    
-    fmt.Println(string(body))
-}`;
-    }
-    
-    case 'ruby': {
-      const authLine = auth ? `\n  request['${auth.header}'] = '${auth.value}'` : '';
-      return `require 'net/http'
-require 'uri'
-require 'json'
-
-uri = URI('${url}')
-http = Net::HTTP.new(uri.host, uri.port)
-http.use_ssl = (uri.scheme == 'https')
-
-request = Net::HTTP::${ep.method.capitalize[0].toUpperCase() + ep.method.slice(1)}.new(uri.request_uri)
-request['Content-Type'] = 'application/json'${authLine}
-
-response = http.request(request)
-puts JSON.parse(response.body)`;
-    }
-    
-    case 'http': {
-      const authHeader = auth ? `\n${auth.header}: ${auth.value}` : '';
-      return `${ep.method} ${ep.path} HTTP/1.1
-Host: ${new URL(server).hostname}
-Content-Type: application/json${authHeader}`;
-    }
-    
-    default:
-      return '';
-  }
-});
-
-const copyCode = () => {
-  navigator.clipboard.writeText(getCodeExample.value);
-};
 
 const getSchemaTypeDisplay = (schema: any): string => {
   let type = schema.type || 'unknown';
@@ -380,30 +244,15 @@ const toggleProperty = (propertyPath: string) => {
   }
 };
 
-watch([activeLanguage, selectedEndpoint], () => {
-  nextTick(() => {
-    applySyntaxHighlighting();
-  });
-});
-
 onMounted(() => {
   if (data.value?.spec?.endpoints?.length) {
     expandedTags.value = new Set(Object.keys(endpointsByTag.value));
   }
 });
 
-onMounted(() => {
-  nextTick(() => {
-    applySyntaxHighlighting();
-  });
-});
-
 watch(() => data.value, () => {
   if (data.value?.spec?.endpoints?.length) {
     expandedTags.value = new Set(Object.keys(endpointsByTag.value));
-    nextTick(() => {
-      applySyntaxHighlighting();
-    });
   }
 });
 </script>
@@ -673,44 +522,16 @@ watch(() => data.value, () => {
               </div>
             </div>
             
-            <div class="w-[420px] border-l border-border-default bg-bg-sidebar flex flex-col">
-              <div class="p-3 border-b border-border-default">
-                <span class="text-xs font-semibold text-text-primary uppercase tracking-wide">Code Examples</span>
-              </div>
-              
-              <div class="flex border-b border-border-default overflow-x-auto">
-                <button 
-                  v-for="lang in ['curl', 'javascript', 'python', 'go', 'ruby', 'http']"
-                  :key="lang"
-                  :class="[
-                    'flex-shrink-0 py-2 px-3 bg-transparent border-none border-b-2 text-[11px] font-medium cursor-pointer -mb-px transition-all duration-fast whitespace-nowrap',
-                    activeLanguage === lang ? 'text-accent-orange border-b-accent-orange' : 'text-text-secondary border-b-transparent hover:text-text-primary hover:bg-bg-hover'
-                  ]"
-                  @click="activeLanguage = lang"
-                >
-                  {{ lang === 'curl' ? 'cURL' : lang.charAt(0).toUpperCase() + lang.slice(1) }}
-                </button>
-              </div>
-              
-              <div class="flex-1 overflow-auto p-3 bg-bg-tertiary">
-                <div v-if="getCodeExample" class="code-highlight-block font-mono text-[10px] leading-normal text-text-primary m-0 whitespace-pre-wrap break-words">{{ getCodeExample }}</div>
-                <div v-else class="text-xs text-text-muted h-full flex items-center justify-center">
-                  Select an endpoint to see code examples
-                </div>
-              </div>
-              
-              <div v-if="getCodeExample" class="p-3 border-t border-border-default">
-                <button 
-                  @click="copyCode"
-                  class="btn btn-secondary btn-sm w-full"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                  </svg>
-                  Copy Code
-                </button>
-              </div>
+            <div class="w-[420px] border-l border-border-default">
+              <CodeExamples
+                :method="selectedEndpoint?.method || 'GET'"
+                :url="codeExampleUrl"
+                :headers="codeExampleHeaders"
+                :query-params="[]"
+                :body="null"
+                body-format="none"
+                auth-type="none"
+              />
             </div>
           </div>
           

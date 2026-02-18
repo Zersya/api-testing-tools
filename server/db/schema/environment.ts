@@ -9,6 +9,7 @@ export const environments = pgTable('environments', {
     .references(() => projects.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   isActive: boolean('is_active').notNull().default(false),
+  isMockEnvironment: boolean('is_mock_environment').notNull().default(false),
   createdAt: timestamp('created_at')
     .notNull()
     .defaultNow()

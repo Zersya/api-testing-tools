@@ -2,6 +2,20 @@ import { db } from '../../../db';
 import { savedRequests } from '../../../db/schema';
 import { eq } from 'drizzle-orm';
 
+function parseJsonField<T>(value: unknown): T | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      return null;
+    }
+  }
+  return value as T;
+}
+
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id');
 
@@ -27,7 +41,23 @@ export default defineEventHandler(async (event) => {
       });
     }
 
-    return request;
+    // Parse JSON fields
+    return {
+      ...request,
+      headers: parseJsonField<Record<string, string>>(request.headers),
+      body: parseJsonField<Record<string, unknown> | string>(request.body),
+      auth: parseJsonField<{
+        type: string;
+        credentials?: Record<string, string>;
+      } | null>(request.auth),
+      mockConfig: parseJsonField<{
+        isEnabled: boolean;
+        statusCode: number;
+        delay: number;
+        responseBody: Record<string, unknown> | string | null;
+        responseHeaders: Record<string, string>;
+      } | null>(request.mockConfig)
+    };
   } catch (error: any) {
     // Re-throw if it's already an H3 error
     if (error.statusCode) {

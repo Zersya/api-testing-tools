@@ -9,10 +9,11 @@
  */
 
 import { db } from '../../db';
-import { requestHistories } from '../../db/schema';
+import { requestHistories, savedRequests, folders, collections, projects } from '../../db/schema';
 import { environments, environmentVariables } from '../../db/schema';
 import type { HttpMethod, RequestData, ResponseData } from '../../db/schema/requestHistory';
-import { eq, inArray } from 'drizzle-orm';
+import type { MockConfig } from '../../db/schema/savedRequest';
+import { eq, inArray, sql, and } from 'drizzle-orm';
 
 interface EnvironmentVariable {
   id: string;
@@ -30,6 +31,7 @@ interface ProxyRequestBody {
   timeout?: number;
   workspaceId?: string;
   environmentId?: string;
+  savedRequestId?: string;
 }
 
 interface ProxyResponse {
@@ -71,7 +73,7 @@ const DEFAULT_TIMEOUT = 30000;
 const MAX_TIMEOUT = 120000;
 
 export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyErrorResponse> => {
-  const startTime = new Date();
+  const startTime = Date.now();
   const variableWarnings: string[] = [];
   
   try {
@@ -210,6 +212,210 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
       variableWarnings.push(`Undefined variable: {{${unresolvedMatch[1].trim()}}}`);
     }
 
+    // Check if environment is CLOUD MOCK and return mock response
+    let isMockEnvironment = false;
+    if (body.environmentId) {
+      try {
+        const environment = (await db
+          .select()
+          .from(environments)
+          .where(eq(environments.id, body.environmentId))
+          .limit(1))[0];
+        
+        if (environment?.isMockEnvironment) {
+          isMockEnvironment = true;
+        }
+      } catch (error) {
+        console.error('Failed to check if environment is mock:', error);
+      }
+    }
+
+    // If CLOUD MOCK environment, look for matching saved request with mock config
+    if (isMockEnvironment) {
+      try {
+        let savedRequest: { id: string; url: string; mockConfig: any } | undefined;
+
+        // Strategy 1: Direct lookup by savedRequestId (most reliable - avoids URL matching ambiguity)
+        if (body.savedRequestId) {
+          console.log('[Proxy] Looking up mock config by savedRequestId:', body.savedRequestId);
+          const directResult = (await db
+            .select({
+              id: savedRequests.id,
+              url: savedRequests.url,
+              mockConfig: savedRequests.mockConfig
+            })
+            .from(savedRequests)
+            .where(eq(savedRequests.id, body.savedRequestId))
+            .limit(1))[0];
+
+          if (directResult) {
+            savedRequest = directResult;
+            console.log('[Proxy] Found by ID, mockConfig:', savedRequest.mockConfig);
+          }
+        }
+
+        // Strategy 2: Fall back to URL-based matching if no savedRequestId or not found by ID
+        if (!savedRequest) {
+          const requestUrlPath = resolvedUrl.split('?')[0];
+
+          console.log('[Proxy] Looking for mock config by URL:', {
+            method,
+            url: resolvedUrl,
+            urlPath: requestUrlPath
+          });
+
+          const whereConditions: any[] = [eq(savedRequests.method, method)];
+          if (body.workspaceId) {
+            whereConditions.push(eq(projects.workspaceId, body.workspaceId));
+          }
+
+          const matchingRequests = await db
+            .select({
+              id: savedRequests.id,
+              url: savedRequests.url,
+              mockConfig: savedRequests.mockConfig
+            })
+            .from(savedRequests)
+            .innerJoin(folders, eq(savedRequests.folderId, folders.id))
+            .innerJoin(collections, eq(folders.collectionId, collections.id))
+            .innerJoin(projects, eq(collections.projectId, projects.id))
+            .where(and(...whereConditions));
+
+          console.log('[Proxy] Found matching requests:', matchingRequests.length);
+
+          savedRequest = matchingRequests.find(req => {
+            const savedUrl = req.url.split('?')[0];
+
+            if (savedUrl === requestUrlPath) {
+              console.log('[Proxy] Exact match found:', { savedUrl, requestUrlPath });
+              return true;
+            }
+
+            if (savedUrl.endsWith(requestUrlPath)) {
+              console.log('[Proxy] Path suffix match found:', { savedUrl, requestUrlPath });
+              return true;
+            }
+
+            const savedPathMatch = savedUrl.match(/\/[^\/]+.*$/);
+            const requestPathMatch = requestUrlPath.match(/\/[^\/]+.*$/);
+            if (savedPathMatch && requestPathMatch && savedPathMatch[0] === requestPathMatch[0]) {
+              console.log('[Proxy] Path match found:', { savedPath: savedPathMatch[0], requestPath: requestPathMatch[0] });
+              return true;
+            }
+
+            return false;
+          });
+        }
+
+        console.log('[Proxy] Selected request ID:', savedRequest?.id);
+        console.log('[Proxy] Selected request URL:', savedRequest?.url);
+        console.log('[Proxy] mockConfig field:', savedRequest?.mockConfig);
+        
+
+
+        if (savedRequest?.mockConfig) {
+          const mockConfig: MockConfig = typeof savedRequest.mockConfig === 'string' 
+            ? JSON.parse(savedRequest.mockConfig) 
+            : savedRequest.mockConfig;
+
+          console.log('[Proxy] Parsed mockConfig:', mockConfig);
+          console.log('[Proxy] isEnabled:', mockConfig?.isEnabled);
+
+          if (mockConfig?.isEnabled) {
+            // Apply delay if specified
+            if (mockConfig.delay > 0) {
+              await new Promise(resolve => setTimeout(resolve, mockConfig.delay));
+            }
+
+            const endTime = Date.now();
+            const mockResponse: ProxyResponse = {
+              success: true,
+              status: mockConfig.statusCode,
+              statusText: 'Mock Response',
+              headers: mockConfig.responseHeaders || { 'Content-Type': 'application/json' },
+              body: mockConfig.responseBody,
+              timing: {
+                startTime: new Date(startTime).toISOString(),
+                endTime: new Date(endTime).toISOString(),
+                durationMs: endTime - startTime
+              },
+              variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined
+            };
+
+            // Log mock request to history
+            if (body.workspaceId) {
+              try {
+                let queryParams: Record<string, string> = {};
+                try {
+                  queryParams = Object.fromEntries(new URL(resolvedUrl).searchParams.entries());
+                } catch {
+                  // resolvedUrl may contain unresolved variables (e.g. {{URL}}/ping) - skip query params
+                }
+                const requestData: RequestData = {
+                  headers: body.headers,
+                  body: body.body,
+                  queryParams
+                };
+
+                const responseData: ResponseData = {
+                  headers: mockResponse.headers,
+                  body: mockConfig.responseBody
+                };
+
+                await db.insert(requestHistories).values({
+                  workspaceId: body.workspaceId,
+                  method: method as HttpMethod,
+                  url: body.url,
+                  requestData,
+                  responseData,
+                  statusCode: mockConfig.statusCode,
+                  responseTimeMs: endTime - startTime,
+                  timestamp: new Date(startTime)
+                });
+              } catch (logError) {
+                console.error('Failed to log mock request to history:', logError);
+              }
+            }
+
+            return mockResponse;
+          }
+        }
+
+        // No mock config found for this request
+        const errorEndTime = Date.now();
+        return {
+          success: false,
+          error: {
+            message: 'No mock configuration found for this request in CLOUD MOCK environment. Please configure mock response in the Mock tab.',
+            code: 'MOCK_NOT_CONFIGURED'
+          },
+          timing: {
+            startTime: new Date(startTime).toISOString(),
+            endTime: new Date(errorEndTime).toISOString(),
+            durationMs: errorEndTime - startTime
+          },
+          variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined
+        };
+      } catch (error: any) {
+        console.error('Error handling mock request:', error);
+        const errorEndTime = Date.now();
+        return {
+          success: false,
+          error: {
+            message: 'Failed to process mock request',
+            code: 'MOCK_ERROR',
+            cause: error.message
+          },
+          timing: {
+            startTime: new Date(startTime).toISOString(),
+            endTime: new Date(errorEndTime).toISOString(),
+            durationMs: errorEndTime - startTime
+          },
+          variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined
+        };
+      }
+    }
+
     let targetUrl: URL;
     try {
       targetUrl = new URL(resolvedUrl);
@@ -240,7 +446,7 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
     }
 
     const response = await fetch(targetUrl.toString(), fetchOptions);
-    const endTime = new Date();
+    const endTime = Date.now();
 
     const responseHeaders: Record<string, string> = {};
     response.headers.forEach((value, key) => {
@@ -282,9 +488,9 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
       headers: responseHeaders,
       body: responseBody,
       timing: {
-        startTime: startTime.toISOString(),
-        endTime: endTime.toISOString(),
-        durationMs: endTime.getTime() - startTime.getTime()
+        startTime: new Date(startTime).toISOString(),
+        endTime: new Date(endTime).toISOString(),
+        durationMs: endTime - startTime
       },
       variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined,
       resolvedValues: resolvedValues && Object.keys(resolvedValues).length > 0 ? resolvedValues : undefined
@@ -310,8 +516,8 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
           requestData,
           responseData,
           statusCode: response.status,
-          responseTimeMs: endTime.getTime() - startTime.getTime(),
-          timestamp: startTime
+          responseTimeMs: endTime - startTime,
+          timestamp: new Date(startTime)
         });
       } catch (logError) {
         console.error('Failed to log request to history:', logError);
@@ -321,7 +527,7 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
     return proxyResponse;
 
   } catch (error: any) {
-    const endTime = new Date();
+    const errorEndTime = Date.now();
 
     if (error.statusCode) {
       throw error;
@@ -336,9 +542,9 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
           cause: error.message
         },
         timing: {
-          startTime: startTime.toISOString(),
-          endTime: endTime.toISOString(),
-          durationMs: endTime.getTime() - startTime.getTime()
+          startTime: new Date(startTime).toISOString(),
+          endTime: new Date(errorEndTime).toISOString(),
+          durationMs: errorEndTime - startTime
         },
         variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined
       };
@@ -353,9 +559,9 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
           cause: error.message
         },
         timing: {
-          startTime: startTime.toISOString(),
-          endTime: endTime.toISOString(),
-          durationMs: endTime.getTime() - startTime.getTime()
+          startTime: new Date(startTime).toISOString(),
+          endTime: new Date(errorEndTime).toISOString(),
+          durationMs: errorEndTime - startTime
         },
         variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined
       };
@@ -370,9 +576,9 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
           cause: error.message
         },
         timing: {
-          startTime: startTime.toISOString(),
-          endTime: endTime.toISOString(),
-          durationMs: endTime.getTime() - startTime.getTime()
+          startTime: new Date(startTime).toISOString(),
+          endTime: new Date(errorEndTime).toISOString(),
+          durationMs: errorEndTime - startTime
         },
         variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined
       };
@@ -387,9 +593,9 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
           cause: error.message
         },
         timing: {
-          startTime: startTime.toISOString(),
-          endTime: endTime.toISOString(),
-          durationMs: endTime.getTime() - startTime.getTime()
+          startTime: new Date(startTime).toISOString(),
+          endTime: new Date(errorEndTime).toISOString(),
+          durationMs: errorEndTime - startTime
         },
         variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined
       };
@@ -403,9 +609,9 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
         cause: error.message
       },
       timing: {
-        startTime: startTime.toISOString(),
-        endTime: endTime.toISOString(),
-        durationMs: endTime.getTime() - startTime.getTime()
+        startTime: new Date(startTime).toISOString(),
+        endTime: new Date(errorEndTime).toISOString(),
+        durationMs: errorEndTime - startTime
       },
       variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined
     };

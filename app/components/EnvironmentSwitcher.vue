@@ -14,6 +14,7 @@ interface Environment {
   projectId: string;
   name: string;
   isActive: boolean;
+  isMockEnvironment?: boolean;
   variables: Variable[];
 }
 
@@ -48,8 +49,9 @@ const sortedEnvironments = computed(() => {
   });
 });
 
-const getEnvironmentColor = (index: number): string => {
-  const colors = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+const getEnvironmentColor = (index: number, isMock?: boolean): string => {
+  if (isMock) return '#8b5cf6'; // Purple for CLOUD MOCK
+  const colors = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#ec4899'];
   return colors[index % colors.length];
 };
 
@@ -112,11 +114,21 @@ onUnmounted(() => {
       </svg>
 
       <span v-if="activeEnvironment" class="flex items-center gap-1.5">
-        <span
-          class="w-2 h-2 rounded-full"
-          :style="{ backgroundColor: getEnvironmentColor(environments.indexOf(activeEnvironment)) }"
-        ></span>
-        {{ activeEnvironment.name }}
+        <template v-if="activeEnvironment.isMockEnvironment">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17.5 19c0-1.7-1.3-3-3-3h-11c-1.7 0-3 1.3-3 3 0 1.7 1.3 3 3 3h11c1.7 0 3-1.3 3-3z"/>
+            <path d="M17.5 19c0-2.5-2-4.5-4.5-4.5h-7c-2.5 0-4.5 2-4.5 4.5s2 4.5 4.5 4.5h7c2.5 0 4.5-2 4.5-4.5z"/>
+            <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+          </svg>
+          <span class="text-purple-400">{{ activeEnvironment.name }}</span>
+        </template>
+        <template v-else>
+          <span
+            class="w-2 h-2 rounded-full"
+            :style="{ backgroundColor: getEnvironmentColor(environments.indexOf(activeEnvironment)) }"
+          ></span>
+          {{ activeEnvironment.name }}
+        </template>
       </span>
       <span v-else class="flex items-center gap-1.5 text-accent-orange">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -181,11 +193,20 @@ onUnmounted(() => {
                 : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
             ]"
           >
-            <span
-              class="w-2.5 h-2.5 rounded-full flex-shrink-0"
-              :style="{ backgroundColor: getEnvironmentColor(sortedEnvironments.indexOf(environment)) }"
-            ></span>
-            <span class="flex-1 text-xs font-medium truncate">{{ environment.name }}</span>
+            <template v-if="environment.isMockEnvironment">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0">
+                <path d="M17.5 19c0-1.7-1.3-3-3-3h-11c-1.7 0-3 1.3-3 3 0 1.7 1.3 3 3 3h11c1.7 0 3-1.3 3-3z"/>
+                <path d="M17.5 19c0-2.5-2-4.5-4.5-4.5h-7c-2.5 0-4.5 2-4.5 4.5s2 4.5 4.5 4.5h7c2.5 0 4.5-2 4.5-4.5z"/>
+                <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+              </svg>
+            </template>
+            <template v-else>
+              <span
+                class="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                :style="{ backgroundColor: getEnvironmentColor(sortedEnvironments.indexOf(environment)) }"
+              ></span>
+            </template>
+            <span class="flex-1 text-xs font-medium truncate" :class="{ 'text-purple-400': environment.isMockEnvironment }">{{ environment.name }}</span>
             <span class="text-[10px] text-text-muted">
               {{ environment.variables?.length || 0 }} vars
             </span>

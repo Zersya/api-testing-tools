@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { watch } from 'vue';
 import RequestBuilder from '~/components/RequestBuilder.vue';
+import CodeExamples from '~/components/CodeExamples.vue';
 import SaveRequestDialog from '~/components/SaveRequestDialog.vue';
 import RequestTabs, { type OpenTab } from '~/components/RequestTabs.vue';
 import ImportModal from '~/components/ImportModal.vue';
@@ -41,6 +42,13 @@ interface HttpRequest {
   auth: {
     type: string;
     credentials?: Record<string, string>;
+  } | null;
+  mockConfig?: {
+    isEnabled: boolean;
+    statusCode: number;
+    delay: number;
+    responseBody: Record<string, unknown> | string | null;
+    responseHeaders: Record<string, string>;
   } | null;
   order: number;
   createdAt: Date;
@@ -126,20 +134,138 @@ interface Environment {
   projectId: string;
   name: string;
   isActive: boolean;
+  isMockEnvironment?: boolean;
   createdAt: Date;
   variables: EnvironmentVariable[];
 }
 
+// Helper to find project ID from a request by tracing: request -> folder -> collection -> project
+const findProjectIdByRequestId = (requestId: string): string | null => {
+  if (!workspaces.value) return null;
+  
+  for (const workspace of workspaces.value) {
+    for (const project of workspace.projects) {
+      for (const collection of project.collections) {
+        const findRequestInFolders = (folders: any[]): boolean => {
+          for (const folder of folders) {
+            if (folder.requests?.some((r: any) => r.id === requestId)) {
+              return true;
+            }
+            if (folder.children?.length) {
+              const found = findRequestInFolders(folder.children);
+              if (found) return true;
+            }
+          }
+          return false;
+        };
+        
+        if (findRequestInFolders(collection.folders)) {
+          return project.id;
+        }
+      }
+    }
+  }
+  return null;
+};
+
+// Helper to find folder by request ID
+const findFolderIdByRequestId = (requestId: string): string | null => {
+  if (!workspaces.value) return null;
+  for (const workspace of workspaces.value) {
+    for (const project of workspace.projects) {
+      for (const collection of project.collections) {
+        const findInFolder = (folders: any[]): string | null => {
+          for (const folder of folders) {
+            if (folder.requests?.some((r: any) => r.id === requestId)) {
+              return folder.id;
+            }
+            if (folder.children?.length) {
+              const found = findInFolder(folder.children);
+              if (found) return found;
+            }
+          }
+          return null;
+        };
+        const found = findInFolder(collection.folders);
+        if (found) return found;
+      }
+    }
+  }
+  return null;
+};
+
+// State
+const previewContent = ref('');
+const selectedMock = ref<any>(null);
+const selectedRequest = ref<HttpRequest | null>(null);
+
+// RequestBuilder ref for accessing current request state (used by CodeExamples)
+const requestBuilderRef = ref<any>(null);
+
+// Computed property to get the project ID of the currently selected request
+const currentRequestProjectId = computed(() => {
+  if (!selectedRequest.value) return null;
+  return findProjectIdByRequestId(selectedRequest.value.id);
+});
+
+// Fetch environments based on the currently selected request's project
 const { data: environments, refresh: refreshEnvironments } = await useFetch<Environment[]>(
-  computed(() => `/api/admin/projects/${currentProjectId.value}/environments`),
+  computed(() => {
+    const projectId = currentRequestProjectId.value || currentProjectId.value;
+    return projectId ? `/api/admin/projects/${projectId}/environments` : '';
+  }),
   {
     immediate: true,
-    watch: [currentProjectId]
+    watch: [currentRequestProjectId, currentProjectId]
   }
 );
 
 const activeEnvironment = computed(() => {
   return environments.value?.find(env => env.isActive) || null;
+});
+
+// Get active environment variables as a key-value map
+const activeEnvironmentVariables = computed(() => {
+  if (!activeEnvironment.value?.variables) return {};
+  const variables: Record<string, string> = {};
+  activeEnvironment.value.variables.forEach((v: any) => {
+    if (!v.isSecret) {
+      variables[v.key] = v.value;
+    }
+  });
+  return variables;
+});
+
+// Check if current environment is CLOUD MOCK
+const isActiveEnvironmentMock = computed(() => {
+  return activeEnvironment.value?.isMockEnvironment || false;
+});
+
+// Get collection name for the selected request
+const activeCollectionName = computed(() => {
+  if (!selectedRequest.value || !workspaces.value) return '';
+  
+  for (const workspace of workspaces.value) {
+    for (const project of workspace.projects) {
+      for (const collection of project.collections) {
+        const findInFolders = (folders: any[]): string | null => {
+          for (const folder of folders) {
+            // Check if this folder belongs to the collection
+            if (folder.requests?.some((r: any) => r.id === selectedRequest.value?.id)) {
+              return collection.name;
+            }
+            const found = findInFolders(folder.children || []);
+            if (found) return found;
+          }
+          return null;
+        };
+        
+        const found = findInFolders(collection.folders || []);
+        if (found) return found;
+      }
+    }
+  }
+  return '';
 });
 
 const activateEnvironment = async (environmentId: string | null) => {
@@ -214,31 +340,6 @@ const findCollectionByFolderId = (folderId: string): { collectionId: string; fol
   return null;
 };
 
-const findFolderIdByRequestId = (requestId: string): string | null => {
-  if (!workspaces.value) return null;
-  for (const workspace of workspaces.value) {
-    for (const project of workspace.projects) {
-      for (const collection of project.collections) {
-        const findInFolder = (folders: any[]): string | null => {
-          for (const folder of folders) {
-            if (folder.requests?.some((r: any) => r.id === requestId)) {
-              return folder.id;
-            }
-            if (folder.children?.length) {
-              const found = findInFolder(folder.children);
-              if (found) return found;
-            }
-          }
-          return null;
-        };
-        const found = findInFolder(collection.folders);
-        if (found) return found;
-      }
-    }
-  }
-  return null;
-};
-
 if (error.value && error.value.statusCode === 401) {
     await navigateTo('/login');
 }
@@ -281,11 +382,6 @@ const requestFolderName = ref<string>('');
 const saveDialogDefaultCollectionId = ref('');
 const saveDialogDefaultFolderId = ref('');
 
-// State
-const previewContent = ref('');
-const selectedMock = ref<any>(null);
-const selectedRequest = ref<HttpRequest | null>(null);
-const mockToDelete = ref<any>(null);
 const snippetLang = ref('curl');
 const tryItLoading = ref(false);
 const tryItResponse = ref<any>(null);
@@ -789,19 +885,26 @@ const updateTabUnsavedStatus = (request: HttpRequest, hasUnsavedChanges: boolean
 const handleSaveRequest = async (request: any) => {
   requestToSave.value = request;
   
+  console.log('[Frontend Save] Request mockConfig:', request.mockConfig);
+  
   // If request already has an ID (existing request), save directly without dialog
   if (request.id && request.id !== '') {
+    const body = {
+      name: request.name,
+      method: request.method,
+      url: request.url,
+      headers: request.headers,
+      body: request.body,
+      auth: request.auth,
+      mockConfig: request.mockConfig
+    };
+    
+    console.log('[Frontend Save] Sending body:', JSON.stringify(body, null, 2));
+    
     try {
       await $fetch(`/api/admin/requests/${request.id}`, {
         method: 'PUT',
-        body: {
-          name: request.name,
-          method: request.method,
-          url: request.url,
-          headers: request.headers,
-          body: request.body,
-          auth: request.auth
-        }
+        body
       });
       
       // Update selectedRequest if it matches
@@ -1852,18 +1955,42 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
             @reorder-tabs="handleReorderTabs"
           />
 
-          <!-- Request Builder -->
-          <RequestBuilder
-            v-if="selectedRequest && activeTabKey"
-            :key="activeTabKey"
-            :request="selectedRequest"
-            :workspace-id="currentWorkspaceId"
-            :environment-id="activeEnvironment?.id"
-            :project-id="currentProjectId"
-            @save-request="handleSaveRequest"
-            @save-as-request="handleSaveAsRequest"
-            @unsaved-changes="updateTabUnsavedStatus"
-          />
+          <!-- Request Builder with Code Examples Sidebar -->
+          <div v-if="selectedRequest && activeTabKey" class="flex-1 flex overflow-hidden">
+            <!-- Main Request Builder -->
+            <div class="flex-1 overflow-auto">
+              <RequestBuilder
+                ref="requestBuilderRef"
+                :key="activeTabKey"
+                :request="selectedRequest"
+                :workspace-id="currentWorkspaceId"
+                :environment-id="activeEnvironment?.id"
+                :project-id="currentProjectId"
+                @save-request="handleSaveRequest"
+                @save-as-request="handleSaveAsRequest"
+                @unsaved-changes="updateTabUnsavedStatus"
+              />
+            </div>
+            
+            <!-- Code Examples Sidebar -->
+            <div class="w-[380px] border-l border-border-default bg-bg-sidebar flex flex-col flex-shrink-0">
+              <CodeExamples
+                :method="requestBuilderRef?.form?.method || selectedRequest.method"
+                :url="requestBuilderRef?.form?.url || selectedRequest.url"
+                :headers="requestBuilderRef?.headers || []"
+                :query-params="requestBuilderRef?.queryParams || []"
+                :body="requestBuilderRef?.bodyFormat === 'json' ? requestBuilderRef?.jsonBody : requestBuilderRef?.bodyFormat === 'raw' ? requestBuilderRef?.rawBody : null"
+                :body-format="requestBuilderRef?.bodyFormat || 'none'"
+                :auth-type="requestBuilderRef?.authType || 'none'"
+                :bearer-token="requestBuilderRef?.bearerToken"
+                :basic-auth="requestBuilderRef?.basicAuth"
+                :api-key="requestBuilderRef?.apiKey"
+                :variables="activeEnvironmentVariables"
+                :is-mock-environment="isActiveEnvironmentMock"
+                :collection-name="activeCollectionName"
+              />
+            </div>
+          </div>
           
           <!-- Placeholder when no active tab -->
           <div v-else-if="!selectedRequest" class="flex-1 flex items-center justify-center text-text-muted">

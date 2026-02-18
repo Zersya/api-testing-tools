@@ -4,6 +4,7 @@ import JsonNode from './JsonNode.vue';
 import VariableInput from './VariableInput.vue';
 import VariableTextarea from './VariableTextarea.vue';
 import RequestExampleManager from './RequestExampleManager.vue';
+import MockConfiguration from './MockConfiguration.vue';
 
 interface Variable {
   id: string;
@@ -46,6 +47,7 @@ interface HttpRequest {
     type: string;
     credentials?: Record<string, string>;
   } | null;
+  mockConfig?: import('../../server/db/schema/savedRequest').MockConfig | null;
   order: number;
   createdAt: Date;
   updatedAt: Date;
@@ -97,7 +99,7 @@ const emit = defineEmits<{
   unsavedChanges: [request: HttpRequest, hasUnsavedChanges: boolean];
 }>();
 
-type TabType = 'params' | 'headers' | 'body' | 'auth' | 'examples' | 'response';
+type TabType = 'params' | 'headers' | 'body' | 'auth' | 'mock' | 'examples' | 'response';
 type BodyFormat = 'none' | 'json' | 'form-data' | 'urlencoded' | 'raw' | 'binary';
 type ResponseViewType = 'pretty' | 'preview' | 'raw' | 'headers' | 'cookies';
 
@@ -203,6 +205,9 @@ const expandedNodes = ref(new Set<string>());
 const showSearch = ref(false);
 const searchQuery = ref('');
 
+// Mock configuration state
+const mockConfig = ref<import('../../server/db/schema/savedRequest').MockConfig | null>(null);
+
 const parseUrlQuery = (url: string) => {
   try {
     // Handle URLs with environment variables like {{URL}}
@@ -247,6 +252,7 @@ const lastSavedState = ref<{
   headers: Record<string, string> | null;
   body: any;
   auth: any;
+  mockConfig: import('../../server/db/schema/savedRequest').MockConfig | null;
 } | null>(null);
 
 // Function to capture current state as saved
@@ -258,16 +264,17 @@ const captureCurrentStateAsSaved = () => {
     body: buildBody(),
     auth: {
       type: authType.value,
-      credentials: authType.value === 'api-key' ? { 
-        key: apiKey.value.key, 
+      credentials: authType.value === 'api-key' ? {
+        key: apiKey.value.key,
         value: apiKey.value.value,
         addTo: apiKey.value.addTo
-      } : authType.value === 'bearer' ? { token: bearerToken.value } 
+      } : authType.value === 'bearer' ? { token: bearerToken.value }
         : authType.value === 'basic' ? {
           username: basicAuth.value.username,
           password: basicAuth.value.password
         } : undefined
-    }
+    },
+    mockConfig: mockConfig.value
   };
 };
 
@@ -403,7 +410,14 @@ const loadRequestData = (request: HttpRequest) => {
       oauth2.value.PKCE = authConfig.credentials.PKCE || false;
     }
   }
-  
+
+  // Load mock configuration
+  if (request.mockConfig) {
+    mockConfig.value = request.mockConfig;
+  } else {
+    mockConfig.value = null;
+  }
+
   // Clear response when switching requests
   response.value = null;
   
@@ -1159,7 +1173,8 @@ const hasUnsavedChanges = computed(() => {
     url: props.request.url,
     headers: props.request.headers,
     body: props.request.body,
-    auth: props.request.auth
+    auth: props.request.auth,
+    mockConfig: props.request.mockConfig
   };
 
   const urlChanged = currentUrl !== compareState.url;
@@ -1169,8 +1184,9 @@ const hasUnsavedChanges = computed(() => {
   const normalizedOriginalBody = compareState.body === undefined ? null : compareState.body;
   const bodyChanged = JSON.stringify(normalizedCurrentBody) !== JSON.stringify(normalizedOriginalBody);
   const authChanged = JSON.stringify(currentAuth) !== JSON.stringify(compareState.auth || {});
+  const mockConfigChanged = JSON.stringify(mockConfig.value) !== JSON.stringify(compareState.mockConfig || null);
 
-  return urlChanged || methodChanged || headersChanged || bodyChanged || authChanged;
+  return urlChanged || methodChanged || headersChanged || bodyChanged || authChanged || mockConfigChanged;
 });
 
 const getContentType = () => {
@@ -1409,11 +1425,11 @@ const openSaveDialog = () => {
     body: buildBody(),
     auth: {
       type: authType.value,
-      credentials: authType.value === 'api-key' ? { 
-        key: apiKey.value.key, 
+      credentials: authType.value === 'api-key' ? {
+        key: apiKey.value.key,
         value: apiKey.value.value,
         addTo: apiKey.value.addTo
-      } : authType.value === 'bearer' ? { token: bearerToken.value } 
+      } : authType.value === 'bearer' ? { token: bearerToken.value }
         : authType.value === 'basic' ? {
           username: basicAuth.value.username,
           password: basicAuth.value.password
@@ -1432,6 +1448,7 @@ const openSaveDialog = () => {
           PKCE: oauth2.value.PKCE
         } : undefined
     } || null,
+    mockConfig: mockConfig.value,
     order: props.request.order,
     createdAt: props.request.createdAt,
     updatedAt: new Date()
@@ -1452,11 +1469,11 @@ const openSaveAsDialog = () => {
     body: buildBody(),
     auth: {
       type: authType.value,
-      credentials: authType.value === 'api-key' ? { 
-        key: apiKey.value.key, 
+      credentials: authType.value === 'api-key' ? {
+        key: apiKey.value.key,
         value: apiKey.value.value,
         addTo: apiKey.value.addTo
-      } : authType.value === 'bearer' ? { token: bearerToken.value } 
+      } : authType.value === 'bearer' ? { token: bearerToken.value }
         : authType.value === 'basic' ? {
           username: basicAuth.value.username,
           password: basicAuth.value.password
@@ -1475,6 +1492,7 @@ const openSaveAsDialog = () => {
           PKCE: oauth2.value.PKCE
         } : undefined
     } || null,
+    mockConfig: mockConfig.value,
     order: props.request.order,
     createdAt: props.request.createdAt,
     updatedAt: new Date()
@@ -1593,7 +1611,8 @@ const sendRequest = async () => {
         headers: requestHeaders,
         body: requestBody,
         workspaceId: props.workspaceId,
-        environmentId: props.environmentId
+        environmentId: props.environmentId,
+        savedRequestId: props.request.id || undefined
       }
     });
 
@@ -1625,6 +1644,20 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown);
+});
+
+// Expose current request state for CodeExamples component
+defineExpose({
+  form,
+  headers,
+  queryParams,
+  bodyFormat,
+  jsonBody,
+  rawBody,
+  authType,
+  bearerToken,
+  basicAuth,
+  apiKey
 });
 </script>
 
@@ -1716,7 +1749,7 @@ onUnmounted(() => {
       <div class="border-b border-border-default bg-bg-secondary">
         <div class="flex gap-0">
           <button
-            v-for="tab in ['params', 'headers', 'body', 'auth', 'examples', 'response'] as TabType[]"
+            v-for="tab in ['params', 'headers', 'body', 'auth', 'mock', 'examples', 'response'] as TabType[]"
             :key="tab"
             @click="activeTab = tab"
             class="px-4 py-3 text-xs font-medium capitalize transition-all duration-fast border-b-2 focus:outline-none whitespace-nowrap"
@@ -2460,6 +2493,11 @@ onUnmounted(() => {
               </div>
             </div>
           </div>
+        </div>
+
+        <!-- Mock Tab -->
+        <div v-else-if="activeTab === 'mock'" class="flex-1 flex flex-col overflow-hidden">
+          <MockConfiguration v-model="mockConfig" />
         </div>
 
         <!-- Examples Tab -->

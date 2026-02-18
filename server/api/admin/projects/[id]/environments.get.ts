@@ -8,6 +8,7 @@ interface EnvironmentWithVariables {
   projectId: string;
   name: string;
   isActive: boolean;
+  isMockEnvironment: boolean;
   createdAt: Date;
   variables: {
     id: string;
@@ -60,7 +61,14 @@ export default defineEventHandler(async (event) => {
     }
 
     const projectEnvironments = await db
-      .select()
+      .select({
+        id: environments.id,
+        projectId: environments.projectId,
+        name: environments.name,
+        isActive: environments.isActive,
+        isMockEnvironment: environments.isMockEnvironment,
+        createdAt: environments.createdAt
+      })
       .from(environments)
       .where(eq(environments.projectId, projectId))
       .orderBy(desc(environments.createdAt));

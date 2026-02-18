@@ -17,6 +17,18 @@ export type RequestAuth = {
   credentials?: Record<string, string>;
 } | null;
 
+/**
+ * Mock configuration for per-request mock responses
+ * Used when environment is set to CLOUD MOCK
+ */
+export type MockConfig = {
+  isEnabled: boolean;
+  statusCode: number;
+  delay: number;
+  responseBody: Record<string, unknown> | string | null;
+  responseHeaders: Record<string, string>;
+} | null;
+
 export const savedRequests = pgTable('saved_requests', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   folderId: text('folder_id')
@@ -28,6 +40,7 @@ export const savedRequests = pgTable('saved_requests', {
   headers: text('headers').$type<RequestHeaders>(),
   body: text('body').$type<RequestBody>(),
   auth: text('auth').$type<RequestAuth>(),
+  mockConfig: text('mock_config').$type<MockConfig>(),
   order: integer('order').notNull().default(0),
   createdAt: timestamp('created_at')
     .notNull()
