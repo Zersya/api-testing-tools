@@ -1,7 +1,8 @@
 import { db } from '../db';
-import { workspaces, workspaceShares, workspaceAccess } from '../db/schema';
+import { workspaces, workspaceShares, workspaceAccess, workspaceMembers } from '../db/schema';
 import { eq, and, or, gt, isNull, inArray } from 'drizzle-orm';
 import type { SharePermission } from '../db/schema/workspaceShare';
+import type { MemberPermission } from '../db/schema/workspaceMember';
 
 /**
  * Permission levels hierarchy
@@ -34,6 +35,62 @@ export async function isWorkspaceOwner(userId: string, workspaceId: string): Pro
   
   // ownerId must match - no legacy null check (app not released yet)
   return workspace[0].ownerId === userId;
+}
+
+/**
+ * Check if user is a member of a workspace via explicit email invitation
+ */
+export async function hasMemberAccess(userId: string, userEmail: string, workspaceId: string): Promise<MemberPermission | null> {
+  // Check if user is a member by userId (accepted invitation)
+  const memberByUserId = await db
+    .select({ permission: workspaceMembers.permission })
+    .from(workspaceMembers)
+    .where(
+      and(
+        eq(workspaceMembers.workspaceId, workspaceId),
+        eq(workspaceMembers.userId, userId),
+        eq(workspaceMembers.status, 'accepted')
+      )
+    )
+    .limit(1);
+
+  if (memberByUserId.length) {
+    return memberByUserId[0].permission as MemberPermission;
+  }
+
+  // Check if user is a member by email (invitation sent to their email)
+  // Normalize email to lowercase for comparison
+  const normalizedEmail = userEmail.toLowerCase().trim();
+  const memberByEmail = await db
+    .select({ 
+      permission: workspaceMembers.permission,
+      id: workspaceMembers.id 
+    })
+    .from(workspaceMembers)
+    .where(
+      and(
+        eq(workspaceMembers.workspaceId, workspaceId),
+        eq(workspaceMembers.email, normalizedEmail),
+        eq(workspaceMembers.status, 'pending')
+      )
+    )
+    .limit(1);
+
+  if (memberByEmail.length) {
+    // Auto-accept the invitation and link to userId
+    await db
+      .update(workspaceMembers)
+      .set({ 
+        userId: userId,
+        status: 'accepted',
+        acceptedAt: new Date()
+      })
+      .where(eq(workspaceMembers.id, memberByEmail[0].id));
+    
+    return memberByEmail[0].permission as MemberPermission;
+  }
+
+  return null;
 }
 
 /**
@@ -75,12 +132,18 @@ export async function hasSharedAccess(userId: string, workspaceId: string): Prom
  * Get user's permission level for a workspace
  * Returns: 'owner' | 'edit' | 'view' | null
  */
-export async function getWorkspacePermission(userId: string, workspaceId: string): Promise<PermissionLevel> {
+export async function getWorkspacePermission(userId: string, workspaceId: string, userEmail?: string): Promise<PermissionLevel> {
   // First check if user is owner
   const isOwner = await isWorkspaceOwner(userId, workspaceId);
   if (isOwner) return 'owner';
 
-  // Then check for shared access
+  // Check for explicit member access (email invitation)
+  if (userEmail) {
+    const memberPermission = await hasMemberAccess(userId, userEmail, workspaceId);
+    if (memberPermission) return memberPermission;
+  }
+
+  // Then check for shared access (via share link)
   const sharedPermission = await hasSharedAccess(userId, workspaceId);
   if (sharedPermission) return sharedPermission;
 
@@ -248,11 +311,11 @@ export async function recordSharedAccess(shareId: string, userId: string, permis
 }
 
 /**
- * Get all workspaces accessible by a user (owned + shared)
+ * Get all workspaces accessible by a user (owned + shared + member)
  * For legacy workspaces (ownerId = null), they are treated as accessible by all users
  * until they are claimed by setting an owner
  */
-export async function getAccessibleWorkspaceIds(userId: string): Promise<string[]> {
+export async function getAccessibleWorkspaceIds(userId: string, userEmail?: string): Promise<string[]> {
   const now = new Date();
 
   console.log('[Permissions] getAccessibleWorkspaceIds called for user:', userId);
@@ -275,8 +338,7 @@ export async function getAccessibleWorkspaceIds(userId: string): Promise<string[
   const ownedIds = accessibleOwnedWorkspaces.map(w => w.id);
   console.log('[Permissions] Owned workspace IDs:', ownedIds);
 
-  // Get shared workspaces - check both workspaceAccess (for users who have accessed)
-  // and workspaceShares (for any active shares the user might have access to)
+  // Get shared workspaces - workspaces user accessed via share link
   const sharedViaAccess = await db
     .select({ workspaceId: workspaceShares.workspaceId })
     .from(workspaceAccess)
@@ -293,33 +355,66 @@ export async function getAccessibleWorkspaceIds(userId: string): Promise<string[
     );
 
   const sharedViaAccessIds = sharedViaAccess.map(w => w.workspaceId);
-
-  // Also include workspaces that have active shares - this ensures users can see
-  // workspaces that have been shared with them, even if they haven't accessed yet.
-  // This is a trade-off between security and usability: we show all shared workspaces
-  // to authenticated users since shares are intended to be accessed.
-  const allSharedWorkspaceIds = await db
-    .select({
-      workspaceId: workspaceShares.workspaceId
-    })
-    .from(workspaceShares)
-    .where(
-      and(
-        eq(workspaceShares.isActive, true),
-        or(
-          isNull(workspaceShares.expiresAt),
-          gt(workspaceShares.expiresAt, now)
-        )
-      )
-    );
-
-  const allSharedIds = allSharedWorkspaceIds.map(w => w.workspaceId);
-
-  const sharedIds = [...new Set([...sharedViaAccessIds, ...allSharedIds])];
   console.log('[Permissions] Shared workspace IDs (via access):', sharedViaAccessIds);
-  console.log('[Permissions] All shared workspace IDs:', allSharedIds);
 
-  const result = [...new Set([...ownedIds, ...sharedIds])];
+  // Get workspaces where user is an explicit member (email invitation)
+  const memberWorkspaces: string[] = [];
+  
+  if (userEmail) {
+    const normalizedEmail = userEmail.toLowerCase().trim();
+    
+    // Find accepted memberships by userId
+    const memberByUserId = await db
+      .select({ workspaceId: workspaceMembers.workspaceId })
+      .from(workspaceMembers)
+      .where(
+        and(
+          eq(workspaceMembers.userId, userId),
+          eq(workspaceMembers.status, 'accepted')
+        )
+      );
+    
+    memberByUserId.forEach(m => memberWorkspaces.push(m.workspaceId));
+    
+    // Find pending invitations by email and auto-accept them
+    const pendingInvitations = await db
+      .select({ 
+        id: workspaceMembers.id,
+        workspaceId: workspaceMembers.workspaceId 
+      })
+      .from(workspaceMembers)
+      .where(
+        and(
+          eq(workspaceMembers.email, normalizedEmail),
+          eq(workspaceMembers.status, 'pending')
+        )
+      );
+    
+    for (const invitation of pendingInvitations) {
+      // Auto-accept the invitation
+      await db
+        .update(workspaceMembers)
+        .set({ 
+          userId: userId,
+          status: 'accepted',
+          acceptedAt: new Date()
+        })
+        .where(eq(workspaceMembers.id, invitation.id));
+      
+      memberWorkspaces.push(invitation.workspaceId);
+    }
+  }
+  
+  console.log('[Permissions] Member workspace IDs:', memberWorkspaces);
+
+  // SECURITY FIX: Removed auto-inclusion of all shared workspaces
+  // Workspaces now ONLY appear in user's /admin list when:
+  // 1. User is the owner
+  // 2. User has accessed via share link (workspaceAccess record)
+  // 3. User is explicitly invited as a member (workspaceMembers)
+  // Shared workspaces should ONLY be accessible via /shared-workspace/{token} URL
+
+  const result = [...new Set([...ownedIds, ...sharedViaAccessIds, ...memberWorkspaces])];
   console.log('[Permissions] Final accessible workspace IDs:', result);
 
   return result;

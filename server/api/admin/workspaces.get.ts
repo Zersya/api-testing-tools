@@ -12,8 +12,8 @@ export default defineEventHandler(async (event) => {
       return [];
     }
 
-    // Get all workspace IDs this user can access (owned + shared)
-    const accessibleIds = await getAccessibleWorkspaceIds(user.id);
+    // Get all workspace IDs this user can access (owned + shared + member)
+    const accessibleIds = await getAccessibleWorkspaceIds(user.id, user.email);
 
     if (accessibleIds.length === 0) {
       return [];

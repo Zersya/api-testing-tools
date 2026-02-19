@@ -36,6 +36,13 @@
       "when": 1771481971407,
       "tag": "0004_curvy_sebastian_shaw",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1771487270313,
+      "tag": "0005_regular_nomad",
+      "breakpoints": true
     }
   ]
 }

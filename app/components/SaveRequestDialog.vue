@@ -72,6 +72,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   close: [];
   save: [data: { name: string; folderId: string; collectionId: string; isNewFolder: boolean; newFolderName?: string }];
+  refreshWorkspaces: [];
 }>();
 
 const form = ref({
@@ -86,6 +87,14 @@ const showNewFolderInput = ref(false);
 const isSaving = ref(false);
 const error = ref('');
 
+const showNewCollectionUI = ref(false);
+const isCreatingCollection = ref(false);
+const newCollectionForm = ref({
+  workspaceId: '',
+  projectId: '',
+  name: 'Default'
+});
+
 watch(() => [props.show, props.defaultCollectionId, props.defaultFolderId], async ([newShow, newDefaultCollectionId, newDefaultFolderId]) => {
   if (newShow && props.request) {
     await nextTick();
@@ -99,11 +108,40 @@ watch(() => [props.show, props.defaultCollectionId, props.defaultFolderId], asyn
     form.value.newFolderName = '';
     showNewFolderInput.value = false;
     error.value = '';
+    
+    // Reset collection creation state
+    showNewCollectionUI.value = false;
+    isCreatingCollection.value = false;
+    newCollectionForm.value = {
+      workspaceId: props.workspaces[0]?.id || '',
+      projectId: props.workspaces[0]?.projects[0]?.id || '',
+      name: 'Default'
+    };
+    
+    // Auto-show collection creation UI if no collections exist
+    if (!hasCollections.value) {
+      showNewCollectionUI.value = true;
+    }
   }
 });
 
 const selectedWorkspace = computed(() => props.workspaces[0]);
 const selectedProject = computed(() => selectedWorkspace.value?.projects[0]);
+
+const availableWorkspaces = computed(() => props.workspaces);
+
+const availableProjects = computed(() => {
+  const workspace = props.workspaces.find(w => w.id === newCollectionForm.value.workspaceId);
+  return workspace?.projects || [];
+});
+
+const hasCollections = computed(() => allCollections.value.length > 0);
+
+const canCreateCollection = computed(() => {
+  return newCollectionForm.value.workspaceId && 
+         newCollectionForm.value.projectId && 
+         newCollectionForm.value.name.trim().length > 0;
+});
 
 const findAllCollections = (): Array<CollectionItem & { projectName: string }> => {
   const result: Array<CollectionItem & { projectName: string }> = [];
@@ -224,6 +262,49 @@ const handleCreateFolder = async () => {
     error.value = e.message || 'Failed to create folder';
   } finally {
     isSaving.value = false;
+  }
+};
+
+const handleCreateCollection = async () => {
+  if (!newCollectionForm.value.name.trim()) {
+    error.value = 'Collection name is required';
+    return;
+  }
+  
+  if (!newCollectionForm.value.projectId) {
+    error.value = 'Please select a project';
+    return;
+  }
+  
+  if (newCollectionForm.value.name.length > 100) {
+    error.value = 'Collection name cannot exceed 100 characters';
+    return;
+  }
+  
+  isCreatingCollection.value = true;
+  error.value = '';
+  
+  try {
+    const newCollection = await $fetch(`/api/admin/projects/${newCollectionForm.value.projectId}/collections`, {
+      method: 'POST',
+      body: {
+        name: newCollectionForm.value.name.trim()
+      }
+    });
+    
+    // Auto-select the newly created collection
+    form.value.collectionId = newCollection.id;
+    form.value.folderId = ''; // Save to collection root by default
+    
+    // Hide collection creation UI
+    showNewCollectionUI.value = false;
+    
+    // Refresh workspaces to get the new collection
+    emit('refreshWorkspaces');
+  } catch (e: any) {
+    error.value = e.message || 'Failed to create collection';
+  } finally {
+    isCreatingCollection.value = false;
   }
 };
 

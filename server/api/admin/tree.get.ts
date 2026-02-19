@@ -121,7 +121,7 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Get all workspace IDs this user can access
-    const accessibleIds = await getAccessibleWorkspaceIds(user.id);
+    const accessibleIds = await getAccessibleWorkspaceIds(user.id, user.email);
     
     console.log('[Tree API] User ID:', user.id);
     console.log('[Tree API] Accessible workspace IDs:', accessibleIds);
