@@ -1,8 +1,10 @@
 <script setup lang="ts">
 interface Props {
   show: boolean;
-  folderId: string;
-  folderName: string;
+  folderId?: string;
+  folderName?: string;
+  collectionId?: string;
+  collectionName?: string;
 }
 
 const props = defineProps<Props>();
@@ -53,7 +55,7 @@ watch(() => props.show, (newVal) => {
   }
 });
 
-watch(() => props.folderId, () => {
+watch(() => [props.folderId, props.collectionId], () => {
   resetForm();
 });
 
@@ -94,17 +96,34 @@ const createRequest = async () => {
       auth = { type: form.value.authType };
     }
 
-    const result = await $fetch(`/api/admin/folders/${props.folderId}/requests`, {
-      method: 'POST',
-      body: {
-        name: form.value.name.trim(),
-        method: form.value.method,
-        url: form.value.url.trim(),
-        headers,
-        body,
-        auth
-      }
-    });
+    const requestBody = {
+      name: form.value.name.trim(),
+      method: form.value.method,
+      url: form.value.url.trim(),
+      headers,
+      body,
+      auth
+    };
+
+    let result;
+    if (props.collectionId) {
+      // Creating request at collection root
+      result = await $fetch(`/api/admin/collections/${props.collectionId}/requests`, {
+        method: 'POST',
+        body: requestBody
+      });
+    } else if (props.folderId) {
+      // Creating request in a folder
+      result = await $fetch(`/api/admin/folders/${props.folderId}/requests`, {
+        method: 'POST',
+        body: requestBody
+      });
+    } else {
+      error.value = 'No folder or collection specified';
+      isSubmitting.value = false;
+      return;
+    }
+
     emit('created', result);
     handleClose();
   } catch (e: any) {

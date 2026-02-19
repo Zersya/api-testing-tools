@@ -1,7 +1,8 @@
 <script setup lang="ts">
 interface HttpRequest {
   id: string;
-  folderId: string;
+  folderId: string | null;
+  collectionId?: string | null;
   name: string;
   method: string;
   url: string;
@@ -213,11 +214,11 @@ const isDescendant = (ancestorId: string, descendantId: string): boolean => {
             @select-request="emit('selectRequest', $event)"
             @context-menu="emit('contextMenu', $event, 'folder', $event)"
             @create-request="emit('createRequest', $event)"
-            @drag-start="emit('dragStart', $event[0], $event[1])"
+            @drag-start="(...args: any[]) => emit('dragStart', args[0], args[1])"
             @drag-end="emit('dragEnd')"
-            @drag-over="emit('dragOver', $event[0], $event[1], $event[2], $event[3])"
+            @drag-over="(...args: any[]) => emit('dragOver', args[0], args[1], args[2], args[3])"
             @drag-leave="emit('dragLeave')"
-            @drop="emit('drop', $event[0], $event[1], $event[2], $event[3])"
+            @drop="(...args: any[]) => emit('drop', args[0], args[1], args[2], args[3])"
           />
           <!-- Drop indicator between folders -->
           <div

@@ -5,7 +5,8 @@ import { getAccessibleWorkspaceIds, getWorkspacePermissionsBatch } from '../../u
 
 interface RequestItem {
   id: string;
-  folderId: string;
+  folderId: string | null;
+  collectionId: string | null;
   name: string;
   method: string;
   url: string;
@@ -45,6 +46,7 @@ interface CollectionWithFolders {
   authConfig: Record<string, unknown> | null;
   createdAt: Date;
   folders: FolderWithRequestsAndChildren[];
+  requests: RequestItem[];
   folderCount: number;
   requestCount: number;
 }
@@ -186,8 +188,16 @@ export default defineEventHandler(async (event) => {
               const collectionFolders = allFolders.filter(f => f.collectionId === collection.id);
               const folderTree = buildFolderTree(collectionFolders, allRequests);
 
+              // Get collection-level requests (root level, where folderId is null)
+              const collectionRootRequests = allRequests.filter(req => 
+                req.collectionId === collection.id && req.folderId === null
+              );
+
               const folderCount = collectionFolders.length;
+              
+              // Count all requests in collection (both folder-level and collection-level)
               const requestCount = allRequests.filter(req => {
+                if (req.collectionId === collection.id) return true;
                 const folder = allFolders.find(f => f.id === req.folderId);
                 return folder?.collectionId === collection.id;
               }).length;
@@ -195,6 +205,7 @@ export default defineEventHandler(async (event) => {
               return {
                 ...collection,
                 folders: folderTree,
+                requests: collectionRootRequests,
                 folderCount,
                 requestCount
               };

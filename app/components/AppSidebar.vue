@@ -23,7 +23,8 @@ interface Mock {
 
 interface HttpRequest {
   id: string;
-  folderId: string;
+  folderId: string | null;
+  collectionId?: string | null;
   name: string;
   method: string;
   url: string;
@@ -56,6 +57,7 @@ interface CollectionWithFolders {
   authConfig: Record<string, unknown> | null;
   createdAt: Date;
   folders: FolderWithRequestsAndChildren[];
+  requests: HttpRequest[];
   folderCount: number;
   requestCount: number;
 }
@@ -123,7 +125,7 @@ const emit = defineEmits<{
   deleteCollection: [collection: Collection];
   deleteGroup: [collectionId: string, groupName: string, mocks: Mock[]];
   deleteFolder: [folder: any];
-  createRequest: [folderId?: string];
+  createRequest: [folderId?: string, collectionId?: string];
   createFolder: [collectionId?: string];
   createProject: [workspaceId?: string];
   createWorkspace: [];
@@ -138,7 +140,7 @@ const emit = defineEmits<{
   generateDefinitionMocks: [definition: any];
   reimportDefinition: [definition: any];
   reorderFolders: [collectionId: string, folderUpdates: { id: string; parentFolderId: string | null; order: number }[]];
-  reorderRequests: [folderId: string, requestUpdates: { id: string; folderId: string; order: number }[]];
+  reorderRequests: [folderId: string | null, requestUpdates: { id: string; folderId?: string | null; collectionId?: string | null; order: number }[], collectionId?: string | null];
   selectWorkspace: [workspaceId: string];
   renameFolder: [folder: any];
   importComplete: [];
@@ -158,7 +160,7 @@ const expandedFolders = ref<Set<string>>(new Set());
 const draggingFolderId = ref<string | null>(null);
 const draggingRequestId = ref<string | null>(null);
 const dropTarget = ref<{
-  type: 'folder' | 'request' | 'between';
+  type: 'folder' | 'request' | 'collection' | 'between';
   id: string;
   position: 'before' | 'after' | 'inside';
 } | null>(null);
@@ -431,9 +433,46 @@ const handleDragLeave = () => {
   if (!dropTarget.value) {
     return;
   }
+  dropTarget.value = null;
 };
 
-const handleDrop = async (event: DragEvent, type: 'folder' | 'request', id: string, position: 'before' | 'after' | 'inside') => {
+const handleCollectionDragOver = (event: DragEvent, collectionId: string) => {
+  event.preventDefault();
+  
+  // Only allow dropping requests onto collections (not folders)
+  if (!draggingRequestId.value) {
+    dropTarget.value = null;
+    return;
+  }
+  
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'move';
+  }
+  
+  dropTarget.value = { type: 'collection', id: collectionId, position: 'inside' };
+};
+
+const handleCollectionDrop = async (event: DragEvent, collectionId: string) => {
+  event.preventDefault();
+  event.stopPropagation();
+  
+  if (!draggingRequestId.value) {
+    handleDragEnd();
+    return;
+  }
+  
+  const requestId = draggingRequestId.value;
+  
+  try {
+    await handleRequestToCollectionDrop(requestId, collectionId);
+  } catch (error: any) {
+    console.error('Error dropping request to collection:', error);
+  } finally {
+    handleDragEnd();
+  }
+};
+
+const handleDrop = async (event: DragEvent, type: 'folder' | 'request' | 'collection', id: string, position: 'before' | 'after' | 'inside') => {
   event.preventDefault();
   
   const sourceType = draggingFolderId.value ? 'folder' : 'request';
@@ -450,7 +489,9 @@ const handleDrop = async (event: DragEvent, type: 'folder' | 'request', id: stri
     } else if (sourceType === 'request' && type === 'folder') {
       await handleRequestToFolderDrop(sourceId as string, id);
     } else if (sourceType === 'request' && type === 'request') {
-      await handleRequestDrop(sourceId as string, id, position);
+      await handleRequestDrop(sourceId as string, id, position as 'before' | 'after');
+    } else if (sourceType === 'request' && type === 'collection') {
+      await handleRequestToCollectionDrop(sourceId as string, id);
     }
   } catch (error: any) {
     console.error('Drop error:', error);
@@ -532,32 +573,96 @@ const handleRequestToFolderDrop = async (requestId: string, targetFolderId: stri
 
   const newOrder = targetFolder.requests.length;
   
-  emit('reorderRequests', targetFolderId, [{ id: requestId, folderId: targetFolderId, order: newOrder }]);
+  // Check if request is currently at collection root
+  const requestLocation = findRequestLocation(requestId, currentWorkspace.value);
+  
+  if (requestLocation && requestLocation.type === 'collection') {
+    // Moving from collection root to folder
+    emit('reorderRequests', targetFolderId, [{ id: requestId, folderId: targetFolderId, order: newOrder }], null);
+  } else {
+    // Moving between folders
+    emit('reorderRequests', targetFolderId, [{ id: requestId, folderId: targetFolderId, order: newOrder }], null);
+  }
+};
+
+const handleRequestToCollectionDrop = async (requestId: string, targetCollectionId: string) => {
+  // Find the target collection
+  let targetCollection: CollectionWithFolders | null = null;
+  
+  if (currentWorkspace.value) {
+    for (const project of currentWorkspace.value.projects) {
+      const found = project.collections.find(c => c.id === targetCollectionId);
+      if (found) {
+        targetCollection = found;
+        break;
+      }
+    }
+  }
+  
+  if (!targetCollection) return;
+
+  // Calculate order at collection root (after all folders and existing requests)
+  const existingRootRequests = targetCollection.requests;
+  const existingRootFolders = targetCollection.folders.filter(f => f.parentFolderId === null);
+  const maxRequestOrder = existingRootRequests.reduce((max, r) => Math.max(max, r.order), -1);
+  const maxFolderOrder = existingRootFolders.reduce((max, f) => Math.max(max, f.order), -1);
+  const newOrder = Math.max(maxRequestOrder, maxFolderOrder) + 1;
+  
+  // Move request to collection root
+  emit('reorderRequests', null, [{ id: requestId, collectionId: targetCollectionId, order: newOrder }], targetCollectionId);
 };
 
 const handleRequestDrop = async (sourceRequestId: string, targetRequestId: string, position: 'before' | 'after') => {
+  // Check if target is in a folder
   const targetFolder = findRequestFolder(targetRequestId, currentWorkspace.value);
-  if (!targetFolder) return;
+  
+  if (targetFolder) {
+    // Target is in a folder - use folder-based reordering
+    const siblings = targetFolder.requests;
+    const targetIndex = siblings.findIndex(r => r.id === targetRequestId);
+    const newOrder = position === 'before' ? targetIndex : targetIndex + 1;
 
-  const siblings = targetFolder.requests;
-  const targetIndex = siblings.findIndex(r => r.id === targetRequestId);
-  const newOrder = position === 'before' ? targetIndex : targetIndex + 1;
+    const updates = siblings
+      .filter(r => r.id !== sourceRequestId)
+      .map((r, idx) => ({
+        id: r.id,
+        folderId: targetFolder.id,
+        order: idx >= newOrder ? idx + 1 : idx
+      }));
 
-  const updates = siblings
-    .filter(r => r.id !== sourceRequestId)
-    .map((r, idx) => ({
-      id: r.id,
-      folderId: targetFolder.id,
-      order: idx >= newOrder ? idx + 1 : idx
-    }));
+    if (siblings.find(r => r.id === sourceRequestId)) {
+      updates.push({ id: sourceRequestId, folderId: targetFolder.id, order: newOrder });
+    } else {
+      updates.unshift({ id: sourceRequestId, folderId: targetFolder.id, order: newOrder });
+    }
 
-  if (siblings.find(r => r.id === sourceRequestId)) {
-    updates.push({ id: sourceRequestId, folderId: targetFolder.id, order: newOrder });
+    emit('reorderRequests', targetFolder.id, updates, null);
   } else {
-    updates.unshift({ id: sourceRequestId, folderId: targetFolder.id, order: newOrder });
-  }
+    // Target might be at collection root level
+    const targetLocation = findRequestLocation(targetRequestId, currentWorkspace.value);
+    if (targetLocation && targetLocation.type === 'collection') {
+      const collection = targetLocation.collection;
+      const siblings = collection.requests;
+      const targetIndex = siblings.findIndex(r => r.id === targetRequestId);
+      const newOrder = position === 'before' ? targetIndex : targetIndex + 1;
 
-  emit('reorderRequests', targetFolder.id, updates);
+      const updates = siblings
+        .filter(r => r.id !== sourceRequestId)
+        .map((r, idx) => ({
+          id: r.id,
+          collectionId: collection.id,
+          order: idx >= newOrder ? idx + 1 : idx
+        }));
+
+      if (siblings.find(r => r.id === sourceRequestId)) {
+        updates.push({ id: sourceRequestId, collectionId: collection.id, order: newOrder });
+      } else {
+        updates.unshift({ id: sourceRequestId, collectionId: collection.id, order: newOrder });
+      }
+
+      emit('reorderRequests', null, updates, collection.id);
+    }
+  }
 };
 
 const findRequestFolder = (requestId: string, workspace: WorkspaceWithProjects | undefined): FolderWithRequestsAndChildren | null => {
@@ -583,6 +688,42 @@ const findRequestFolder = (requestId: string, workspace: WorkspaceWithProjects |
   for (const project of workspace.projects) {
     const found = searchInCollections(project.collections);
     if (found) return found;
+  }
+  
+  return null;
+};
+
+interface RequestLocation {
+  type: 'folder' | 'collection';
+  folder?: FolderWithRequestsAndChildren;
+  collection: CollectionWithFolders;
+}
+
+const findRequestLocation = (requestId: string, workspace: WorkspaceWithProjects | undefined): RequestLocation | null => {
+  if (!workspace) return null;
+  
+  for (const project of workspace.projects) {
+    for (const collection of project.collections) {
+      // Check if request is at collection root level
+      if (collection.requests.find(r => r.id === requestId)) {
+        return { type: 'collection', collection };
+      }
+      
+      // Check if request is in a folder
+      const findInFolders = (folders: FolderWithRequestsAndChildren[]): FolderWithRequestsAndChildren | null => {
+        for (const folder of folders) {
+          if (folder.requests.find(r => r.id === requestId)) return folder;
+          const found = findInFolders(folder.children);
+          if (found) return found;
+        }
+        return null;
+      };
+      
+      const folder = findInFolders(collection.folders);
+      if (folder) {
+        return { type: 'folder', folder, collection };
+      }
+    }
   }
   
   return null;
@@ -655,6 +796,40 @@ const getMethodColor = (method: string) => {
   return colors[method] || '#64748b';
 };
 
+interface SortedCollectionItem {
+  id: string;
+  type: 'folder' | 'request';
+  order: number;
+  data: any;
+}
+
+const getSortedCollectionItems = (collection: CollectionWithFolders): SortedCollectionItem[] => {
+  const items: SortedCollectionItem[] = [];
+  
+  // Add folders
+  collection.folders.forEach(folder => {
+    items.push({
+      id: folder.id,
+      type: 'folder',
+      order: folder.order,
+      data: folder
+    });
+  });
+  
+  // Add requests
+  collection.requests.forEach(request => {
+    items.push({
+      id: request.id,
+      type: 'request',
+      order: request.order,
+      data: request
+    });
+  });
+  
+  // Sort by order
+  return items.sort((a, b) => a.order - b.order);
+};
+
 const handleContextMenu = (event: MouseEvent, type: string, data: any) => {
   event.preventDefault();
   event.stopPropagation();
@@ -692,6 +867,8 @@ const handleContextAction = (action: string) => {
     case 'collection':
       if (action === 'create-folder') {
         emit('createFolder', data.id);
+      } else if (action === 'create-request') {
+        emit('createRequest', null, data.id); // Pass null for folderId, collectionId as second param
       } else if (action === 'rename-collection') {
         emit('renameCollection', data);
       } else if (action === 'delete-collection') {
@@ -923,10 +1100,16 @@ watch(activeView, (newView) => {
               <div v-for="collection in project.collections" :key="collection.id" class="mb-0.5">
                 <!-- Collection Header -->
                 <div
-                  class="flex items-center gap-2 py-2 px-3 text-text-primary text-xs font-medium cursor-pointer transition-colors duration-fast hover:bg-bg-hover group/groupitem"
-                  :class="{ 'border-l-[2px] border-l-accent-blue': isCollectionHierarchyExpanded(collection.id) }"
+                  class="flex items-center gap-2 py-2 px-3 text-text-primary text-xs font-medium cursor-pointer transition-colors duration-fast hover:bg-bg-hover group/groupitem relative"
+                  :class="{ 
+                    'border-l-[2px] border-l-accent-blue': isCollectionHierarchyExpanded(collection.id),
+                    'bg-accent-blue/10 border border-dashed border-accent-blue rounded': dropTarget?.type === 'collection' && dropTarget?.id === collection.id
+                  }"
                   @click="toggleCollectionHierarchy(collection.id)"
                   @contextmenu.prevent="handleContextMenu($event, 'collection', collection)"
+                  @dragover="handleCollectionDragOver($event, collection.id)"
+                  @dragleave="handleDragLeave"
+                  @drop="handleCollectionDrop($event, collection.id)"
                 >
                   <!-- Chevron -->
                   <svg
@@ -965,10 +1148,12 @@ watch(activeView, (newView) => {
                 <!-- Collection Content (Folders) -->
                 <Transition name="expand">
                   <div v-show="isCollectionHierarchyExpanded(collection.id)" class="pl-3">
-                    <!-- Folders Tree -->
-                    <template v-for="folder in collection.folders" :key="folder.id">
+                    <!-- Mixed Folders and Requests sorted by order -->
+                    <template v-for="item in getSortedCollectionItems(collection)" :key="item.id">
+                      <!-- Render Folder -->
                       <FolderTreeItem
-                        :folder="folder"
+                        v-if="item.type === 'folder'"
+                        :folder="item.data"
                         :expanded-folder-ids="expandedFolders"
                         :dragging-folder-id="draggingFolderId"
                         :dragging-request-id="draggingRequestId"
@@ -981,13 +1166,39 @@ watch(activeView, (newView) => {
                         @drag-end="handleDragEnd"
                         @drag-over="handleDragOver"
                         @drag-leave="handleDragLeave"
-                        @drop="handleDrop"
+                        @drop="($event: DragEvent, type: string, id: string, position: any) => handleDrop($event, type as 'folder' | 'request' | 'collection', id, position)"
                       />
+                      <!-- Render Request -->
+                      <div
+                        v-else
+                        :class="[
+                          'flex items-center gap-2 py-1.5 px-3 mx-2 my-px rounded cursor-pointer border-l-2 border-l-transparent transition-all duration-fast hover:bg-bg-hover',
+                          dropTarget?.type === 'request' && dropTarget?.id === item.data.id ? 'bg-accent-blue/10 border-l-accent-blue' : ''
+                        ]"
+                        :draggable="true"
+                        @dragstart="handleDragStart('request', item.data.id)"
+                        @dragend="handleDragEnd"
+                        @dragover="handleDragOver($event, 'request', item.data.id, 'before')"
+                        @dragleave="handleDragLeave"
+                        @drop="handleDrop($event, 'request', item.data.id, 'before')"
+                        @click="emit('selectRequest', item.data)"
+                        @contextmenu.prevent="handleContextMenu($event, 'request', item.data)"
+                      >
+                        <span
+                          class="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                          :style="{ backgroundColor: getMethodColor(item.data.method) + '20', color: getMethodColor(item.data.method) }"
+                        >
+                          {{ item.data.method }}
+                        </span>
+                        <span class="flex-1 text-[11px] font-mono truncate text-text-secondary">
+                          {{ item.data.name }}
+                        </span>
+                      </div>
                     </template>
 
                     <!-- Empty Collection -->
-                    <div v-if="collection.folders.length === 0" class="py-3 px-5 text-xs text-text-muted italic pl-4">
-                      No folders in this collection
+                    <div v-if="collection.folders.length === 0 && collection.requests.length === 0" class="py-3 px-5 text-xs text-text-muted italic pl-4">
+                      No items in this collection
                     </div>
                   </div>
                 </Transition>
@@ -1237,6 +1448,16 @@ watch(activeView, (newView) => {
                 <line x1="9" y1="14" x2="15" y2="14"></line>
               </svg>
               New Folder
+            </button>
+            <button
+              class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              @click.stop="handleContextAction('create-request')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              New Request
             </button>
             <button
               class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"

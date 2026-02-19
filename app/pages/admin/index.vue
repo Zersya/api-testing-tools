@@ -33,7 +33,8 @@ interface Mock {
 
 interface HttpRequest {
   id: string;
-  folderId: string;
+  folderId: string | null;
+  collectionId?: string | null;
   name: string;
   method: string;
   url: string;
@@ -392,6 +393,8 @@ const folderCollectionName = ref<string>('');
 const showRequestModal = ref(false);
 const requestFolderId = ref<string | null>(null);
 const requestFolderName = ref<string>('');
+const requestCollectionId = ref<string | null>(null);
+const requestCollectionName = ref<string>('');
 const saveDialogDefaultCollectionId = ref('');
 const saveDialogDefaultFolderId = ref('');
 
@@ -1139,14 +1142,25 @@ const handleSaveAs = async (data: any) => {
   }
 };
 
-const openCreateRequest = (folderId?: string) => {
+const openCreateRequest = (folderId?: string | null, collectionId?: string) => {
   if (folderId) {
+    // Creating request in a folder
     const folder = findFolderInWorkspaces(folderId);
     requestFolderId.value = folderId;
     requestFolderName.value = folder?.name || 'Unknown Folder';
+    requestCollectionId.value = null;
+    requestCollectionName.value = '';
+    showRequestModal.value = true;
+  } else if (collectionId) {
+    // Creating request at collection root
+    const collection = findCollectionInWorkspaces(collectionId);
+    requestFolderId.value = null;
+    requestFolderName.value = '';
+    requestCollectionId.value = collectionId;
+    requestCollectionName.value = collection?.name || 'Unknown Collection';
     showRequestModal.value = true;
   } else {
-    alert('Please select a folder first');
+    alert('Please select a folder or collection first');
   }
 };
 
@@ -1639,11 +1653,22 @@ const handleReorderFolders = async (collectionId: string, updates: { id: string;
     }
 };
 
-const handleReorderRequests = async (folderId: string, updates: { id: string; folderId: string; order: number }[]) => {
+const handleReorderRequests = async (
+  folderId: string | null,
+  updates: { id: string; folderId?: string | null; collectionId?: string | null; order: number }[],
+  collectionId?: string | null
+) => {
     try {
+        const body: any = { updates };
+        if (folderId) {
+            body.folderId = folderId;
+        } else if (collectionId) {
+            body.collectionId = collectionId;
+        }
+        
         await $fetch('/api/admin/requests/reorder', {
             method: 'POST',
-            body: { folderId, updates }
+            body
         });
         refresh();
     } catch (e: any) {
@@ -2503,7 +2528,9 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
       :show="showRequestModal"
       :folder-id="requestFolderId || ''"
       :folder-name="requestFolderName"
-      @close="showRequestModal = false; requestFolderId = null"
+      :collection-id="requestCollectionId || ''"
+      :collection-name="requestCollectionName"
+      @close="showRequestModal = false; requestFolderId = null; requestCollectionId = null"
       @created="refreshWorkspaces()"
     />
 

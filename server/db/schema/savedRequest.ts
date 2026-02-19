@@ -1,6 +1,7 @@
-import { pgTable, text, integer, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, timestamp, check } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { folders } from './folder';
+import { collections } from './collection';
 
 /**
  * Supported HTTP methods for saved requests
@@ -32,8 +33,9 @@ export type MockConfig = {
 export const savedRequests = pgTable('saved_requests', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   folderId: text('folder_id')
-    .notNull()
     .references(() => folders.id, { onDelete: 'cascade' }),
+  collectionId: text('collection_id')
+    .references(() => collections.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   method: text('method').notNull().$type<HttpMethod>(),
   url: text('url').notNull(),
@@ -48,7 +50,14 @@ export const savedRequests = pgTable('saved_requests', {
   updatedAt: timestamp('updated_at')
     .notNull()
     .defaultNow()
-});
+}, (table) => ({
+  folderOrCollectionCheck: check('folder_or_collection_check', 
+    sql`${table.folderId} IS NOT NULL OR ${table.collectionId} IS NOT NULL`
+  ),
+  notBothCheck: check('not_both_check',
+    sql`NOT (${table.folderId} IS NOT NULL AND ${table.collectionId} IS NOT NULL)`
+  )
+}));
 
 export type SavedRequest = typeof savedRequests.$inferSelect;
 export type NewSavedRequest = typeof savedRequests.$inferInsert;

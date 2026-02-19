@@ -1,9 +1,10 @@
 import { db } from '../../../../db';
-import { savedRequests, folders } from '../../../../db/schema';
-import { eq } from 'drizzle-orm';
+import { savedRequests, folders, collections } from '../../../../db/schema';
+import { eq, and, isNull } from 'drizzle-orm';
 
 interface MoveRequestBody {
-  folderId: string;
+  folderId?: string | null;
+  collectionId?: string | null;
   order?: number;
 }
 
@@ -19,11 +20,21 @@ export default defineEventHandler(async (event) => {
 
   const body = await readBody<MoveRequestBody>(event);
 
-  // Validate required fields
-  if (!body.folderId || typeof body.folderId !== 'string') {
+  // Validate that exactly one of folderId or collectionId is provided
+  const hasFolderId = body.folderId !== undefined && body.folderId !== null && body.folderId !== '';
+  const hasCollectionId = body.collectionId !== undefined && body.collectionId !== null && body.collectionId !== '';
+
+  if (!hasFolderId && !hasCollectionId) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'Target folder ID is required'
+      statusMessage: 'Either folderId or collectionId is required'
+    });
+  }
+
+  if (hasFolderId && hasCollectionId) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Cannot specify both folderId and collectionId'
     });
   }
 
@@ -42,49 +53,111 @@ export default defineEventHandler(async (event) => {
       });
     }
 
-    // Check if target folder exists
-    const targetFolder = (await db
-      .select()
-      .from(folders)
-      .where(eq(folders.id, body.folderId))
-      .limit(1))[0];
+    let targetCollectionId: string;
+    let updateData: any = {
+      order: 0,
+      updatedAt: new Date()
+    };
 
-    if (!targetFolder) {
-      throw createError({
-        statusCode: 404,
-        statusMessage: 'Target folder not found'
-      });
-    }
+    if (hasFolderId) {
+      // Moving to a folder
+      const targetFolder = (await db
+        .select()
+        .from(folders)
+        .where(eq(folders.id, body.folderId!))
+        .limit(1))[0];
 
-    // Calculate order for the request in the new folder
-    let order = 0;
-    if (body.order !== undefined) {
-      if (typeof body.order !== 'number' || !Number.isInteger(body.order)) {
+      if (!targetFolder) {
         throw createError({
-          statusCode: 400,
-          statusMessage: 'Order must be an integer'
+          statusCode: 404,
+          statusMessage: 'Target folder not found'
         });
       }
-      order = body.order;
-    } else {
-      // Place at the end of the target folder
-      const existingRequests = await db
-        .select()
-        .from(savedRequests)
-        .where(eq(savedRequests.folderId, body.folderId));
 
-      const maxOrder = existingRequests.reduce((max, r) => Math.max(max, r.order), -1);
-      order = maxOrder + 1;
+      targetCollectionId = targetFolder.collectionId;
+      updateData.folderId = body.folderId;
+      updateData.collectionId = null;
+
+      // Calculate order for the request in the new folder
+      if (body.order !== undefined) {
+        if (typeof body.order !== 'number' || !Number.isInteger(body.order)) {
+          throw createError({
+            statusCode: 400,
+            statusMessage: 'Order must be an integer'
+          });
+        }
+        updateData.order = body.order;
+      } else {
+        // Place at the end of the target folder
+        const existingRequests = await db
+          .select()
+          .from(savedRequests)
+          .where(eq(savedRequests.folderId, body.folderId!));
+
+        const maxOrder = existingRequests.reduce((max, r) => Math.max(max, r.order), -1);
+        updateData.order = maxOrder + 1;
+      }
+    } else {
+      // Moving to collection root
+      const targetCollection = (await db
+        .select()
+        .from(collections)
+        .where(eq(collections.id, body.collectionId!))
+        .limit(1))[0];
+
+      if (!targetCollection) {
+        throw createError({
+          statusCode: 404,
+          statusMessage: 'Target collection not found'
+        });
+      }
+
+      targetCollectionId = targetCollection.id;
+      updateData.folderId = null;
+      updateData.collectionId = body.collectionId;
+
+      // Calculate order for the request at collection root
+      if (body.order !== undefined) {
+        if (typeof body.order !== 'number' || !Number.isInteger(body.order)) {
+          throw createError({
+            statusCode: 400,
+            statusMessage: 'Order must be an integer'
+          });
+        }
+        updateData.order = body.order;
+      } else {
+        // Place at the end (after all folders and requests at root)
+        const existingRootRequests = await db
+          .select()
+          .from(savedRequests)
+          .where(
+            and(
+              eq(savedRequests.collectionId, body.collectionId!),
+              isNull(savedRequests.folderId)
+            )
+          );
+
+        const existingRootFolders = await db
+          .select()
+          .from(folders)
+          .where(
+            and(
+              eq(folders.collectionId, body.collectionId!),
+              isNull(folders.parentFolderId)
+            )
+          );
+
+        const maxRequestOrder = existingRootRequests.reduce((max, r) => Math.max(max, r.order), -1);
+        const maxFolderOrder = existingRootFolders.reduce((max, f) => Math.max(max, f.order), -1);
+        const maxOrder = Math.max(maxRequestOrder, maxFolderOrder);
+        updateData.order = maxOrder + 1;
+      }
     }
 
-    // Move the request to the new folder
+    // Move the request
     const movedRequest = (await db
       .update(savedRequests)
-      .set({
-        folderId: body.folderId,
-        order,
-        updatedAt: new Date()
-      })
+      .set(updateData)
       .where(eq(savedRequests.id, id))
       .returning())[0];
 

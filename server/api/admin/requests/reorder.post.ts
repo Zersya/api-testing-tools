@@ -1,25 +1,38 @@
 import { db } from '../../../db';
 import { savedRequests } from '../../../db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and, isNull } from 'drizzle-orm';
 
 interface RequestUpdate {
   id: string;
-  folderId: string;
+  folderId?: string | null;
+  collectionId?: string | null;
   order: number;
 }
 
 interface ReorderBody {
-  folderId: string;
+  folderId?: string;
+  collectionId?: string;
   updates: RequestUpdate[];
 }
 
 export default defineEventHandler(async (event) => {
   const body = await readBody<ReorderBody>(event);
 
-  if (!body.folderId || !body.updates || !Array.isArray(body.updates)) {
+  // Validate that exactly one of folderId or collectionId is provided
+  const hasFolderId = body.folderId !== undefined && body.folderId !== null && body.folderId !== '';
+  const hasCollectionId = body.collectionId !== undefined && body.collectionId !== null && body.collectionId !== '';
+
+  if ((!hasFolderId && !hasCollectionId) || (hasFolderId && hasCollectionId)) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'folderId and updates array are required'
+      statusMessage: 'Either folderId or collectionId must be provided (not both)'
+    });
+  }
+
+  if (!body.updates || !Array.isArray(body.updates)) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'updates array is required'
     });
   }
 
@@ -29,10 +42,17 @@ export default defineEventHandler(async (event) => {
 
   try {
     for (const update of body.updates) {
-      if (!update.id || typeof update.folderId !== 'string' || typeof update.order !== 'number') {
+      if (!update.id) {
         throw createError({
           statusCode: 400,
-          statusMessage: 'Each update must have id, folderId, and order'
+          statusMessage: 'Each update must have an id'
+        });
+      }
+
+      if (typeof update.order !== 'number') {
+        throw createError({
+          statusCode: 400,
+          statusMessage: `Update for request ${update.id} must have a numeric order`
         });
       }
 
@@ -45,7 +65,7 @@ export default defineEventHandler(async (event) => {
       if (!existing) {
         throw createError({
           statusCode: 404,
-          statusMessage: `Request ${update.id} not found`
+          statusMessage: `Request with id '${update.id}' not found`
         });
       }
     }
@@ -53,11 +73,20 @@ export default defineEventHandler(async (event) => {
     const updatedRequests: typeof savedRequests.$inferSelect[] = [];
 
     for (const update of body.updates) {
-      const updateData = {
-        folderId: update.folderId,
+      let updateData: any = {
         order: update.order,
         updatedAt: new Date()
       };
+
+      if (hasFolderId) {
+        // Reordering within a folder
+        updateData.folderId = body.folderId;
+        updateData.collectionId = null;
+      } else {
+        // Reordering within collection root
+        updateData.folderId = null;
+        updateData.collectionId = body.collectionId;
+      }
 
       const updated = (await db
         .update(savedRequests)

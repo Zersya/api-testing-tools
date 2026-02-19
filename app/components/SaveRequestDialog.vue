@@ -18,6 +18,7 @@ interface CollectionItem {
   authConfig: Record<string, unknown> | null;
   createdAt: Date;
   folders: FolderItem[];
+  requests: any[];
   folderCount: number;
   requestCount: number;
 }
