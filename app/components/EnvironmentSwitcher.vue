@@ -37,12 +37,17 @@ const emit = defineEmits<{
 const isOpen = ref(false);
 const dropdownRef = ref<HTMLDivElement | null>(null);
 
+// Ensure environments is always an array
+const safeEnvironments = computed(() => {
+  return Array.isArray(props.environments) ? props.environments : [];
+});
+
 const activeEnvironment = computed(() => {
-  return props.environments.find(e => e.id === props.activeEnvironmentId) || null;
+  return safeEnvironments.value.find(e => e.id === props.activeEnvironmentId) || null;
 });
 
 const sortedEnvironments = computed(() => {
-  return [...props.environments].sort((a, b) => {
+  return [...safeEnvironments.value].sort((a, b) => {
     if (a.isActive) return -1;
     if (b.isActive) return 1;
     return a.name.localeCompare(b.name);
@@ -125,7 +130,7 @@ onUnmounted(() => {
         <template v-else>
           <span
             class="w-2 h-2 rounded-full"
-            :style="{ backgroundColor: getEnvironmentColor(environments.indexOf(activeEnvironment)) }"
+            :style="{ backgroundColor: getEnvironmentColor(safeEnvironments.indexOf(activeEnvironment)) }"
           ></span>
           {{ activeEnvironment.name }}
         </template>
@@ -168,7 +173,7 @@ onUnmounted(() => {
         class="absolute right-0 top-full mt-1 w-56 bg-bg-secondary border border-border-default rounded-lg shadow-xl z-50 overflow-hidden"
       >
         <div class="py-1">
-          <div v-if="environments.length === 0" class="px-3 py-3 text-center">
+          <div v-if="safeEnvironments.length === 0" class="px-3 py-3 text-center">
             <p class="text-xs text-text-muted mb-2">No environments created yet</p>
             <button
               @click="emit('create'); isOpen = false"
@@ -226,10 +231,10 @@ onUnmounted(() => {
             </svg>
           </div>
 
-          <div v-if="environments.length > 0" class="border-t border-border-default my-1"></div>
+          <div v-if="safeEnvironments.length > 0" class="border-t border-border-default my-1"></div>
 
           <button
-            v-if="environments.length > 0"
+            v-if="safeEnvironments.length > 0"
             @click="emit('create'); isOpen = false"
             class="flex items-center gap-2 w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
           >
@@ -250,7 +255,7 @@ onUnmounted(() => {
           </button>
 
           <button
-            v-if="environments.length > 0"
+            v-if="safeEnvironments.length > 0"
             @click="emit('manage'); isOpen = false"
             class="flex items-center gap-2 w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
           >

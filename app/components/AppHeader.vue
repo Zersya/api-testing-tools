@@ -1,6 +1,14 @@
 <script setup lang="ts">
 import EnvironmentSwitcher from './EnvironmentSwitcher.vue';
+import WorkspaceSwitcher from './WorkspaceSwitcher.vue';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
+
+interface Workspace {
+  id: string;
+  name: string;
+  projectCount: number;
+  isOwner: boolean;
+}
 
 interface Props {
   title?: string;
@@ -20,6 +28,9 @@ interface Props {
   }>;
   activeEnvironmentId?: string | null;
   currentProjectId?: string | null;
+  workspaces?: Workspace[];
+  selectedWorkspaceId?: string | null;
+  currentUserEmail?: string | null;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -27,7 +38,10 @@ const props = withDefaults(defineProps<Props>(), {
   showActions: true,
   environments: () => [],
   activeEnvironmentId: null,
-  currentProjectId: null
+  currentProjectId: null,
+  workspaces: () => [],
+  selectedWorkspaceId: null,
+  currentUserEmail: null
 });
 
 const emit = defineEmits<{
@@ -35,6 +49,11 @@ const emit = defineEmits<{
   exportOpenAPI: [];
   importOpenAPI: [];
   activateEnvironment: [id: string | null];
+  selectWorkspace: [workspaceId: string];
+  createWorkspace: [];
+  renameWorkspace: [workspace: { id: string; name: string }];
+  shareWorkspace: [workspace: { id: string; name: string }];
+  deleteWorkspace: [workspace: { id: string; name: string }];
 }>();
 
 interface UserInfo {
@@ -159,6 +178,21 @@ onUnmounted(() => {
 
     <!-- Right Section -->
     <div class="flex items-center gap-2">
+      <!-- Workspace Switcher -->
+      <WorkspaceSwitcher
+        v-if="!isEnvironmentsPage"
+        :workspaces="workspaces"
+        :selected-workspace-id="selectedWorkspaceId"
+        :current-user-email="currentUserEmail"
+        @select="emit('selectWorkspace', $event)"
+        @create="emit('createWorkspace')"
+        @rename="emit('renameWorkspace', $event)"
+        @share="emit('shareWorkspace', $event)"
+        @delete="emit('deleteWorkspace', $event)"
+      />
+
+      <div class="w-px h-6 bg-border-default mx-1"></div>
+
       <!-- Environment Switcher -->
       <EnvironmentSwitcher
         v-if="!isEnvironmentsPage"

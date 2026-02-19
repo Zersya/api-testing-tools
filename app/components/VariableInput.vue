@@ -313,9 +313,9 @@ onMounted(() => {
   line-height: 1.5;
   color: var(--text-primary);
   outline: none;
-  overflow: hidden;
-  white-space: pre-wrap;
-  word-break: break-all;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
 }
 
 .variable-editor:focus {

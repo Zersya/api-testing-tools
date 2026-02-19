@@ -60,6 +60,10 @@ const { data: collections, refresh: refreshCollections } = await useFetch<Collec
 const { data: workspaces, refresh: refreshWorkspaces } = await useFetch<any[]>('/api/admin/tree');
 const { data: definitions, refresh: refreshDefinitions } = await useFetch<any[]>('/api/definitions');
 
+// Fetch current user info for permission checks
+const { data: authData } = await useFetch('/api/auth/check');
+const currentUserEmail = computed(() => authData.value?.user?.email || null);
+
 const selectedWorkspaceId = ref<string | null>(null);
 const selectedProjectId = ref<string | null>(null);
 
@@ -220,8 +224,13 @@ const { data: environments, refresh: refreshEnvironments } = await useFetch<Envi
   }
 );
 
+// Ensure environments is always an array
+const safeEnvironments = computed(() => {
+  return Array.isArray(environments.value) ? environments.value : [];
+});
+
 const activeEnvironment = computed(() => {
-  return environments.value?.find(env => env.isActive) || null;
+  return safeEnvironments.value.find(env => env.isActive) || null;
 });
 
 // Get active environment variables as a key-value map
@@ -361,6 +370,10 @@ const projectWorkspaceId = ref<string | null>(null);
 const showWorkspaceModal = ref(false);
 const showRenameWorkspaceModal = ref(false);
 const workspaceToRename = ref<{ id: string; name: string } | null>(null);
+
+// Delete workspace modal state
+const showDeleteWorkspaceConfirm = ref(false);
+const workspaceToDelete = ref<{ id: string; name: string; projectCount: number } | null>(null);
 
 // Share workspace modal state
 const showShareModal = ref(false);
@@ -1440,6 +1453,42 @@ const deleteProject = async () => {
     }
 };
 
+// Workspace deletion handlers
+const confirmDeleteWorkspace = (workspace: { id: string; name: string }) => {
+    // Find the workspace to get project count
+    const ws = workspaces.value?.find((w: any) => w.id === workspace.id);
+    workspaceToDelete.value = {
+        id: workspace.id,
+        name: workspace.name,
+        projectCount: ws?.projectCount || 0
+    };
+    showDeleteWorkspaceConfirm.value = true;
+};
+
+const deleteWorkspace = async () => {
+    if (!workspaceToDelete.value) return;
+    try {
+        await $fetch(`/api/admin/workspaces/${workspaceToDelete.value.id}`, { method: 'DELETE' });
+        showDeleteWorkspaceConfirm.value = false;
+        
+        // Clear localStorage if the deleted workspace was selected
+        if (selectedWorkspaceId.value === workspaceToDelete.value.id) {
+            selectedWorkspaceId.value = null;
+            if (typeof window !== 'undefined') {
+                localStorage.removeItem('selectedWorkspaceId');
+            }
+        }
+        
+        workspaceToDelete.value = null;
+        await refreshWorkspaces();
+        
+        // Re-initialize selected workspace after refresh
+        initSelectedWorkspace();
+    } catch (e: any) {
+        alert('Error deleting workspace: ' + (e.data?.message || e.message));
+    }
+};
+
 const confirmDeleteGroup = (collectionId: string, name: string, mocks: Mock[]) => {
     groupToDelete.value = { collectionId, name, mocks };
     showDeleteGroupConfirm.value = true;
@@ -1651,13 +1700,21 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
     <!-- Header -->
     <AppHeader 
       title="Mock Services"
-      :environments="environments || []"
+      :environments="safeEnvironments"
       :active-environment-id="activeEnvironment?.id || null"
       :current-project-id="currentProjectId || null"
+      :workspaces="workspaces || []"
+      :selected-workspace-id="selectedWorkspaceId"
+      :current-user-email="currentUserEmail"
       @open-settings="openSettings"
       @export-open-a-p-i="exportOpenAPI"
       @import-open-a-p-i="openImportModal"
       @activate-environment="activateEnvironment"
+      @select-workspace="handleWorkspaceSelect"
+      @create-workspace="openCreateWorkspace"
+      @rename-workspace="openRenameWorkspace"
+      @share-workspace="openShareWorkspace"
+      @delete-workspace="confirmDeleteWorkspace"
     />
 
     <div class="flex flex-1 overflow-hidden">
@@ -2212,6 +2269,47 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
       <template #footer>
         <button class="btn btn-secondary" @click="showDeleteRequestConfirm = false">Cancel</button>
         <button class="btn btn-danger" @click="deleteRequest">Delete Request</button>
+      </template>
+    </Modal>
+
+    <!-- Delete Workspace Confirmation Modal -->
+    <Modal :show="showDeleteWorkspaceConfirm" title="Delete Workspace" @close="showDeleteWorkspaceConfirm = false">
+      <div class="text-text-secondary leading-relaxed">
+        <p class="mb-4">
+          Are you sure you want to delete this workspace?
+          <br />
+          <code class="inline-block mt-2 py-1.5 px-2.5 bg-bg-tertiary rounded text-accent-orange font-mono">{{ workspaceToDelete?.name }}</code>
+        </p>
+        
+        <div class="bg-accent-red/10 border border-accent-red/30 rounded-lg p-4 mb-4">
+          <div class="flex items-start gap-3">
+            <svg class="w-5 h-5 text-accent-red flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+              <line x1="12" y1="9" x2="12" y2="13"></line>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+            <div>
+              <p class="font-semibold text-accent-red mb-1">Warning: This action cannot be undone!</p>
+              <p class="text-sm">
+                This will permanently delete:
+              </p>
+              <ul class="text-sm mt-2 ml-4 list-disc">
+                <li><strong>{{ workspaceToDelete?.projectCount || 0 }}</strong> project(s) and all their data</li>
+                <li>All collections, folders, and saved requests</li>
+                <li>All environments and environment variables</li>
+                <li>All share links and access records</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <p class="text-sm text-text-muted">
+          Only the workspace creator or super admin (<code>admin@mock.com</code>) can perform this action.
+        </p>
+      </div>
+      <template #footer>
+        <button class="btn btn-secondary" @click="showDeleteWorkspaceConfirm = false">Cancel</button>
+        <button class="btn btn-danger" @click="deleteWorkspace">Delete Workspace</button>
       </template>
     </Modal>
 

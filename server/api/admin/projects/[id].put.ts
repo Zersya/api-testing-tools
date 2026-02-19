@@ -1,6 +1,6 @@
 import { db } from '../../../db';
 import { projects } from '../../../db/schema';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { getAccessibleWorkspaceIds } from '../../../utils/permissions';
 
 interface UpdateProjectBody {
@@ -125,7 +125,7 @@ export default defineEventHandler(async (event) => {
       .update(projects)
       .set({
         ...updateData,
-        updatedAt: sql`(unixepoch())`
+        updatedAt: new Date()
       })
       .where(eq(projects.id, id))
       .returning())[0];

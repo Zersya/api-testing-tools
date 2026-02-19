@@ -78,6 +78,7 @@ interface WorkspaceWithProjects {
   updatedAt: Date;
   projects: ProjectWithCollections[];
   projectCount: number;
+  isOwner: boolean;
 }
 
 interface MockGroup {
@@ -807,69 +808,6 @@ watch(activeView, (newView) => {
         </svg>
         History
       </button>
-    </div>
-
-    <!-- Workspace Switcher -->
-    <div
-      v-if="activeView === 'hierarchy'"
-      class="flex items-center justify-between py-3 px-3 border-b border-border-default"
-    >
-      <template v-if="workspaces.length > 0">
-        <div class="flex items-center gap-2 flex-1" @contextmenu.prevent="handleContextMenu($event, 'workspace', currentWorkspace)">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-text-secondary">
-            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-          </svg>
-          <select
-            v-model="selectedWorkspaceId"
-            class="flex-1 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-[13px] font-medium focus:outline-none focus:border-accent-blue cursor-pointer"
-          >
-            <option v-for="workspace in workspaces" :key="workspace.id" :value="workspace.id">
-              {{ workspace.name }}
-            </option>
-          </select>
-        </div>
-        <button
-          class="flex items-center justify-center w-7 h-7 bg-transparent border-none rounded text-text-secondary cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-blue ml-1"
-          @click="emit('shareWorkspace', currentWorkspace)"
-          title="Share Workspace"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="18" cy="5" r="3"></circle>
-            <circle cx="6" cy="12" r="3"></circle>
-            <circle cx="18" cy="19" r="3"></circle>
-            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
-            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
-          </svg>
-        </button>
-        <button
-          class="flex items-center justify-center w-7 h-7 bg-transparent border-none rounded text-text-secondary cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-orange ml-1"
-          @click="emit('createWorkspace')"
-          title="New Workspace"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-          </svg>
-        </button>
-      </template>
-      <template v-else>
-        <div class="flex flex-col items-center justify-center w-full py-4 text-center">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="text-text-muted opacity-40 mb-2">
-            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-          </svg>
-          <p class="text-xs text-text-muted mb-3">No workspaces yet</p>
-          <button
-            class="flex items-center gap-1.5 px-3 py-1.5 bg-accent-blue/15 text-accent-blue text-xs font-medium rounded hover:bg-accent-blue/25 transition-colors"
-            @click="emit('createWorkspace')"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-            Create Workspace
-          </button>
-        </div>
-      </template>
     </div>
 
     <!-- Projects Header -->

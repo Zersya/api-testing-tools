@@ -1,6 +1,6 @@
 import { db } from '../../../db';
 import { workspaces } from '../../../db/schema';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 interface UpdateWorkspaceBody {
   name?: string;
@@ -92,7 +92,7 @@ export default defineEventHandler(async (event) => {
       .update(workspaces)
       .set({
         ...updateData,
-        updatedAt: sql`(unixepoch())`
+        updatedAt: new Date()
       })
       .where(eq(workspaces.id, id))
       .returning())[0];
