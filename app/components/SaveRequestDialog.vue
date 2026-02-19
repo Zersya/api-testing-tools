@@ -392,9 +392,21 @@ const getFolderIndent = (level: number) => {
                   <label class="text-xs font-medium text-text-secondary uppercase tracking-wide">
                     Collection
                   </label>
-                  <div class="flex gap-2">
+                  <div class="flex gap-2" v-if="hasCollections && !showNewCollectionUI">
                     <button
                       v-if="!showNewFolderInput"
+                      @click="showNewCollectionUI = true"
+                      class="text-xs text-accent-blue hover:text-accent-blue/80 flex items-center gap-1"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="12" y1="8" x2="12" y2="16"></line>
+                        <line x1="8" y1="12" x2="16" y2="12"></line>
+                      </svg>
+                      New Collection
+                    </button>
+                    <button
+                      v-if="!showNewFolderInput && !showNewCollectionUI"
                       @click="showNewFolderInput = true; form.isNewFolder = true"
                       class="text-xs text-accent-blue hover:text-accent-blue/80 flex items-center gap-1"
                     >
@@ -408,7 +420,172 @@ const getFolderIndent = (level: number) => {
                   </div>
                 </div>
 
-                <div v-if="showNewFolderInput && form.isNewFolder" class="mb-3 bg-bg-tertiary rounded-lg p-3 border border-border-default">
+                <!-- Collection Creation UI (shown when no collections or user chooses to create) -->
+                <div v-if="showNewCollectionUI" class="mb-3 bg-bg-tertiary rounded-lg p-4 border border-border-default">
+                  <div class="flex items-center gap-2 mb-3">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-accent-blue">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                      <line x1="12" y1="8" x2="12" y2="16"></line>
+                      <line x1="8" y1="12" x2="16" y2="12"></line>
+                    </svg>
+                    <span class="text-sm font-medium text-text-primary">
+                      {{ hasCollections ? 'Create New Collection' : 'Create Your First Collection' }}
+                    </span>
+                  </div>
+                  
+                  <!-- Multi-step: Workspace Selection -->
+                  <div class="space-y-3">
+                    <div>
+                      <label class="block text-xs font-medium text-text-secondary mb-1.5">
+                        Workspace <span class="text-accent-red">*</span>
+                      </label>
+                      <select
+                        v-model="newCollectionForm.workspaceId"
+                        class="w-full py-2 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue cursor-pointer appearance-none bg-[url('data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20width%3D%2712%27%20height%3D%2712%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27%239ca3af%27%20stroke-width%3D%272%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpolyline%20points%3D%276%209%2012%2015%2018%209%27%3E%3C/polyline%3E%3C/svg%3E')] bg-no-repeat bg-[right_12px_center] pr-10"
+                      >
+                        <option value="">Select a workspace...</option>
+                        <option v-for="workspace in availableWorkspaces" :key="workspace.id" :value="workspace.id">
+                          {{ workspace.name }}
+                        </option>
+                      </select>
+                    </div>
+
+                    <!-- Project Selection (only show after workspace selected) -->
+                    <div v-if="newCollectionForm.workspaceId">
+                      <label class="block text-xs font-medium text-text-secondary mb-1.5">
+                        Project <span class="text-accent-red">*</span>
+                      </label>
+                      <select
+                        v-model="newCollectionForm.projectId"
+                        class="w-full py-2 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue cursor-pointer appearance-none bg-[url('data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20width%3D%2712%27%20height%3D%2712%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27%239ca3af%27%20stroke-width%3D%272%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpolyline%20points%3D%276%209%2012%2015%2018%209%27%3E%3C/polyline%3E%3C/svg%3E')] bg-no-repeat bg-[right_12px_center] pr-10"
+                      >
+                        <option value="">Select a project...</option>
+                        <option v-for="project in availableProjects" :key="project.id" :value="project.id">
+                          {{ project.name }}
+                        </option>
+                      </select>
+                    </div>
+
+                    <!-- Collection Name -->
+                    <div v-if="newCollectionForm.projectId">
+                      <label class="block text-xs font-medium text-text-secondary mb-1.5">
+                        Collection Name <span class="text-accent-red">*</span>
+                      </label>
+                      <input
+                        v-model="newCollectionForm.name"
+                        type="text"
+                        class="w-full py-2 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(33,150,243,0.2)]"
+                        placeholder="e.g., API Requests"
+                        @keyup.enter="handleCreateCollection"
+                      />
+                      <p class="mt-1 text-xs text-text-muted">
+                        This collection will be created with a "Default" folder automatically.
+                      </p>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="flex gap-2 pt-2">
+                      <button
+                        @click="handleCreateCollection"
+                        :disabled="isCreatingCollection || !canCreateCollection"
+                        class="flex-1 py-2 px-3 bg-accent-blue text-white font-semibold rounded-md border-none cursor-pointer transition-all duration-fast hover:bg-[#1976D2] disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                      >
+                        {{ isCreatingCollection ? 'Creating...' : 'Create Collection & Continue' }}
+                      </button>
+                      <button
+                        v-if="hasCollections"
+                        @click="showNewCollectionUI = false"
+                        class="px-3 bg-bg-input text-text-secondary rounded-md border border-border-default cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-text-primary text-sm"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Existing Collection Selection (only show when not creating new) -->
+                <div v-if="!showNewCollectionUI">
+                  <div class="relative">
+                    <select
+                      v-model="form.collectionId"
+                      :disabled="showNewFolderInput && form.isNewFolder"
+                      class="w-full py-2.5 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(33,150,243,0.2)] disabled:opacity-50 disabled:cursor-not-allowed appearance-none cursor-pointer bg-[url('data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20width%3D%2712%27%20height%3D%2712%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27%239ca3af%27%20stroke-width%3D%272%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpolyline%20points%3D%276%209%2012%2015%2018%209%27%3E%3C/polyline%3E%3C/svg%3E')] bg-no-repeat bg-[right_12px_center] pr-10"
+                    >
+                      <option value="">Select a collection...</option>
+                      <option
+                        v-for="option in collectionOptions"
+                        :key="option.id"
+                        :value="option.type === 'collection' ? option.collectionId : ''"
+                        :disabled="option.type === 'project-header'"
+                        :class="{
+                          'font-semibold text-text-secondary bg-bg-tertiary': option.type === 'project-header',
+                          'pl-6 text-text-primary': option.type === 'collection'
+                        }"
+                      >
+                        {{ option.type === 'project-header' ? option.name : `${option.projectName} / ${option.name}` }}
+                      </option>
+                    </select>
+                    <div v-if="selectedCollectionData" class="mt-2 text-xs text-text-muted flex items-center gap-1">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                      </svg>
+                      <span>{{ selectedCollectionData.projectName }} / {{ selectedCollectionData.name }}</span>
+                    </div>
+                  </div>
+
+                  <!-- Folder Selection (only show when collection selected and not creating new folder) -->
+                  <div v-if="selectedCollectionData && !form.isNewFolder" class="mt-3">
+                    <div class="flex items-center justify-between mb-2">
+                      <label class="text-xs font-medium text-text-secondary uppercase tracking-wide">
+                        Folder (optional)
+                      </label>
+                      <span v-if="availableFolders.length > 0" class="text-xs text-text-muted">
+                        {{ availableFolders.length }} {{ availableFolders.length === 1 ? 'folder' : 'folders' }}
+                      </span>
+                    </div>
+                    <div class="bg-bg-input border border-border-default rounded-md max-h-[180px] overflow-y-auto">
+                      <div
+                        @click="form.folderId = ''"
+                        class="py-2 px-3 text-sm cursor-pointer transition-colors duration-fast hover:bg-bg-hover flex items-center gap-2"
+                        :class="form.folderId === '' ? 'text-accent-blue bg-accent-blue/5' : 'text-text-secondary'"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                          <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                        </svg>
+                        <span>Root (no folder)</span>
+                      </div>
+                      <div
+                        v-for="folder in availableFolders"
+                        :key="folder.id"
+                        @click="form.folderId = folder.id"
+                        :style="{ paddingLeft: `${16 + getFolderIndent(folder.level)}px` }"
+                        class="py-2 px-3 text-sm cursor-pointer transition-colors duration-fast hover:bg-bg-hover flex items-center gap-2"
+                        :class="{
+                          'text-accent-blue bg-accent-blue/5': form.folderId === folder.id,
+                          'text-text-secondary': form.folderId !== folder.id
+                        }"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                        </svg>
+                        <span>{{ folder.name }}</span>
+                      </div>
+                      <div
+                        v-if="availableFolders.length === 0"
+                        class="py-3 px-3 text-sm text-text-muted text-center"
+                      >
+                        No folders in this collection
+                      </div>
+                    </div>
+                    <p class="mt-1.5 text-xs text-text-muted">
+                      Select "Root" to save directly in the collection, or choose a folder to organize your request.
+                    </p>
+                  </div>
+                </div>
+
+                <!-- New Folder Input (existing functionality) -->
+                <div v-if="showNewFolderInput && form.isNewFolder && !showNewCollectionUI" class="mt-3 bg-bg-tertiary rounded-lg p-3 border border-border-default">
                   <div class="flex items-center gap-2 mb-2">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-accent-pink">
                       <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
@@ -439,80 +616,6 @@ const getFolderIndent = (level: number) => {
                       >
                         Cancel
                       </button>
-                    </div>
-                  </div>
-                </div>
-
-                  <div class="relative">
-                    <select
-                      v-model="form.collectionId"
-                      :disabled="showNewFolderInput && form.isNewFolder"
-                      class="w-full py-2.5 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(33,150,243,0.2)] disabled:opacity-50 disabled:cursor-not-allowed appearance-none cursor-pointer bg-[url('data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20width%3D%2712%27%20height%3D%2712%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27%239ca3af%27%20stroke-width%3D%272%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpolyline%20points%3D%276%209%2012%2015%2018%209%27%3E%3C/polyline%3E%3C/svg%3E')] bg-no-repeat bg-[right_12px_center] pr-10"
-                    >
-                      <option value="">Select a collection...</option>
-                      <option
-                        v-for="option in collectionOptions"
-                        :key="option.id"
-                        :value="option.type === 'collection' ? option.collectionId : ''"
-                        :disabled="option.type === 'project-header'"
-                        :class="{
-                          'font-semibold text-text-secondary bg-bg-tertiary': option.type === 'project-header',
-                          'pl-6 text-text-primary': option.type === 'collection'
-                        }"
-                      >
-                        {{ option.type === 'project-header' ? option.name : `${option.projectName} / ${option.name}` }}
-                      </option>
-                    </select>
-                    <div v-if="selectedCollectionData" class="mt-2 text-xs text-text-muted flex items-center gap-1">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-                      </svg>
-                      <span>{{ selectedCollectionData.projectName }} / {{ selectedCollectionData.name }}</span>
-                    </div>
-                  </div>
-
-                <div v-if="selectedCollectionData && !form.isNewFolder" class="mt-3">
-                  <div class="flex items-center justify-between mb-2">
-                    <label class="text-xs font-medium text-text-secondary uppercase tracking-wide">
-                      Folder (optional)
-                    </label>
-                    <span v-if="availableFolders.length > 0" class="text-xs text-text-muted">
-                      {{ availableFolders.length }} {{ availableFolders.length === 1 ? 'folder' : 'folders' }}
-                    </span>
-                  </div>
-                  <div class="bg-bg-input border border-border-default rounded-md max-h-[180px] overflow-y-auto">
-                    <div
-                      @click="form.folderId = ''"
-                      class="py-2 px-3 text-sm cursor-pointer transition-colors duration-fast hover:bg-bg-hover flex items-center gap-2"
-                      :class="form.folderId === '' ? 'text-accent-blue bg-accent-blue/5' : 'text-text-secondary'"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-                        <polyline points="9 22 9 12 15 12 15 22"></polyline>
-                      </svg>
-                      <span>Root (no folder)</span>
-                    </div>
-                    <div
-                      v-for="folder in availableFolders"
-                      :key="folder.id"
-                      @click="form.folderId = folder.id"
-                      :style="{ paddingLeft: `${16 + getFolderIndent(folder.level)}px` }"
-                      class="py-2 px-3 text-sm cursor-pointer transition-colors duration-fast hover:bg-bg-hover flex items-center gap-2"
-                      :class="{
-                        'text-accent-blue bg-accent-blue/5': form.folderId === folder.id,
-                        'text-text-secondary': form.folderId !== folder.id
-                      }"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-                      </svg>
-                      <span>{{ folder.name }}</span>
-                    </div>
-                    <div
-                      v-if="availableFolders.length === 0"
-                      class="py-3 px-3 text-sm text-text-muted text-center"
-                    >
-                      No folders in this collection
                     </div>
                   </div>
                 </div>
