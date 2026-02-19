@@ -2396,6 +2396,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
       :default-folder-id="saveDialogDefaultFolderId"
       @close="showSaveDialog = false; showSaveAsDialog = false; requestToSave = null; requestToSaveAs = null; saveDialogDefaultCollectionId = ''; saveDialogDefaultFolderId = ''"
       @save="showSaveDialog ? handleSave($event) : handleSaveAs($event)"
+      @refresh-workspaces="refreshWorkspaces"
     />
 
     <!-- Import Modal -->
