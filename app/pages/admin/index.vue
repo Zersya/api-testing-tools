@@ -1000,7 +1000,7 @@ const handleSave = async (data: any) => {
     let targetFolderId = data.folderId || '';
     
     if (data.isNewFolder && data.newFolderName) {
-      const collectionIdToUse = data.collectionId || (workspaces.value?.[0]?.projects?.[0]?.collections?.[0]?.id);
+      const collectionIdToUse = data.collectionId;
       
       if (collectionIdToUse) {
         const newFolder = await $fetch(`/api/admin/collections/${collectionIdToUse}/folders`, {
@@ -1015,24 +1015,38 @@ const handleSave = async (data: any) => {
 
     if (isNewRequest) {
       // Create a new request
-      const folderIdToUse = targetFolderId || (workspaces.value?.[0]?.projects?.[0]?.collections?.[0]?.folders?.[0]?.id);
+      let newRequest;
       
-      if (!folderIdToUse) {
-        alert('Please select a folder first');
+      if (targetFolderId) {
+        // Save to a specific folder
+        newRequest = await $fetch(`/api/admin/folders/${targetFolderId}/requests`, {
+          method: 'POST',
+          body: {
+            name: data.name,
+            method: requestToSave.value.method,
+            url: requestToSave.value.url,
+            headers: requestToSave.value.headers,
+            body: requestToSave.value.body,
+            auth: requestToSave.value.auth
+          }
+        });
+      } else if (data.collectionId) {
+        // Save directly to collection root
+        newRequest = await $fetch(`/api/admin/collections/${data.collectionId}/requests`, {
+          method: 'POST',
+          body: {
+            name: data.name,
+            method: requestToSave.value.method,
+            url: requestToSave.value.url,
+            headers: requestToSave.value.headers,
+            body: requestToSave.value.body,
+            auth: requestToSave.value.auth
+          }
+        });
+      } else {
+        alert('Please select a collection first');
         return;
       }
-
-      const newRequest = await $fetch(`/api/admin/folders/${folderIdToUse}/requests`, {
-        method: 'POST',
-        body: {
-          name: data.name,
-          method: requestToSave.value.method,
-          url: requestToSave.value.url,
-          headers: requestToSave.value.headers,
-          body: requestToSave.value.body,
-          auth: requestToSave.value.auth
-        }
-      });
       
       // Update the current tab with the new request data
       if (activeTabKey.value) {
