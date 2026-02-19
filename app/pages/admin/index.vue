@@ -1104,7 +1104,7 @@ const handleSaveAs = async (data: any) => {
     let targetFolderId = data.folderId || '';
     
     if (data.isNewFolder && data.newFolderName) {
-      const collectionIdToUse = data.collectionId || (workspaces.value?.[0]?.projects?.[0]?.collections?.[0]?.id);
+      const collectionIdToUse = data.collectionId;
       
       if (collectionIdToUse) {
         const newFolder = await $fetch(`/api/admin/collections/${collectionIdToUse}/folders`, {
@@ -1117,24 +1117,38 @@ const handleSaveAs = async (data: any) => {
       }
     }
 
-    const folderIdToUse = targetFolderId || (workspaces.value?.[0]?.projects?.[0]?.collections?.[0]?.folders?.[0]?.id);
+    let newRequest;
     
-    if (!folderIdToUse) {
-      alert('Please select a folder first');
+    if (targetFolderId) {
+      // Save to a specific folder
+      newRequest = await $fetch(`/api/admin/folders/${targetFolderId}/requests`, {
+        method: 'POST',
+        body: {
+          name: data.name,
+          method: requestToSaveAs.value.method,
+          url: requestToSaveAs.value.url,
+          headers: requestToSaveAs.value.headers,
+          body: requestToSaveAs.value.body,
+          auth: requestToSaveAs.value.auth
+        }
+      });
+    } else if (data.collectionId) {
+      // Save directly to collection root
+      newRequest = await $fetch(`/api/admin/collections/${data.collectionId}/requests`, {
+        method: 'POST',
+        body: {
+          name: data.name,
+          method: requestToSaveAs.value.method,
+          url: requestToSaveAs.value.url,
+          headers: requestToSaveAs.value.headers,
+          body: requestToSaveAs.value.body,
+          auth: requestToSaveAs.value.auth
+        }
+      });
+    } else {
+      alert('Please select a collection first');
       return;
     }
-
-    const newRequest = await $fetch(`/api/admin/folders/${folderIdToUse}/requests`, {
-      method: 'POST',
-      body: {
-        name: data.name,
-        method: requestToSaveAs.value.method,
-        url: requestToSaveAs.value.url,
-        headers: requestToSaveAs.value.headers,
-        body: requestToSaveAs.value.body,
-        auth: requestToSaveAs.value.auth
-      }
-    });
 
     showSaveAsDialog.value = false;
     requestToSaveAs.value = null;
