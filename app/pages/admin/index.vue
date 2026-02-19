@@ -241,8 +241,8 @@ const isActiveEnvironmentMock = computed(() => {
   return activeEnvironment.value?.isMockEnvironment || false;
 });
 
-// Get collection name for the selected request
-const activeCollectionName = computed(() => {
+// Get collection ID for the selected request
+const activeCollectionId = computed(() => {
   if (!selectedRequest.value || !workspaces.value) return '';
   
   for (const workspace of workspaces.value) {
@@ -252,7 +252,7 @@ const activeCollectionName = computed(() => {
           for (const folder of folders) {
             // Check if this folder belongs to the collection
             if (folder.requests?.some((r: any) => r.id === selectedRequest.value?.id)) {
-              return collection.name;
+              return collection.id;
             }
             const found = findInFolders(folder.children || []);
             if (found) return found;
@@ -1987,7 +1987,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
                 :api-key="requestBuilderRef?.apiKey"
                 :variables="activeEnvironmentVariables"
                 :is-mock-environment="isActiveEnvironmentMock"
-                :collection-name="activeCollectionName"
+                :collection-id="activeCollectionId"
               />
             </div>
           </div>

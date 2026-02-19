@@ -1,6 +1,6 @@
 /**
  * Mock Server Route
- * Pattern: /c/{collection-name}/{path}
+ * Pattern: /c/{collection-id-or-name}/{path}
  * 
  * Serves mock responses from savedRequests.mockConfig
  * Used when CLOUD MOCK environment is active
@@ -21,32 +21,43 @@ export default defineEventHandler(async (event) => {
     const method = event.method;
 
     // Determine if this is a collection-specific request
-    // Pattern: /c/{collection-name}/{actual-path}
+    // Pattern: /c/{collection-id-or-name}/{actual-path}
     let targetCollectionId: string | null = null;
     let targetPath = originalPath;
 
     const collectionPathMatch = originalPath.match(/^\/c\/([^/]+)(\/.*)?$/);
 
     if (collectionPathMatch) {
-        const collectionName = collectionPathMatch[1];
+        const collectionIdentifier = collectionPathMatch[1];
         targetPath = collectionPathMatch[2] || '/';
 
-        // Find collection by name
-        const collectionResult = await db
+        // First try to find by ID (preferred method)
+        const collectionById = await db
             .select()
             .from(collections)
-            .where(eq(collections.name, collectionName))
+            .where(eq(collections.id, collectionIdentifier))
             .limit(1);
 
-        if (collectionResult.length > 0) {
-            targetCollectionId = collectionResult[0].id;
+        if (collectionById.length > 0) {
+            targetCollectionId = collectionById[0].id;
+        } else {
+            // Fallback: try to find by name (for backward compatibility)
+            const collectionByName = await db
+                .select()
+                .from(collections)
+                .where(eq(collections.name, collectionIdentifier))
+                .limit(1);
+
+            if (collectionByName.length > 0) {
+                targetCollectionId = collectionByName[0].id;
+            }
         }
 
-        // If collection name not found, return 404
+        // If collection not found, return 404
         if (!targetCollectionId) {
             throw createError({
                 statusCode: 404,
-                statusMessage: `Collection "${collectionName}" not found`
+                statusMessage: `Collection "${collectionIdentifier}" not found`
             });
         }
     } else {

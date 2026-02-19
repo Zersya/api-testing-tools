@@ -26,7 +26,7 @@ interface Props {
   apiKey?: { key: string; value: string; addTo: 'header' | 'query' };
   variables?: Record<string, string>;
   isMockEnvironment?: boolean;
-  collectionName?: string;
+  collectionId?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -40,7 +40,7 @@ const props = withDefaults(defineProps<Props>(), {
   apiKey: () => ({ key: '', value: '', addTo: 'header' as const }),
   variables: () => ({}),
   isMockEnvironment: false,
-  collectionName: ''
+  collectionId: ''
 });
 
 type Language = 'curl' | 'javascript' | 'python' | 'go' | 'ruby' | 'http';
@@ -78,24 +78,34 @@ const languages: { value: Language; label: string }[] = [
 ];
 
 const getMockUrl = (originalUrl: string): string => {
-  // Build mock server URL
+  // Build mock server URL using collection ID
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const collection = props.collectionName || 'default';
-  
-  // Extract path from URL (remove protocol, domain, etc.)
-  let path = originalUrl;
+  const collection = props.collectionId || 'default';
+
+  let path = '';
+
   try {
+    // Try parsing as full URL (works if variables were substituted)
     const urlObj = new URL(originalUrl);
     path = urlObj.pathname + urlObj.search;
   } catch {
-    // If URL is relative, use as-is
-    path = originalUrl.startsWith('/') ? originalUrl : '/' + originalUrl;
+    // URL has unsubstituted variables, extract path by removing all variable patterns
+    // e.g., "{{baseUrl}}/api/{{version}}/users" -> "/api//users"
+    const withoutVars = originalUrl.replace(/\{\{[^}]+\}\}/g, '');
+    path = withoutVars.trim();
+    
+    // If empty after removing variables, use root path
+    if (!path) {
+      path = '/';
+    }
   }
-  
-  // Remove leading slash if present to avoid double slashes
-  path = path.replace(/^\//, '');
-  
-  return `${origin}/c/${collection}/${path}`;
+
+  // Ensure path starts with /
+  if (!path.startsWith('/')) {
+    path = '/' + path;
+  }
+
+  return `${origin}/c/${collection}${path}`;
 };
 
 const getFullUrl = computed(() => {

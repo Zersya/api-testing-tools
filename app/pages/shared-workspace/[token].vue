@@ -241,8 +241,8 @@ const isCurrentEnvironmentMock = computed(() => {
   return env?.isMockEnvironment || false;
 });
 
-// Find collection name for the selected request
-const currentCollectionName = computed(() => {
+// Find collection ID for the selected request
+const currentCollectionId = computed(() => {
   if (!selectedRequest.value || !workspace.value?.projects) return '';
   
   for (const project of workspace.value.projects) {
@@ -250,7 +250,7 @@ const currentCollectionName = computed(() => {
       const findInFolder = (folders: FolderWithRequests[]): string | null => {
         for (const folder of folders) {
           if (folder.requests.some(r => r.id === selectedRequest.value?.id)) {
-            return collection.name;
+            return collection.id;
           }
           const found = findInFolder(folder.children);
           if (found) return found;
@@ -480,7 +480,7 @@ const goBack = () => {
               :api-key="requestBuilderRef?.apiKey"
               :variables="currentEnvironmentVariables"
               :is-mock-environment="isCurrentEnvironmentMock"
-              :collection-name="currentCollectionName"
+              :collection-id="currentCollectionId"
             />
           </div>
         </div>
