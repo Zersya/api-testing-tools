@@ -1749,7 +1749,7 @@ defineExpose({
       <div class="border-b border-border-default bg-bg-secondary">
         <div class="flex gap-0">
           <button
-            v-for="tab in ['params', 'headers', 'body', 'auth', 'mock', 'examples', 'response'] as TabType[]"
+            v-for="tab in (readOnly ? ['params', 'headers', 'body', 'auth', 'examples', 'response'] : ['params', 'headers', 'body', 'auth', 'mock', 'examples', 'response']) as TabType[]"
             :key="tab"
             @click="activeTab = tab"
             class="px-4 py-3 text-xs font-medium capitalize transition-all duration-fast border-b-2 focus:outline-none whitespace-nowrap"
@@ -2502,7 +2502,7 @@ defineExpose({
 
         <!-- Examples Tab -->
         <div v-else-if="activeTab === 'examples'" class="flex-1 flex flex-col overflow-hidden">
-          <RequestExampleManager :request-id="props.request.id" />
+          <RequestExampleManager :request-id="props.request.id" :read-only="readOnly" />
         </div>
 
         <div v-else-if="activeTab === 'response'" class="flex-1 flex flex-col overflow-hidden">

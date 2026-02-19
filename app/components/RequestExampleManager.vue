@@ -15,9 +15,12 @@ interface RequestExample {
 
 interface Props {
   requestId: string;
+  readOnly?: boolean;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  readOnly: false
+});
 
 const examples = ref<RequestExample[]>([]);
 const isLoading = ref(false);
@@ -243,6 +246,7 @@ onMounted(() => {
         <span class="text-xs text-text-muted">({{ examples.length }})</span>
       </div>
       <button
+        v-if="!readOnly"
         @click="openCreateModal"
         class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-accent-orange rounded-md hover:bg-accent-orange/90 transition-colors"
       >
