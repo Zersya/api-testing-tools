@@ -31,7 +31,7 @@ const commonStatusCodes = [
 
 // Initialize local state from props
 const localConfig = ref<MockConfig & { statusCode: number | null }>({
-  isEnabled: false,
+  isEnabled: true,
   statusCode: 200,
   delay: 0,
   responseBody: { message: 'Mock response' },
@@ -84,7 +84,7 @@ const initializeFromProps = () => {
   } else {
     // Default state
     localConfig.value = {
-      isEnabled: false,
+      isEnabled: true,
       statusCode: 200,
       delay: 0,
       responseBody: { message: 'Mock response' },

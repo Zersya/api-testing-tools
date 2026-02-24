@@ -533,6 +533,13 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
               headers: Object.keys(parsedRequest.headers).length > 0 ? parsedRequest.headers : null,
               body: parsedRequest.body,
               auth: parsedRequest.auth,
+              mockConfig: JSON.stringify({
+                isEnabled: true,
+                statusCode: 200,
+                delay: 0,
+                responseBody: { message: 'Mock response' },
+                responseHeaders: { 'Content-Type': 'application/json' }
+              }),
               order: parsedRequest.order
             })
             .returning())[0];
@@ -588,6 +595,13 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
             headers: Object.keys(parsedRequest.headers).length > 0 ? parsedRequest.headers : null,
             body: parsedRequest.body,
             auth: parsedRequest.auth,
+            mockConfig: JSON.stringify({
+              isEnabled: true,
+              statusCode: 200,
+              delay: 0,
+              responseBody: { message: 'Mock response' },
+              responseHeaders: { 'Content-Type': 'application/json' }
+            }),
             order: parsedRequest.order
           })
           .returning())[0];

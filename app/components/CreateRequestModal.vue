@@ -102,7 +102,14 @@ const createRequest = async () => {
       url: form.value.url.trim(),
       headers,
       body,
-      auth
+      auth,
+      mockConfig: {
+        isEnabled: true,
+        statusCode: 200,
+        delay: 0,
+        responseBody: { message: 'Mock response' },
+        responseHeaders: { 'Content-Type': 'application/json' }
+      }
     };
 
     let result;

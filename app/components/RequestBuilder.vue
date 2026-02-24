@@ -1453,7 +1453,7 @@ const openSaveDialog = () => {
     createdAt: props.request.createdAt,
     updatedAt: new Date()
   });
-  
+
   // Capture current state as saved to immediately update UI feedback
   captureCurrentStateAsSaved();
 };
@@ -1492,12 +1492,18 @@ const openSaveAsDialog = () => {
           PKCE: oauth2.value.PKCE
         } : undefined
     } || null,
-    mockConfig: mockConfig.value,
+    mockConfig: mockConfig.value || {
+      isEnabled: true,
+      statusCode: 200,
+      delay: 0,
+      responseBody: { message: 'Mock response' },
+      responseHeaders: { 'Content-Type': 'application/json' }
+    },
     order: props.request.order,
     createdAt: props.request.createdAt,
     updatedAt: new Date()
   });
-};
+}
 
 watch(() => form.value.url, (newUrl) => {
   const params = parseUrlQuery(newUrl);

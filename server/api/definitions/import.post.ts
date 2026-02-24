@@ -888,6 +888,13 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
               ? JSON.stringify(extractBody(endpoint.requestBody))
               : null,
             auth: auth ? JSON.stringify(auth) : null,
+            mockConfig: JSON.stringify({
+              isEnabled: true,
+              statusCode: 200,
+              delay: 0,
+              responseBody: { message: 'Mock response' },
+              responseHeaders: { 'Content-Type': 'application/json' }
+            }),
             order: requestOrder++
           })
           .returning())[0];
@@ -955,6 +962,13 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
               ? JSON.stringify(extractBody(endpoint.requestBody))
               : null,
             auth: auth ? JSON.stringify(auth) : null,
+            mockConfig: JSON.stringify({
+              isEnabled: true,
+              statusCode: 200,
+              delay: 0,
+              responseBody: { message: 'Mock response' },
+              responseHeaders: { 'Content-Type': 'application/json' }
+            }),
             order: requestOrder++
           })
           .returning())[0];
