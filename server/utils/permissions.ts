@@ -3,6 +3,26 @@ import { workspaces, workspaceShares, workspaceAccess, workspaceMembers } from '
 import { eq, and, or, gt, isNull, inArray } from 'drizzle-orm';
 import type { SharePermission } from '../db/schema/workspaceShare';
 import type { MemberPermission } from '../db/schema/workspaceMember';
+import { getUserEmailOrFallback } from './userMapping';
+
+/**
+ * Check if the given email is a Super Admin
+ * Super Admin is defined by ADMIN_EMAIL in runtime config
+ */
+export function isSuperAdmin(userEmail: string): boolean {
+  const config = useRuntimeConfig();
+  return userEmail.toLowerCase() === (config.adminEmail as string)?.toLowerCase();
+}
+
+/**
+ * Get owner email for a workspace
+ * @param ownerId - The workspace owner ID
+ * @returns The owner email (or ownerId if no mapping exists)
+ */
+export function getWorkspaceOwnerEmail(ownerId: string | null): string {
+  if (!ownerId) return 'Unknown';
+  return getUserEmailOrFallback(ownerId);
+}
 
 /**
  * Permission levels hierarchy

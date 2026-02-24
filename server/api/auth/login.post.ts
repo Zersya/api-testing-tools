@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import { storeUserMapping } from '../../utils/userMapping';
 
 export default defineEventHandler(async (event) => {
     const body = await readBody(event);
@@ -8,6 +9,9 @@ export default defineEventHandler(async (event) => {
     if (email === config.adminEmail && password === config.adminPassword) {
         // Generate JWT - use email as sub for consistency
         const token = jwt.sign({ sub: email, email }, config.jwtSecret, { expiresIn: '24h' });
+
+        // Store user mapping for Super Admin lookups
+        storeUserMapping(email, email);
 
         // Set secure cookie
         setCookie(event, 'auth_token', token, {

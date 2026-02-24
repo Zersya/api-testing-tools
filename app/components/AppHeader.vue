@@ -80,6 +80,19 @@ const isLoggingOut = ref(false);
 
 const route = useRoute();
 const isEnvironmentsPage = computed(() => route.path === '/admin/environments');
+const isSuperAdminPage = computed(() => route.path === '/admin/super-admin');
+
+// Check if current user is Super Admin - fetch from server
+const isSuperAdmin = ref(false);
+
+const checkSuperAdmin = async () => {
+  try {
+    const data = await $fetch<{ isSuperAdmin: boolean }>('/api/admin/super/check');
+    isSuperAdmin.value = data.isSuperAdmin;
+  } catch (e) {
+    isSuperAdmin.value = false;
+  }
+};
 
 const checkAuth = async () => {
   try {
@@ -127,7 +140,8 @@ const getTimeUntilExpiry = (): string => {
 let authCheckInterval: ReturnType<typeof setInterval> | null = null;
 
 onMounted(async () => {
-  checkAuth();
+  await checkAuth();
+  await checkSuperAdmin();
 
   authCheckInterval = setInterval(() => {
     if (authState.value?.tokenExpiry) {
@@ -153,6 +167,15 @@ onUnmounted(() => {
     clearInterval(authCheckInterval);
   }
   document.removeEventListener('click', closeUserMenu);
+});
+
+// Watch auth state and re-check Super Admin status when user changes
+watch(() => authState.value?.user?.email, async (newEmail) => {
+  if (newEmail) {
+    await checkSuperAdmin();
+  } else {
+    isSuperAdmin.value = false;
+  }
 });
 </script>
 
@@ -244,6 +267,19 @@ onUnmounted(() => {
           <circle cx="12" cy="12" r="3"></circle>
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
         </svg>
+      </button>
+
+      <!-- Super Admin Button -->
+      <button
+        v-if="isSuperAdmin && !isSuperAdminPage"
+        @click="navigateTo('/admin/super-admin')"
+        class="inline-flex items-center gap-1.5 py-1.5 px-2.5 bg-accent-orange/10 text-accent-orange border border-accent-orange/30 rounded-md cursor-pointer text-[13px] font-medium transition-all duration-fast hover:bg-accent-orange/20"
+        title="Super Admin Dashboard"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+        </svg>
+        <span>Super Admin</span>
       </button>
 
       <!-- User Menu -->
