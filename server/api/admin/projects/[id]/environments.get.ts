@@ -23,7 +23,7 @@ export default defineEventHandler(async (event) => {
   const projectId = getRouterParam(event, 'id');
   const user = event.context.user;
 
-  if (!user?.id) {
+  if (!user?.id || !user?.email) {
     throw createError({
       statusCode: 401,
       statusMessage: 'Unauthorized'
@@ -51,8 +51,8 @@ export default defineEventHandler(async (event) => {
       });
     }
 
-    // Check if user has access to this workspace
-    const accessibleIds = await getAccessibleWorkspaceIds(user.id);
+    // Check if user has access to this workspace (including shared/invited access)
+    const accessibleIds = await getAccessibleWorkspaceIds(user.id, user.email);
     if (!accessibleIds.includes(project.workspaceId)) {
       throw createError({
         statusCode: 403,
