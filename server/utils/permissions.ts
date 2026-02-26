@@ -294,8 +294,9 @@ export async function validateShareToken(token: string, userId?: string): Promis
 
 /**
  * Record or update user's access to a shared workspace
+ * Also auto-converts shared access to formal workspace membership
  */
-export async function recordSharedAccess(shareId: string, userId: string, permission: SharePermission): Promise<void> {
+export async function recordSharedAccess(shareId: string, userId: string, permission: SharePermission, userEmail?: string): Promise<void> {
   const now = new Date();
 
   // Check if access record already exists
@@ -327,6 +328,45 @@ export async function recordSharedAccess(shareId: string, userId: string, permis
         accessedAt: now,
         lastAccessedAt: now
       });
+  }
+
+  // Auto-convert to workspace member
+  // Get workspaceId from share record
+  const shareRecord = await db
+    .select({ workspaceId: workspaceShares.workspaceId, createdBy: workspaceShares.createdBy })
+    .from(workspaceShares)
+    .where(eq(workspaceShares.id, shareId))
+    .limit(1);
+
+  if (shareRecord.length) {
+    const { workspaceId, createdBy } = shareRecord[0];
+    
+    // Check if user is already a member
+    const existingMember = await db
+      .select()
+      .from(workspaceMembers)
+      .where(
+        and(
+          eq(workspaceMembers.workspaceId, workspaceId),
+          eq(workspaceMembers.userId, userId)
+        )
+      )
+      .limit(1);
+
+    if (!existingMember.length) {
+      // Add user as formal workspace member with accepted status
+      await db
+        .insert(workspaceMembers)
+        .values({
+          workspaceId,
+          userId,
+          email: userEmail?.toLowerCase().trim() || '',
+          permission: permission as MemberPermission,
+          invitedBy: createdBy,
+          status: 'accepted',
+          acceptedAt: now
+        });
+    }
   }
 }
 

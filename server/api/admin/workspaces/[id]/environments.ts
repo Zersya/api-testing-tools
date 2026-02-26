@@ -1,14 +1,32 @@
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '../../../../db';
 import { environments, projects, environmentVariables } from '../../../../db/schema';
+import { getAccessibleWorkspaceIds } from '../../../../utils/permissions';
 
 export default defineEventHandler(async (event) => {
   const workspaceId = getRouterParam(event, 'id');
+  const user = event.context.user;
+
+  if (!user?.id) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: 'Unauthorized'
+    });
+  }
 
   if (!workspaceId) {
     throw createError({
       statusCode: 400,
       message: 'Workspace ID is required',
+    });
+  }
+
+  // Check if user has access to this workspace
+  const accessibleIds = await getAccessibleWorkspaceIds(user.id, user.email);
+  if (!accessibleIds.includes(workspaceId)) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'You do not have access to this workspace'
     });
   }
 
