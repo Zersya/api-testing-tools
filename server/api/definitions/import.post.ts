@@ -875,6 +875,7 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
         
         const extractedHeaders = extractHeaders(endpoint.parameters || [], endpoint.requestBody);
         const headersJson = extractedHeaders ? JSON.stringify(extractedHeaders) : null;
+        const endpointBody = extractBody(endpoint.requestBody);
         
         const newRequest = (await db
           .insert(savedRequests)
@@ -884,9 +885,7 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
             method: endpoint.method.toUpperCase() as 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS',
             url: fullUrl,
             headers: headersJson,
-            body: extractBody(endpoint.requestBody)
-              ? JSON.stringify(extractBody(endpoint.requestBody))
-              : null,
+            body: endpointBody ? JSON.stringify(endpointBody) : null,
             auth: auth ? JSON.stringify(auth) : null,
             mockConfig: JSON.stringify({
               isEnabled: true,
@@ -947,6 +946,8 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
         const queryParams = extractQueryParams(endpoint.parameters || []);
         const baseRequestUrl = buildUrl(endpoint.path);
         const fullUrl = buildUrlWithQueryParams(baseRequestUrl, queryParams);
+        const endpointHeaders = extractHeaders(endpoint.parameters || [], endpoint.requestBody);
+        const endpointBody = extractBody(endpoint.requestBody);
         
         const newRequest = (await db
           .insert(savedRequests)
@@ -955,12 +956,8 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
             name: getRequestName(endpoint),
             method: endpoint.method.toUpperCase() as 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS',
             url: fullUrl,
-            headers: extractHeaders(endpoint.parameters || [], endpoint.requestBody)
-              ? JSON.stringify(extractHeaders(endpoint.parameters || [], endpoint.requestBody))
-              : null,
-            body: extractBody(endpoint.requestBody)
-              ? JSON.stringify(extractBody(endpoint.requestBody))
-              : null,
+            headers: endpointHeaders ? JSON.stringify(endpointHeaders) : null,
+            body: endpointBody ? JSON.stringify(endpointBody) : null,
             auth: auth ? JSON.stringify(auth) : null,
             mockConfig: JSON.stringify({
               isEnabled: true,

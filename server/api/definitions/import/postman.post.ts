@@ -530,7 +530,7 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
               name: parsedRequest.name,
               method: parsedRequest.method,
               url: parsedRequest.url,
-              headers: Object.keys(parsedRequest.headers).length > 0 ? parsedRequest.headers : null,
+              headers: Object.keys(parsedRequest.headers).length > 0 ? JSON.stringify(parsedRequest.headers) : null,
               body: parsedRequest.body,
               auth: parsedRequest.auth,
               mockConfig: JSON.stringify({
@@ -592,7 +592,7 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
             name: parsedRequest.name,
             method: parsedRequest.method,
             url: parsedRequest.url,
-            headers: Object.keys(parsedRequest.headers).length > 0 ? parsedRequest.headers : null,
+            headers: Object.keys(parsedRequest.headers).length > 0 ? JSON.stringify(parsedRequest.headers) : null,
             body: parsedRequest.body,
             auth: parsedRequest.auth,
             mockConfig: JSON.stringify({

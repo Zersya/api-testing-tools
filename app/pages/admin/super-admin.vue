@@ -50,6 +50,24 @@ interface CollectionWithTree {
   requests: RequestItem[];
 }
 
+interface EnvironmentVariable {
+  id: string;
+  environmentId: string;
+  key: string;
+  value: string;
+  isSecret: boolean;
+}
+
+interface Environment {
+  id: string;
+  projectId: string;
+  name: string;
+  isActive: boolean;
+  isMockEnvironment: boolean;
+  createdAt: Date;
+  variables: EnvironmentVariable[];
+}
+
 interface ProjectWithCollections {
   id: string;
   workspaceId: string;
@@ -59,6 +77,8 @@ interface ProjectWithCollections {
   updatedAt: Date;
   collections: CollectionWithTree[];
   collectionCount: number;
+  environments: Environment[];
+  environmentCount: number;
 }
 
 interface SharedMember {
@@ -96,6 +116,7 @@ interface Summary {
   totalProjects: number;
   totalCollections: number;
   totalRequests: number;
+  totalEnvironments: number;
 }
 
 // State
@@ -108,6 +129,8 @@ const selectedRequest = ref<RequestItem | null>(null);
 const selectedWorkspaceId = ref<string | null>(null);
 const selectedProjectId = ref<string | null>(null);
 const selectedCollectionId = ref<string | null>(null);
+const selectedEnvironmentId = ref<string | null>(null);
+const showEnvironmentDropdown = ref(false);
 
 // Expansion state
 const expandedWorkspaces = ref<Set<string>>(new Set());
@@ -220,7 +243,51 @@ const selectRequest = (request: RequestItem, workspaceId: string, projectId: str
   selectedWorkspaceId.value = workspaceId;
   selectedProjectId.value = projectId;
   selectedCollectionId.value = collectionId;
+  
+  // Set default environment (active one, or first one, or null)
+  const workspace = workspaces.value.find(w => w.id === workspaceId);
+  const project = workspace?.projects.find(p => p.id === projectId);
+  if (project && project.environments.length > 0) {
+    const activeEnv = project.environments.find(e => e.isActive);
+    selectedEnvironmentId.value = activeEnv?.id || project.environments[0].id;
+  } else {
+    selectedEnvironmentId.value = null;
+  }
 };
+
+// Environment helpers
+const getAvailableEnvironments = (): Environment[] => {
+  if (!selectedProjectId.value) return [];
+  for (const workspace of workspaces.value) {
+    const project = workspace.projects.find(p => p.id === selectedProjectId.value);
+    if (project) return project.environments;
+  }
+  return [];
+};
+
+const getSelectedEnvironment = (): Environment | null => {
+  if (!selectedEnvironmentId.value) return null;
+  const envs = getAvailableEnvironments();
+  return envs.find(e => e.id === selectedEnvironmentId.value) || null;
+};
+
+// Close dropdown when clicking outside
+const closeEnvironmentDropdown = (e: MouseEvent) => {
+  const target = e.target as HTMLElement;
+  if (!target.closest('.environment-dropdown-container')) {
+    showEnvironmentDropdown.value = false;
+  }
+};
+
+onMounted(() => {
+  fetchData();
+  document.addEventListener('click', closeEnvironmentDropdown);
+});
+
+onUnmounted(() => {
+  clearTimeout(searchTimeout);
+  document.removeEventListener('click', closeEnvironmentDropdown);
+});
 
 // Tooltip handlers
 const showSharedTooltip = (event: MouseEvent, workspace: WorkspaceWithDetails) => {
@@ -262,7 +329,7 @@ const renderFolderTree = (folders: FolderTreeItem[], workspaceId: string, projec
     projectId,
     collectionId
   }));
-} };
+};
 
 // Expand/Collapse All
 const expandAll = () => {
@@ -290,11 +357,6 @@ const collapseAll = () => {
   expandedCollections.value.clear();
   expandedFolders.value.clear();
 };
-
-// Initialize
-onMounted(() => {
-  fetchData();
-});
 
 </script>
 
@@ -434,6 +496,10 @@ onMounted(() => {
           <div class="flex items-center gap-1.5">
             <span class="text-text-muted">Requests:</span>
             <span class="font-semibold text-text-primary">{{ summary.totalRequests }}</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="text-text-muted">Environments:</span>
+            <span class="font-semibold text-text-primary">{{ summary.totalEnvironments }}</span>
           </div>
         </div>
       </div>
@@ -691,14 +757,100 @@ onMounted(() => {
           </div>
         </div>
 
-        <div v-else class="flex-1 overflow-hidden">
-          <RequestBuilder
-            :request="selectedRequest"
-            :workspace-id="selectedWorkspaceId || undefined"
-            :project-id="selectedProjectId || undefined"
-            :collection-id="selectedCollectionId || undefined"
-            :read-only="true"
-          />
+        <div v-else class="flex-1 flex flex-col overflow-hidden">
+          <!-- Environment Selector Bar -->
+          <div class="flex items-center justify-between px-4 py-2 bg-bg-header border-b border-border-default">
+            <div class="flex items-center gap-3">
+              <span class="text-[13px] font-medium text-text-primary">Environment:</span>
+              <div class="relative environment-dropdown-container">
+                <button
+                  @click="showEnvironmentDropdown = !showEnvironmentDropdown"
+                  class="inline-flex items-center gap-2 py-1.5 px-3 bg-bg-tertiary border border-border-default rounded-md text-[13px] text-text-primary hover:bg-bg-hover transition-colors min-w-[200px] justify-between"
+                >
+                  <span v-if="selectedEnvironmentId" class="flex items-center gap-2">
+                    <span
+                      v-if="getSelectedEnvironment()?.isMockEnvironment"
+                      class="w-2 h-2 rounded-full bg-accent-orange"
+                      title="CLOUD MOCK Environment"
+                    ></span>
+                    {{ getSelectedEnvironment()?.name }}
+                  </span>
+                  <span v-else class="text-text-muted">Select environment...</span>
+                  <svg
+                    width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    :class="['transition-transform', showEnvironmentDropdown ? 'rotate-180' : '']"
+                  >
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
+
+                <!-- Environment Dropdown -->
+                <div
+                  v-if="showEnvironmentDropdown"
+                  class="absolute top-full left-0 mt-1 w-full min-w-[250px] bg-bg-secondary border border-border-default rounded-lg shadow-lg py-1 z-50 max-h-[300px] overflow-y-auto"
+                >
+                  <div v-if="!getAvailableEnvironments().length" class="px-3 py-2 text-[13px] text-text-muted">
+                    No environments available
+                  </div>
+                  <template v-else>
+                    <button
+                      v-for="env in getAvailableEnvironments()"
+                      :key="env.id"
+                      @click="selectedEnvironmentId = env.id; showEnvironmentDropdown = false"
+                      :class="[
+                        'w-full flex items-center gap-2 px-3 py-2 text-left text-[13px] transition-colors',
+                        selectedEnvironmentId === env.id ? 'bg-accent-blue/10 text-accent-blue' : 'text-text-primary hover:bg-bg-hover'
+                      ]"
+                    >
+                      <span
+                        v-if="env.isMockEnvironment"
+                        class="w-2 h-2 rounded-full bg-accent-orange"
+                        title="CLOUD MOCK"
+                      ></span>
+                      <span v-else class="w-2 h-2 rounded-full bg-accent-green"></span>
+                      <span class="flex-1">{{ env.name }}</span>
+                      <span
+                        v-if="env.isActive"
+                        class="text-[10px] bg-accent-green/20 text-accent-green px-1.5 py-0.5 rounded"
+                      >Active</span>
+                    </button>
+                  </template>
+                </div>
+              </div>
+            </div>
+
+            <!-- Environment Info -->
+            <div v-if="selectedEnvironmentId && getSelectedEnvironment()" class="flex items-center gap-4 text-[12px]">
+              <span v-if="getSelectedEnvironment()?.isMockEnvironment" class="flex items-center gap-1.5 text-accent-orange">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                </svg>
+                CLOUD MOCK
+              </span>
+              <span v-else class="flex items-center gap-1.5 text-accent-green">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 6v6l4 2" />
+                </svg>
+                Live Environment
+              </span>
+              <span class="text-text-muted">
+                {{ getSelectedEnvironment()?.variables.length || 0 }} variables
+              </span>
+            </div>
+          </div>
+
+          <!-- Request Builder -->
+          <div class="flex-1 overflow-hidden">
+            <RequestBuilder
+              :request="selectedRequest"
+              :workspace-id="selectedWorkspaceId || undefined"
+              :project-id="selectedProjectId || undefined"
+              :collection-id="selectedCollectionId || undefined"
+              :environment-id="selectedEnvironmentId || undefined"
+              :read-only="true"
+            />
+          </div>
         </div>
       </div>
     </div>

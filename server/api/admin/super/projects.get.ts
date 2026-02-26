@@ -6,9 +6,11 @@ import {
   folders, 
   savedRequests,
   workspaceMembers,
-  workspaceShares 
+  workspaceShares,
+  environments,
+  environmentVariables
 } from '../../../db/schema';
-import { eq, desc, asc, isNull } from 'drizzle-orm';
+import { eq, desc, asc, isNull, inArray } from 'drizzle-orm';
 import { isSuperAdmin, getWorkspaceOwnerEmail } from '../../../utils/permissions';
 import { getUserEmailOrFallback } from '../../../utils/userMapping';
 
@@ -59,6 +61,24 @@ interface CollectionWithTree {
   requests: RequestItem[];
 }
 
+interface EnvironmentVariable {
+  id: string;
+  environmentId: string;
+  key: string;
+  value: string;
+  isSecret: boolean;
+}
+
+interface EnvironmentWithVariables {
+  id: string;
+  projectId: string;
+  name: string;
+  isActive: boolean;
+  isMockEnvironment: boolean;
+  createdAt: Date;
+  variables: EnvironmentVariable[];
+}
+
 interface ProjectWithCollections {
   id: string;
   workspaceId: string;
@@ -68,6 +88,8 @@ interface ProjectWithCollections {
   updatedAt: Date;
   collections: CollectionWithTree[];
   collectionCount: number;
+  environments: EnvironmentWithVariables[];
+  environmentCount: number;
 }
 
 interface SharedMember {
@@ -239,6 +261,25 @@ export default defineEventHandler(async (event) => {
       }
     }
     
+    // Fetch all environments
+    const allEnvironments = await db
+      .select()
+      .from(environments)
+      .orderBy(desc(environments.createdAt));
+    
+    // Fetch all environment variables
+    const allEnvironmentVariables = await db
+      .select()
+      .from(environmentVariables);
+    
+    // Group variables by environment
+    const variablesPerEnvironment = new Map<string, EnvironmentVariable[]>();
+    for (const variable of allEnvironmentVariables) {
+      const existing = variablesPerEnvironment.get(variable.environmentId) || [];
+      existing.push(variable);
+      variablesPerEnvironment.set(variable.environmentId, existing);
+    }
+    
     // Fetch workspace sharing info
     const allMembers = await db
       .select()
@@ -308,10 +349,20 @@ export default defineEventHandler(async (event) => {
               };
             });
           
+          // Get environments for this project
+          const projectEnvironments = allEnvironments
+            .filter(e => e.projectId === project.id)
+            .map(env => ({
+              ...env,
+              variables: variablesPerEnvironment.get(env.id) || []
+            }));
+          
           return {
             ...project,
             collections: projectCollections,
-            collectionCount: projectCollections.length
+            collectionCount: projectCollections.length,
+            environments: projectEnvironments,
+            environmentCount: projectEnvironments.length
           };
         });
       
@@ -339,22 +390,26 @@ export default defineEventHandler(async (event) => {
     
     // Calculate totals
     const totalProjects = filteredWorkspaces.reduce((sum, ws) => sum + ws.projects.length, 0);
-    const totalCollections = filteredWorkspaces.reduce((sum, ws) => 
+    const totalCollections = filteredWorkspaces.reduce((sum, ws) =>
       sum + ws.projects.reduce((pSum, p) => pSum + p.collections.length, 0), 0
     );
-    const totalRequests = filteredWorkspaces.reduce((sum, ws) => 
-      sum + ws.projects.reduce((pSum, p) => 
+    const totalRequests = filteredWorkspaces.reduce((sum, ws) =>
+      sum + ws.projects.reduce((pSum, p) =>
         pSum + p.collections.reduce((cSum, c) => cSum + c.requestCount, 0), 0
       ), 0
     );
-    
+    const totalEnvironments = filteredWorkspaces.reduce((sum, ws) =>
+      sum + ws.projects.reduce((pSum, p) => pSum + p.environments.length, 0), 0
+    );
+
     return {
       workspaces: filteredWorkspaces,
       summary: {
         totalWorkspaces: filteredWorkspaces.length,
         totalProjects,
         totalCollections,
-        totalRequests
+        totalRequests,
+        totalEnvironments
       }
     };
     

@@ -5,7 +5,7 @@ export default defineEventHandler(async (event) => {
     return { isSuperAdmin: false };
   }
   
-  const { isSuperAdmin } = await import('../../utils/permissions');
+  const { isSuperAdmin } = await import('~~/server/utils/permissions');
   
   return {
     isSuperAdmin: isSuperAdmin(user.email)
