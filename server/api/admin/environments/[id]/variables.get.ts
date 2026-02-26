@@ -1,13 +1,13 @@
 import { db } from '../../../../db';
 import { environments, environmentVariables, projects } from '../../../../db/schema';
 import { eq } from 'drizzle-orm';
-import { getAccessibleWorkspaceIds } from '../../../../utils/permissions';
+import { getAccessibleWorkspaceIds, isSuperAdmin } from '../../../../utils/permissions';
 
 export default defineEventHandler(async (event) => {
   const environmentId = getRouterParam(event, 'id');
   const user = event.context.user;
 
-  if (!user?.id) {
+  if (!user?.id || !user?.email) {
     throw createError({
       statusCode: 401,
       statusMessage: 'Unauthorized'
@@ -50,13 +50,16 @@ export default defineEventHandler(async (event) => {
       });
     }
 
-    // Check if user has access to this workspace
-    const accessibleIds = await getAccessibleWorkspaceIds(user.id);
-    if (!accessibleIds.includes(project.workspaceId)) {
-      throw createError({
-        statusCode: 403,
-        statusMessage: 'You do not have access to this workspace'
-      });
+    // Check if user has access to this workspace (Super Admin bypass)
+    const isAdmin = isSuperAdmin(user.email);
+    if (!isAdmin) {
+      const accessibleIds = await getAccessibleWorkspaceIds(user.id);
+      if (!accessibleIds.includes(project.workspaceId)) {
+        throw createError({
+          statusCode: 403,
+          statusMessage: 'You do not have access to this workspace'
+        });
+      }
     }
 
     // Get all variables for this environment
