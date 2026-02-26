@@ -1809,7 +1809,7 @@ defineExpose({
                   :disabled="!param.enabled"
                   :variables="environmentVariables"
                   placeholder="Key"
-                  class="flex-1"
+                  class="flex-1 min-w-0"
                 />
                 <VariableInput
                   :model-value="param.value"
@@ -1817,7 +1817,7 @@ defineExpose({
                   :disabled="!param.enabled"
                   :variables="environmentVariables"
                   placeholder="Value"
-                  class="flex-1"
+                  class="flex-1 min-w-0"
                 />
                 <button 
                   @click="removeQueryParam(param.id)"
@@ -1875,7 +1875,7 @@ defineExpose({
                   :disabled="!header.enabled"
                   :variables="environmentVariables"
                   placeholder="Header Name"
-                  class="flex-1"
+                  class="flex-1 min-w-0"
                 />
                 <VariableInput
                   :model-value="header.value"
@@ -1883,7 +1883,7 @@ defineExpose({
                   :disabled="!header.enabled"
                   :variables="environmentVariables"
                   placeholder="Header Value"
-                  class="flex-1"
+                  class="flex-1 min-w-0"
                 />
                 <button
                   @click="removeHeader(header.id)"
@@ -1976,7 +1976,7 @@ defineExpose({
                   :disabled="!param.enabled"
                   :variables="environmentVariables"
                   placeholder="Key"
-                  class="flex-1"
+                  class="flex-1 min-w-0"
                 />
                 <select
                   :value="param.type"
@@ -1987,7 +1987,7 @@ defineExpose({
                   <option value="text">Text</option>
                   <option value="file">File</option>
                 </select>
-                <div v-if="param.type === 'text'" class="flex-1">
+                <div v-if="param.type === 'text'" class="flex-1 min-w-0">
                   <VariableInput
                     :model-value="param.value"
                     @update:model-value="updateFormDataParam(param.id, 'value', $event)"
@@ -2046,7 +2046,7 @@ defineExpose({
                   :disabled="!param.enabled"
                   :variables="environmentVariables"
                   placeholder="Key"
-                  class="flex-1"
+                  class="flex-1 min-w-0"
                 />
                 <VariableInput
                   :model-value="param.value"
@@ -2054,7 +2054,7 @@ defineExpose({
                   :disabled="!param.enabled"
                   :variables="environmentVariables"
                   placeholder="Value"
-                  class="flex-1"
+                  class="flex-1 min-w-0"
                 />
                 <button
                   @click="removeFormDataParam(param.id)"
