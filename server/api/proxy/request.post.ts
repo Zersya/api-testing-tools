@@ -132,17 +132,24 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
 
     if (body.environmentId) {
       try {
+        console.log('[Proxy] Looking up environment:', body.environmentId);
+        
         const environment = (await db
           .select()
           .from(environments)
           .where(eq(environments.id, body.environmentId))
           .limit(1))[0];
 
+        console.log('[Proxy] Environment found:', environment?.name || 'NOT FOUND');
+
         if (environment) {
           const environmentVariablesList = await db
             .select()
             .from(environmentVariables)
             .where(eq(environmentVariables.environmentId, body.environmentId));
+
+          console.log('[Proxy] Variables found:', environmentVariablesList.length);
+          console.log('[Proxy] Variable keys:', environmentVariablesList.map(v => v.key));
 
           if (environmentVariablesList && environmentVariablesList.length > 0) {
             const variables: Record<string, string> = {};
@@ -158,6 +165,7 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
               let match;
               while ((match = variablePattern.exec(result)) !== null && iterations < maxIterations) {
                 const trimmedName = match[1].trim();
+                console.log(`[Proxy] Substituting {{${trimmedName}}}:`, variables.hasOwnProperty(trimmedName) ? 'FOUND' : 'NOT FOUND');
                 if (variables.hasOwnProperty(trimmedName)) {
                   result = result.replace(match[0], variables[trimmedName]);
                   variablePattern.lastIndex = 0;
@@ -174,6 +182,8 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
 
             const originalUrl = body.url;
             resolvedUrl = substituteWithLimit(body.url);
+            console.log('[Proxy] URL substitution:', { original: originalUrl, resolved: resolvedUrl });
+            
             if (resolvedUrl !== originalUrl) {
               resolvedValues = { ...resolvedValues, url: resolvedUrl };
             }
@@ -197,19 +207,47 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
                 }
               }
             }
+          } else {
+            console.log('[Proxy] WARNING: No variables found in environment');
           }
+        } else {
+          console.log('[Proxy] WARNING: Environment not found');
         }
       } catch (error) {
-        console.error('Failed to fetch environment variables:', error);
+        console.error('[Proxy] Failed to fetch environment variables:', error);
         variableWarnings.push('Failed to load environment variables - using raw values');
         environmentLoadFailed = true;
       }
     }
 
+    // Check for unresolved variables in URL and return clear error
     const unresolvedPattern = /\{\{([^{}]+)\}\}/g;
     let unresolvedMatch;
+    const unresolvedVariables: string[] = [];
     while ((unresolvedMatch = unresolvedPattern.exec(resolvedUrl)) !== null) {
-      variableWarnings.push(`Undefined variable: {{${unresolvedMatch[1].trim()}}}`);
+      const varName = unresolvedMatch[1].trim();
+      unresolvedVariables.push(varName);
+      variableWarnings.push(`Undefined variable: {{${varName}}}`);
+    }
+
+    // If URL still contains unresolved variables, return error immediately
+    if (unresolvedVariables.length > 0) {
+      console.error('[Proxy] ERROR: Unresolved variables in URL:', unresolvedVariables);
+      const errorEndTime = Date.now();
+      return {
+        success: false,
+        error: {
+          message: `Undefined environment variable(s): ${unresolvedVariables.map(v => `{{${v}}}`).join(', ')}. Please check that the variable exists in the selected environment.`,
+          code: 'UNDEFINED_VARIABLES',
+          cause: `The following variables are not defined in environment ${body.environmentId}: ${unresolvedVariables.join(', ')}`
+        },
+        timing: {
+          startTime: new Date(startTime).toISOString(),
+          endTime: new Date(errorEndTime).toISOString(),
+          durationMs: errorEndTime - startTime
+        },
+        variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined
+      };
     }
 
     // Check if environment is CLOUD MOCK and return mock response
