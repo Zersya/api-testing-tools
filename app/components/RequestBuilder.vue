@@ -35,6 +35,14 @@ interface BodyParam {
   type: 'text' | 'file';
 }
 
+interface PathVariable {
+  id: string;
+  key: string;
+  value: string;
+  enabled: boolean;
+  description: string;
+}
+
 interface HttpRequest {
   id: string;
   folderId: string;
@@ -48,6 +56,7 @@ interface HttpRequest {
     credentials?: Record<string, string>;
   } | null;
   mockConfig?: import('../../server/db/schema/savedRequest').MockConfig | null;
+  pathVariables?: import('../../server/db/schema/savedRequest').RequestPathVariables | null;
   order: number;
   createdAt: Date;
   updatedAt: Date;
@@ -163,6 +172,8 @@ const queryParams = ref<QueryParam[]>([]);
 const isBulkEditMode = ref(false);
 const bulkQueryString = ref('');
 
+const pathVariables = ref<PathVariable[]>([]);
+
 const headers = ref<HeaderParam[]>([]);
 
 const bodyFormat = ref<BodyFormat>('none');
@@ -274,8 +285,60 @@ const captureCurrentStateAsSaved = () => {
           password: basicAuth.value.password
         } : undefined
     },
-    mockConfig: mockConfig.value
+    mockConfig: mockConfig.value,
+    pathVariables: buildPathVariablesRecord()
   };
+};
+
+// Path Variables functions
+const extractPathVariablesFromUrl = (url: string): string[] => {
+  // Match only :paramName syntax (not {{environmentVariables}})
+  const pathVariablePattern = /:(\w+)/g;
+  const matches: string[] = [];
+  let match;
+  while ((match = pathVariablePattern.exec(url)) !== null) {
+    matches.push(match[1]);
+  }
+  return [...new Set(matches)]; // Remove duplicates
+};
+
+const addPathVariable = (key: string) => {
+  const existingVar = pathVariables.value.find(v => v.key === key);
+  if (!existingVar) {
+    pathVariables.value.push({
+      id: crypto.randomUUID(),
+      key,
+      value: '',
+      enabled: true,
+      description: ''
+    });
+  }
+};
+
+const removePathVariable = (id: string) => {
+  const index = pathVariables.value.findIndex(v => v.id === id);
+  if (index !== -1) {
+    pathVariables.value.splice(index, 1);
+  }
+};
+
+const updatePathVariable = (id: string, field: keyof PathVariable, value: string | boolean) => {
+  const variable = pathVariables.value.find(v => v.id === id);
+  if (variable) {
+    variable[field] = value as never;
+  }
+};
+
+const resolvePathVariables = (url: string): string => {
+  let resolvedUrl = url;
+  pathVariables.value.forEach(variable => {
+    if (variable.enabled && variable.key) {
+      // Replace only :key syntax (not {{environmentVariables}})
+      const pattern = new RegExp(`:${variable.key}(?![a-zA-Z0-9_])`, 'g');
+      resolvedUrl = resolvedUrl.replace(pattern, variable.value);
+    }
+  });
+  return resolvedUrl;
 };
 
 // Function to load request data into form state
@@ -418,6 +481,47 @@ const loadRequestData = (request: HttpRequest) => {
     mockConfig.value = null;
   }
 
+  // Load path variables
+  pathVariables.value = [];
+  if (request.pathVariables) {
+    try {
+      const pathVarsObj = typeof request.pathVariables === 'string'
+        ? JSON.parse(request.pathVariables)
+        : request.pathVariables;
+
+      if (pathVarsObj && typeof pathVarsObj === 'object' && !Array.isArray(pathVarsObj)) {
+        pathVariables.value = Object.entries(pathVarsObj).map(([key, config]) => {
+          const varConfig = config as { value?: string; description?: string };
+          return {
+            id: crypto.randomUUID(),
+            key,
+            value: varConfig?.value || '',
+            enabled: true,
+            description: varConfig?.description || ''
+          };
+        });
+      }
+    } catch (e) {
+      console.warn('Failed to parse path variables:', e);
+      pathVariables.value = [];
+    }
+  }
+
+  // Auto-detect path variables from URL
+  const detectedVars = extractPathVariablesFromUrl(request.url);
+  detectedVars.forEach(varName => {
+    const existingVar = pathVariables.value.find(v => v.key === varName);
+    if (!existingVar) {
+      pathVariables.value.push({
+        id: crypto.randomUUID(),
+        key: varName,
+        value: '',
+        enabled: true,
+        description: ''
+      });
+    }
+  });
+
   // Clear response when switching requests
   response.value = null;
   
@@ -509,6 +613,28 @@ const updateQueryParam = (id: string, field: keyof QueryParam, value: string | b
   }
 };
 
+// Watch URL changes to auto-detect path variables
+watch(() => form.value.url, (newUrl) => {
+  const detectedVars = extractPathVariablesFromUrl(newUrl);
+
+  // Add new path variables that aren't already in the list
+  detectedVars.forEach(varName => {
+    const existingVar = pathVariables.value.find(v => v.key === varName);
+    if (!existingVar) {
+      addPathVariable(varName);
+    }
+  });
+
+  // Remove path variables that no longer exist in URL
+  // but only if they have empty values (preserve user's data)
+  pathVariables.value = pathVariables.value.filter(v => {
+    const stillExists = detectedVars.includes(v.key);
+    if (stillExists) return true;
+    // Keep if it has a value (user might want to reuse)
+    return v.value !== '';
+  });
+}, { immediate: true });
+
 const parseHeadersFromRequest = (headersObj: Record<string, string> | null) => {
   if (!headersObj) return [];
   return Object.entries(headersObj).map(([key, value]) => ({
@@ -575,6 +701,19 @@ const buildHeadersRecord = (): Record<string, string> => {
     }
   });
   return headersRecord;
+};
+
+const buildPathVariablesRecord = (): import('../../server/db/schema/savedRequest').RequestPathVariables => {
+  const pathVarsRecord: import('../../server/db/schema/savedRequest').RequestPathVariables = {};
+  pathVariables.value.forEach(variable => {
+    if (variable.key) {
+      pathVarsRecord[variable.key] = {
+        value: variable.value,
+        description: variable.description
+      };
+    }
+  });
+  return pathVarsRecord;
 };
 
 const addFormDataParam = () => {
@@ -1156,16 +1295,17 @@ const hasUnsavedChanges = computed(() => {
   const currentBody = buildBody();
   const currentAuth = {
     type: authType.value,
-    credentials: authType.value === 'api-key' ? { 
-      key: apiKey.value.key, 
+    credentials: authType.value === 'api-key' ? {
+      key: apiKey.value.key,
       value: apiKey.value.value,
       addTo: apiKey.value.addTo
-    } : authType.value === 'bearer' ? { token: bearerToken.value } 
+    } : authType.value === 'bearer' ? { token: bearerToken.value }
       : authType.value === 'basic' ? {
         username: basicAuth.value.username,
         password: basicAuth.value.password
       } : undefined
   } || null;
+  const currentPathVariables = buildPathVariablesRecord();
 
   // Use lastSavedState if available (after a save), otherwise use props.request
   const compareState = lastSavedState.value || {
@@ -1174,7 +1314,8 @@ const hasUnsavedChanges = computed(() => {
     headers: props.request.headers,
     body: props.request.body,
     auth: props.request.auth,
-    mockConfig: props.request.mockConfig
+    mockConfig: props.request.mockConfig,
+    pathVariables: props.request.pathVariables
   };
 
   const urlChanged = currentUrl !== compareState.url;
@@ -1185,8 +1326,9 @@ const hasUnsavedChanges = computed(() => {
   const bodyChanged = JSON.stringify(normalizedCurrentBody) !== JSON.stringify(normalizedOriginalBody);
   const authChanged = JSON.stringify(currentAuth) !== JSON.stringify(compareState.auth || {});
   const mockConfigChanged = JSON.stringify(mockConfig.value) !== JSON.stringify(compareState.mockConfig || null);
+  const pathVarsChanged = JSON.stringify(currentPathVariables) !== JSON.stringify(compareState.pathVariables || {});
 
-  return urlChanged || methodChanged || headersChanged || bodyChanged || authChanged || mockConfigChanged;
+  return urlChanged || methodChanged || headersChanged || bodyChanged || authChanged || mockConfigChanged || pathVarsChanged;
 });
 
 const getContentType = () => {
@@ -1479,6 +1621,7 @@ const openSaveDialog = () => {
         } : undefined
     } || null,
     mockConfig: mockConfig.value,
+    pathVariables: buildPathVariablesRecord(),
     order: props.request.order,
     createdAt: props.request.createdAt,
     updatedAt: new Date()
@@ -1529,6 +1672,7 @@ const openSaveAsDialog = () => {
       responseBody: { message: 'Mock response' },
       responseHeaders: { 'Content-Type': 'application/json' }
     },
+    pathVariables: buildPathVariablesRecord(),
     order: props.request.order,
     createdAt: props.request.createdAt,
     updatedAt: new Date()
@@ -1627,6 +1771,10 @@ const sendRequest = async () => {
     requestHeaders = { ...requestHeaders, ...authHeaders };
 
     let requestUrl = form.value.url;
+
+    // Apply path variable substitution
+    requestUrl = resolvePathVariables(requestUrl);
+
     const authQueryParams = buildAuthQueryParams();
     if (Object.keys(authQueryParams).length > 0) {
       try {
@@ -1687,6 +1835,7 @@ defineExpose({
   form,
   headers,
   queryParams,
+  pathVariables,
   bodyFormat,
   jsonBody,
   rawBody,
@@ -1861,7 +2010,7 @@ defineExpose({
                 </button>
               </div>
               
-              <button 
+              <button
                 @click="addQueryParam"
                 class="w-full mt-2 py-2 text-xs text-accent-blue hover:text-accent-blue/80 border border-dashed border-border-default rounded hover:border-accent-blue transition-colors duration-fast flex items-center justify-center gap-2"
               >
@@ -1871,6 +2020,61 @@ defineExpose({
                 </svg>
                 Add Query Param
               </button>
+            </div>
+
+            <!-- Path Variables Section -->
+            <div class="mt-6 border-t border-border-default pt-4">
+              <div class="px-2 pb-2 flex items-center justify-between">
+                <span class="text-xs font-medium text-text-secondary">Path Variables</span>
+                <span class="text-xs text-text-muted">{{ pathVariables.filter(v => v.enabled).length }} variables</span>
+              </div>
+
+              <div v-if="pathVariables.length === 0" class="px-2 py-4 text-center text-xs text-text-muted">
+                No path variables detected. Add variables to your URL using <code class="px-1 py-0.5 bg-bg-tertiary rounded">:variableName</code> syntax.
+              </div>
+
+              <div v-else class="space-y-1">
+                <div
+                  v-for="variable in pathVariables"
+                  :key="variable.id"
+                  class="flex items-center gap-2 py-2 px-2 rounded hover:bg-bg-hover transition-colors duration-fast group"
+                >
+                  <input
+                    type="checkbox"
+                    :checked="variable.enabled"
+                    @change="updatePathVariable(variable.id, 'enabled', ($event.target as HTMLInputElement).checked)"
+                    class="w-4 h-4 rounded border-border-default bg-bg-input text-accent-blue focus:ring-accent-blue focus:ring-offset-bg-secondary cursor-pointer"
+                  />
+                  <div class="flex-1 min-w-0">
+                    <code class="text-xs text-text-secondary bg-bg-tertiary px-2 py-1 rounded">:{{ variable.key }}</code>
+                  </div>
+                  <VariableInput
+                    :model-value="variable.value"
+                    @update:model-value="updatePathVariable(variable.id, 'value', $event)"
+                    :disabled="!variable.enabled"
+                    :variables="environmentVariables"
+                    placeholder="Value"
+                    class="flex-1 min-w-0"
+                  />
+                  <input
+                    :value="variable.description"
+                    @input="updatePathVariable(variable.id, 'description', ($event.target as HTMLInputElement).value)"
+                    :disabled="!variable.enabled"
+                    placeholder="Description"
+                    class="flex-1 min-w-0 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                  <button
+                    @click="removePathVariable(variable.id)"
+                    class="p-1.5 text-text-muted hover:text-accent-red opacity-0 group-hover:opacity-100 transition-all duration-fast focus:opacity-100 focus:outline-none"
+                    title="Remove path variable"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
