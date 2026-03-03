@@ -913,6 +913,8 @@ const handleSaveRequest = async (request: any) => {
       body: request.body,
       auth: request.auth,
       mockConfig: request.mockConfig,
+      preScript: request.preScript,
+      postScript: request.postScript,
       pathVariables: request.pathVariables
     };
     
@@ -1030,6 +1032,8 @@ const handleSave = async (data: any) => {
             body: requestToSave.value.body,
             auth: requestToSave.value.auth,
             mockConfig: requestToSave.value.mockConfig,
+            preScript: requestToSave.value.preScript,
+            postScript: requestToSave.value.postScript,
             pathVariables: requestToSave.value.pathVariables
           }
         });
@@ -1045,6 +1049,8 @@ const handleSave = async (data: any) => {
             body: requestToSave.value.body,
             auth: requestToSave.value.auth,
             mockConfig: requestToSave.value.mockConfig,
+            preScript: requestToSave.value.preScript,
+            postScript: requestToSave.value.postScript,
             pathVariables: requestToSave.value.pathVariables
           }
         });
@@ -1074,6 +1080,8 @@ const handleSave = async (data: any) => {
           body: requestToSave.value.body,
           auth: requestToSave.value.auth,
           mockConfig: requestToSave.value.mockConfig,
+          preScript: requestToSave.value.preScript,
+          postScript: requestToSave.value.postScript,
           pathVariables: requestToSave.value.pathVariables
         }
       });
@@ -1089,6 +1097,8 @@ const handleSave = async (data: any) => {
           body: requestToSave.value.body,
           auth: requestToSave.value.auth,
           mockConfig: requestToSave.value.mockConfig,
+          preScript: requestToSave.value.preScript,
+          postScript: requestToSave.value.postScript,
           pathVariables: requestToSave.value.pathVariables
         };
       }
