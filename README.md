@@ -1,75 +1,114 @@
-# Nuxt 3 Minimal Starter
+# Mock Service
 
-Look at the [Nuxt 3 documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+A desktop application built with Nuxt 3 and Tauri.
+
+## Prerequisites
+
+- [Bun](https://bun.sh) (recommended) or Node.js
+- [Rust](https://www.rust-lang.org/tools/install)
 
 ## Setup
 
-Make sure to install the dependencies:
-
+1. **Install JavaScript dependencies:**
 ```bash
-# npm
-npm install
-
-# pnpm
-pnpm install
-
-# yarn
-yarn install
-
-# bun
 bun install
 ```
 
-## Development Server
-
-Start the development server on `http://localhost:3000`:
-
+2. **Install Rust targets (for macOS universal build):**
 ```bash
-# npm
-npm run dev
+rustup target add aarch64-apple-darwin x86_64-apple-darwin
+```
 
-# pnpm
-pnpm run dev
+3. **Generate app icons** (if `src-tauri/icons/` is empty):
+```bash
+# Generate a placeholder icon (or replace app-icon.png with your own 1024x1024 PNG)
+python3 -c "
+import struct, zlib
+def make_png(w, h, r, g, b):
+    def chunk(name, data):
+        c = struct.pack('>I', len(data)) + name + data
+        return c + struct.pack('>I', zlib.crc32(name + data) & 0xffffffff)
+    sig = b'\x89PNG\r\n\x1a\n'
+    ihdr = chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0))
+    raw = b''.join(b'\x00' + bytes([r,g,b]*w) for _ in range(h))
+    idat = chunk(b'IDAT', zlib.compress(raw))
+    iend = chunk(b'IEND', b'')
+    return sig + ihdr + idat + iend
+open('app-icon.png', 'wb').write(make_png(1024, 1024, 59, 130, 246))
+print('app-icon.png written (1024x1024 PNG)')
+"
 
-# yarn
-yarn dev
+# Generate all icon sizes
+bun tauri icon ./app-icon.png
+```
 
-# bun
+## Development
+
+### Web Only (Browser)
+```bash
 bun run dev
 ```
+Opens at `http://localhost:3000`
 
-## Production
-
-Build the application for production:
-
+### Desktop App (Tauri)
 ```bash
-# npm
-npm run build
-
-# pnpm
-pnpm run build
-
-# yarn
-yarn build
-
-# bun
-bun run build
+bun tauri:dev
 ```
 
-Locally preview production build:
+## Building
 
+### Web Build
 ```bash
-# npm
-npm run preview
-
-# pnpm
-pnpm run preview
-
-# yarn
-yarn preview
-
-# bun
-bun run preview
+bun run generate
 ```
 
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+### Desktop App
+
+**macOS Universal (Intel + Apple Silicon):**
+```bash
+bun tauri build --target universal-apple-darwin
+```
+
+Output: `src-tauri/target/universal-apple-darwin/release/bundle/dmg/Mock Service_0.2.1_universal.dmg`
+
+**Platform-specific builds:**
+```bash
+# Apple Silicon only
+bun tauri build --target aarch64-apple-darwin
+
+# Intel only
+bun tauri build --target x86_64-apple-darwin
+```
+
+## Project Structure
+
+```
+├── src-tauri/          # Rust backend (Tauri)
+│   ├── src/           # Rust source code
+│   ├── icons/         # App icons (auto-generated)
+│   └── Cargo.toml     # Rust dependencies
+├── components/        # Vue components
+├── composables/       # Vue composables
+├── pages/            # Nuxt pages
+└── app-icon.png      # Source icon for generation
+```
+
+## Scripts
+
+| Command | Description |
+|---------|-------------|
+| `bun run dev` | Start web dev server |
+| `bun tauri:dev` | Start desktop app in dev mode |
+| `bun run generate` | Build for static hosting |
+| `bun tauri build` | Build desktop app installer |
+| `bun tauri icon ./app-icon.png` | Regenerate app icons |
+
+## Tech Stack
+
+- **Frontend:** Nuxt 3, Vue 3, TypeScript
+- **Backend:** Tauri v2, Rust
+- **Build Tool:** Bun
+
+## License
+
+MIT

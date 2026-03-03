@@ -74,7 +74,7 @@ const initSelectedWorkspace = () => {
     const savedWorkspaceId = typeof window !== 'undefined' ? localStorage.getItem('selectedWorkspaceId') : null;
     
     // Try saved workspace first
-    if (savedWorkspaceId) {
+    if (savedWorkspaceId && Array.isArray(workspaces.value)) {
       const savedWs = workspaces.value.find((w: any) => w.id === savedWorkspaceId);
       if (savedWs && savedWs.projects?.length > 0) {
         selectedWorkspaceId.value = savedWs.id;
@@ -82,9 +82,9 @@ const initSelectedWorkspace = () => {
         return;
       }
     }
-    
+
     // Find first workspace with projects
-    const firstWsWithProjects = workspaces.value.find((w: any) => w.projects?.length > 0);
+    const firstWsWithProjects = workspaces.value?.find((w: any) => w.projects?.length > 0);
     if (firstWsWithProjects) {
       selectedWorkspaceId.value = firstWsWithProjects.id;
       selectedProjectId.value = firstWsWithProjects.projects[0].id;
