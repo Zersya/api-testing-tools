@@ -13,7 +13,13 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:seed": "tsx server/db/seed.ts"
+    "db:seed": "tsx server/db/seed.ts",
+    "version:patch": "node scripts/bump-version.js patch",
+    "version:minor": "node scripts/bump-version.js minor",
+    "version:major": "node scripts/bump-version.js major",
+    "version:patch:push": "node scripts/bump-version.js patch --push",
+    "version:minor:push": "node scripts/bump-version.js minor --push",
+    "version:major:push": "node scripts/bump-version.js major --push"
   },
   "dependencies": {
     "@nuxtjs/tailwindcss": "^6.14.0",
