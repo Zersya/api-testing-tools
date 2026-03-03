@@ -56,7 +56,8 @@ export default defineEventHandler(async (event) => {
         delay: number;
         responseBody: Record<string, unknown> | string | null;
         responseHeaders: Record<string, string>;
-      } | null>(request.mockConfig)
+      } | null>(request.mockConfig),
+      pathVariables: parseJsonField<Record<string, { value: string; description?: string }>>(request.pathVariables)
     };
   } catch (error: any) {
     // Re-throw if it's already an H3 error
