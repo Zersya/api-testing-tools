@@ -14,6 +14,9 @@ export default defineNuxtConfig({
     compatibilityVersion: 4
   },
 
+  // Disable SSR for Tauri (client-side only)
+  ssr: false,
+
   modules: ["@nuxtjs/tailwindcss"],
 
   css: ['~/assets/css/main.css'],
@@ -43,6 +46,21 @@ export default defineNuxtConfig({
       }
     ]
   },
+
+  vite: {
+    // Better support for Tauri CLI output
+    clearScreen: false,
+    // Enable environment variables
+    envPrefix: ['VITE_', 'TAURI_'],
+    server: {
+      // Tauri requires a consistent port
+      strictPort: true,
+    },
+  },
+
+  // Ignore src-tauri to avoid file watching issues
+  ignore: ['**/src-tauri/**'],
+
   runtimeConfig: {
     adminEmail: process.env.ADMIN_EMAIL || 'admin@mock.com',
     adminPassword: process.env.ADMIN_PASSWORD || 'admin123',
