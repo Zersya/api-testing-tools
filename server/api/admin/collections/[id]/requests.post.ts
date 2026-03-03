@@ -1,5 +1,5 @@
 import { db } from '../../../../db';
-import { collections, savedRequests, folders, type HttpMethod, type RequestHeaders, type RequestBody, type RequestAuth } from '../../../../db/schema';
+import { collections, savedRequests, folders, type HttpMethod, type RequestHeaders, type RequestBody, type RequestAuth, type RequestPathVariables } from '../../../../db/schema';
 import { eq, and, isNull } from 'drizzle-orm';
 
 interface CreateRequestBody {
@@ -11,6 +11,7 @@ interface CreateRequestBody {
   auth?: RequestAuth;
   preScript?: string;
   postScript?: string;
+  pathVariables?: RequestPathVariables;
   order?: number;
 }
 
@@ -155,6 +156,7 @@ export default defineEventHandler(async (event) => {
         auth: body.auth || null,
         preScript: body.preScript || null,
         postScript: body.postScript || null,
+        pathVariables: body.pathVariables || null,
         order
       })
       .returning())[0];

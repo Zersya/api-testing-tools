@@ -13,6 +13,7 @@ interface UpdateRequestBody {
     type: string;
     credentials?: Record<string, string>;
   } | null;
+  pathVariables?: Record<string, { value: string; description?: string }> | null;
 }
 
 export default defineEventHandler(async (event) => {
@@ -135,6 +136,7 @@ export default defineEventHandler(async (event) => {
     if (body.headers !== undefined) updateData.headers = JSON.stringify(body.headers);
     if (body.body !== undefined) updateData.body = typeof body.body === 'string' ? body.body : JSON.stringify(body.body);
     if (body.auth !== undefined) updateData.auth = JSON.stringify(body.auth);
+    if (body.pathVariables !== undefined) updateData.pathVariables = JSON.stringify(body.pathVariables);
 
     const updatedRequest = await db
       .update(savedRequests)

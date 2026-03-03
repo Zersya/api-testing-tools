@@ -2,7 +2,7 @@ import { db } from '../../../../db';
 import { savedRequests, folders, collections, projects, workspaceShares } from '../../../../db/schema';
 import { eq } from 'drizzle-orm';
 import { validateShareToken } from '../../../../utils/permissions';
-import type { HttpMethod, RequestHeaders, RequestBody, RequestAuth } from '../../../../db/schema/savedRequest';
+import type { HttpMethod, RequestHeaders, RequestBody, RequestAuth, RequestPathVariables } from '../../../../db/schema/savedRequest';
 
 interface UpdateRequestBody {
   name?: string;
@@ -11,6 +11,7 @@ interface UpdateRequestBody {
   headers?: RequestHeaders;
   body?: RequestBody;
   auth?: RequestAuth;
+  pathVariables?: RequestPathVariables;
   order?: number;
 }
 
@@ -133,6 +134,7 @@ export default defineEventHandler(async (event) => {
       headers: RequestHeaders | null;
       body: RequestBody;
       auth: RequestAuth;
+      pathVariables: RequestPathVariables | null;
       order: number;
       updatedAt: Date;
     }> = {
@@ -220,6 +222,11 @@ export default defineEventHandler(async (event) => {
     // Set auth (can be null or object)
     if (body.auth !== undefined) {
       updateData.auth = body.auth;
+    }
+
+    // Set pathVariables (can be null or object)
+    if (body.pathVariables !== undefined) {
+      updateData.pathVariables = body.pathVariables;
     }
 
     // Validate and set order

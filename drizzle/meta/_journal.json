@@ -43,6 +43,13 @@
       "when": 1771487270313,
       "tag": "0005_regular_nomad",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1772513789657,
+      "tag": "0006_parched_lady_vermin",
+      "breakpoints": true
     }
   ]
 }

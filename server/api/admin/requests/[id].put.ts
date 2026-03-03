@@ -1,5 +1,5 @@
 import { db } from '../../../db';
-import { savedRequests, type HttpMethod, type RequestHeaders, type RequestBody, type RequestAuth, type MockConfig } from '../../../db/schema';
+import { savedRequests, type HttpMethod, type RequestHeaders, type RequestBody, type RequestAuth, type MockConfig, type RequestPathVariables } from '../../../db/schema';
 import { eq, sql } from 'drizzle-orm';
 
 interface UpdateRequestBody {
@@ -12,6 +12,7 @@ interface UpdateRequestBody {
   mockConfig?: MockConfig;
   preScript?: string;
   postScript?: string;
+  pathVariables?: RequestPathVariables;
   order?: number;
 }
 
@@ -66,6 +67,7 @@ export default defineEventHandler(async (event) => {
       mockConfig: MockConfig;
       preScript: string | null;
       postScript: string | null;
+      pathVariables: RequestPathVariables | null;
       order: number;
       updatedAt: Date;
     }> = {
@@ -171,6 +173,14 @@ export default defineEventHandler(async (event) => {
     // Set postScript (can be null or string)
     if (body.postScript !== undefined) {
       updateData.postScript = body.postScript || null;
+    }
+
+    // Set pathVariables (can be null or object)
+    if (body.pathVariables !== undefined) {
+      console.log('[Request PUT] Setting pathVariables:', body.pathVariables);
+      updateData.pathVariables = body.pathVariables;
+    } else {
+      console.log('[Request PUT] pathVariables is undefined, not updating');
     }
 
     // Validate and set order
