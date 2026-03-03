@@ -99,9 +99,9 @@ const emit = defineEmits<{
   unsavedChanges: [request: HttpRequest, hasUnsavedChanges: boolean];
 }>();
 
-type TabType = 'params' | 'headers' | 'body' | 'auth' | 'mock' | 'examples' | 'response';
+type TabType = 'params' | 'headers' | 'body' | 'auth' | 'preScript' | 'postScript' | 'mock' | 'examples' | 'response';
 type BodyFormat = 'none' | 'json' | 'form-data' | 'urlencoded' | 'raw' | 'binary';
-type ResponseViewType = 'pretty' | 'preview' | 'raw' | 'headers' | 'cookies' | 'imagePreview';
+type ResponseViewType = 'pretty' | 'preview' | 'raw' | 'headers' | 'cookies' | 'imagePreview' | 'console';
 
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'] as const;
 const COMMON_HEADERS = [
@@ -208,6 +208,12 @@ const searchQuery = ref('');
 // Mock configuration state
 const mockConfig = ref<import('../../server/db/schema/savedRequest').MockConfig | null>(null);
 
+// Script state
+const preScript = ref('');
+const postScript = ref('');
+const scriptLogs = ref<Array<{ phase: 'pre' | 'post'; type: 'log' | 'error' | 'warn'; message: string; timestamp: number }>>([]);
+const activeScriptTab = ref<'console' | 'preScript' | 'postScript'>('console');
+
 const parseUrlQuery = (url: string) => {
   try {
     // Handle URLs with environment variables like {{URL}}
@@ -274,7 +280,9 @@ const captureCurrentStateAsSaved = () => {
           password: basicAuth.value.password
         } : undefined
     },
-    mockConfig: mockConfig.value
+    mockConfig: mockConfig.value,
+    preScript: preScript.value,
+    postScript: postScript.value
   };
 };
 
@@ -418,8 +426,13 @@ const loadRequestData = (request: HttpRequest) => {
     mockConfig.value = null;
   }
 
-  // Clear response when switching requests
+  // Load scripts
+  preScript.value = request.preScript || '';
+  postScript.value = request.postScript || '';
+
+  // Clear response and script logs when switching requests
   response.value = null;
+  scriptLogs.value = [];
   
   // Mark as loaded with snapshot
   lastLoadedRequestId.value = request.id;
@@ -1174,7 +1187,9 @@ const hasUnsavedChanges = computed(() => {
     headers: props.request.headers,
     body: props.request.body,
     auth: props.request.auth,
-    mockConfig: props.request.mockConfig
+    mockConfig: props.request.mockConfig,
+    preScript: props.request.preScript,
+    postScript: props.request.postScript
   };
 
   const urlChanged = currentUrl !== compareState.url;
@@ -1185,8 +1200,10 @@ const hasUnsavedChanges = computed(() => {
   const bodyChanged = JSON.stringify(normalizedCurrentBody) !== JSON.stringify(normalizedOriginalBody);
   const authChanged = JSON.stringify(currentAuth) !== JSON.stringify(compareState.auth || {});
   const mockConfigChanged = JSON.stringify(mockConfig.value) !== JSON.stringify(compareState.mockConfig || null);
+  const preScriptChanged = (preScript.value || '') !== (compareState.preScript || '');
+  const postScriptChanged = (postScript.value || '') !== (compareState.postScript || '');
 
-  return urlChanged || methodChanged || headersChanged || bodyChanged || authChanged || mockConfigChanged;
+  return urlChanged || methodChanged || headersChanged || bodyChanged || authChanged || mockConfigChanged || preScriptChanged || postScriptChanged;
 });
 
 const getContentType = () => {
@@ -1256,6 +1273,23 @@ const copyResponseBody = async () => {
     await navigator.clipboard.writeText(text);
   } catch (error) {
     console.error('Failed to copy:', error);
+  }
+};
+
+const insertSnippet = (type: 'pre' | 'post', snippet: string) => {
+  const snippets: Record<string, string> = {
+    'env-get': `const value = pm.environment.get("key");`,
+    'env-set': `pm.environment.set("key", "value");`,
+    'request': `// Access request properties\npm.request.headers["X-Custom"] = "value";`,
+    'response-json': `const json = pm.response.json();`,
+    'status': `const status = pm.response.status;`
+  };
+
+  const code = snippets[snippet] || '';
+  if (type === 'pre') {
+    preScript.value = preScript.value ? preScript.value + '\n' + code : code;
+  } else {
+    postScript.value = postScript.value ? postScript.value + '\n' + code : code;
   }
 };
 
@@ -1479,6 +1513,8 @@ const openSaveDialog = () => {
         } : undefined
     } || null,
     mockConfig: mockConfig.value,
+    preScript: preScript.value,
+    postScript: postScript.value,
     order: props.request.order,
     createdAt: props.request.createdAt,
     updatedAt: new Date()
@@ -1529,6 +1565,8 @@ const openSaveAsDialog = () => {
       responseBody: { message: 'Mock response' },
       responseHeaders: { 'Content-Type': 'application/json' }
     },
+    preScript: preScript.value,
+    postScript: postScript.value,
     order: props.request.order,
     createdAt: props.request.createdAt,
     updatedAt: new Date()
@@ -1602,6 +1640,7 @@ const sendRequest = async () => {
 
   isLoading.value = true;
   response.value = null;
+  scriptLogs.value = [];
   activeTab.value = 'response';
   searchQuery.value = '';
   showSearch.value = false;
@@ -1653,6 +1692,10 @@ const sendRequest = async () => {
     });
 
     response.value = result;
+    // Capture script logs from response
+    if (result.scriptLogs && result.scriptLogs.length > 0) {
+      scriptLogs.value = result.scriptLogs;
+    }
     if (responseViewType.value === 'pretty') {
       expandAll();
     }
@@ -1785,7 +1828,7 @@ defineExpose({
       <div class="border-b border-border-default bg-bg-secondary">
         <div class="flex gap-0">
           <button
-            v-for="tab in (readOnly ? ['params', 'headers', 'body', 'auth', 'examples', 'response'] : ['params', 'headers', 'body', 'auth', 'mock', 'examples', 'response']) as TabType[]"
+            v-for="tab in (readOnly ? ['params', 'headers', 'body', 'auth', 'examples', 'response'] : ['params', 'headers', 'body', 'auth', 'preScript', 'postScript', 'mock', 'examples', 'response']) as TabType[]"
             :key="tab"
             @click="activeTab = tab"
             class="px-4 py-3 text-xs font-medium capitalize transition-all duration-fast border-b-2 focus:outline-none whitespace-nowrap"
@@ -1795,7 +1838,7 @@ defineExpose({
                 : 'border-transparent text-text-muted hover:text-text-secondary'
             ]"
           >
-            {{ tab }}
+            {{ tab === 'preScript' ? 'Pre-Script' : tab === 'postScript' ? 'Post-Script' : tab }}
           </button>
         </div>
       </div>
@@ -2531,6 +2574,52 @@ defineExpose({
           </div>
         </div>
 
+        <!-- Pre-Script Tab -->
+        <div v-else-if="activeTab === 'preScript'" class="flex-1 flex flex-col overflow-hidden">
+          <div class="p-3 border-b border-border-default bg-bg-secondary">
+            <p class="text-xs text-text-muted">
+              JavaScript code to run before the request. Use <code class="px-1 py-0.5 bg-bg-tertiary rounded text-accent-blue">pm.environment.set("key", "value")</code> to update environment variables.
+            </p>
+          </div>
+          <div class="flex-1 overflow-hidden">
+            <textarea
+              v-model="preScript"
+              class="w-full h-full p-4 bg-bg-input text-text-primary font-mono text-sm resize-none border-none focus:outline-none"
+              placeholder="// Pre-request script&#10;// Example: Set a dynamic header&#10;const timestamp = new Date().toISOString();&#10;pm.request.headers['X-Timestamp'] = timestamp;&#10;pm.console.log('Timestamp set:', timestamp);"
+              spellcheck="false"
+            ></textarea>
+          </div>
+          <div class="p-2 border-t border-border-default bg-bg-secondary flex items-center gap-2">
+            <span class="text-xs text-text-muted">Available:</span>
+            <code class="text-xs px-1.5 py-0.5 bg-bg-tertiary rounded text-accent-blue cursor-pointer hover:bg-bg-hover" @click="insertSnippet('pre', 'env-get')">pm.environment.get()</code>
+            <code class="text-xs px-1.5 py-0.5 bg-bg-tertiary rounded text-accent-blue cursor-pointer hover:bg-bg-hover" @click="insertSnippet('pre', 'env-set')">pm.environment.set()</code>
+            <code class="text-xs px-1.5 py-0.5 bg-bg-tertiary rounded text-accent-blue cursor-pointer hover:bg-bg-hover" @click="insertSnippet('pre', 'request')">pm.request</code>
+          </div>
+        </div>
+
+        <!-- Post-Script Tab -->
+        <div v-else-if="activeTab === 'postScript'" class="flex-1 flex flex-col overflow-hidden">
+          <div class="p-3 border-b border-border-default bg-bg-secondary">
+            <p class="text-xs text-text-muted">
+              JavaScript code to run after the request. Access response via <code class="px-1 py-0.5 bg-bg-tertiary rounded text-accent-blue">pm.response</code>.
+            </p>
+          </div>
+          <div class="flex-1 overflow-hidden">
+            <textarea
+              v-model="postScript"
+              class="w-full h-full p-4 bg-bg-input text-text-primary font-mono text-sm resize-none border-none focus:outline-none"
+              placeholder="// Post-response script&#10;// Example: Extract token from response&#10;const json = pm.response.json();&#10;if (json.access_token) {&#10;  pm.environment.set('access_token', json.access_token);&#10;  pm.console.log('Token saved to environment');&#10;}"
+              spellcheck="false"
+            ></textarea>
+          </div>
+          <div class="p-2 border-t border-border-default bg-bg-secondary flex items-center gap-2">
+            <span class="text-xs text-text-muted">Available:</span>
+            <code class="text-xs px-1.5 py-0.5 bg-bg-tertiary rounded text-accent-blue cursor-pointer hover:bg-bg-hover" @click="insertSnippet('post', 'response-json')">pm.response.json()</code>
+            <code class="text-xs px-1.5 py-0.5 bg-bg-tertiary rounded text-accent-blue cursor-pointer hover:bg-bg-hover" @click="insertSnippet('post', 'env-set')">pm.environment.set()</code>
+            <code class="text-xs px-1.5 py-0.5 bg-bg-tertiary rounded text-accent-blue cursor-pointer hover:bg-bg-hover" @click="insertSnippet('post', 'status')">pm.response.status</code>
+          </div>
+        </div>
+
         <!-- Mock Tab -->
         <div v-else-if="activeTab === 'mock'" class="flex-1 flex flex-col overflow-hidden">
           <MockConfiguration v-model="mockConfig" />
@@ -2670,6 +2759,14 @@ defineExpose({
                 >
                   Cookies
                 </button>
+                <button
+                  v-if="scriptLogs.length > 0"
+                  @click="responseViewType = 'console'"
+                  class="px-3 py-2 text-xs font-medium transition-colors duration-fast whitespace-nowrap"
+                  :class="responseViewType === 'console' ? 'text-text-primary border-b-2 border-accent-blue' : 'text-text-muted hover:text-text-secondary'"
+                >
+                  Console ({{ scriptLogs.length }})
+                </button>
               </div>
             </div>
 
@@ -2778,6 +2875,36 @@ defineExpose({
                     <div v-if="cookie.attributes" class="text-xs text-text-muted font-mono ml-2">
                       {{ cookie.attributes }}
                     </div>
+                  </div>
+                </div>
+              </div>
+
+              <div v-else-if="responseViewType === 'console'" class="h-full flex flex-col">
+                <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
+                  <span class="text-xs text-text-muted">Script Console ({{ scriptLogs.length }} logs)</span>
+                  <button
+                    @click="scriptLogs = []"
+                    class="text-xs text-accent-blue hover:text-accent-blue/80"
+                  >
+                    Clear
+                  </button>
+                </div>
+                <div class="flex-1 overflow-auto bg-bg-tertiary rounded border border-border-default p-3">
+                  <div
+                    v-for="(log, index) in scriptLogs"
+                    :key="index"
+                    class="py-1 px-2 border-b border-border-default/50 last:border-b-0 font-mono text-xs"
+                    :class="{
+                      'text-text-primary': log.type === 'log',
+                      'text-accent-red': log.type === 'error',
+                      'text-accent-yellow': log.type === 'warn'
+                    }"
+                  >
+                    <span class="text-text-muted text-[10px] mr-2">[{{ log.phase === 'pre' ? 'PRE' : 'POST' }}]</span>
+                    <span>{{ log.message }}</span>
+                  </div>
+                  <div v-if="scriptLogs.length === 0" class="text-text-muted text-xs italic">
+                    No script logs
                   </div>
                 </div>
               </div>
