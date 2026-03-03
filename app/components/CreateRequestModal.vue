@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useApiClient } from '~~/composables/useApiFetch';
+
+const api = useApiClient();
 interface Props {
   show: boolean;
   folderId?: string;
@@ -115,14 +118,12 @@ const createRequest = async () => {
     let result;
     if (props.collectionId) {
       // Creating request at collection root
-      result = await $fetch(`/api/admin/collections/${props.collectionId}/requests`, {
-        method: 'POST',
+      result = await api.post(`/api/admin/collections/${props.collectionId}/requests`, {
         body: requestBody
       });
     } else if (props.folderId) {
       // Creating request in a folder
-      result = await $fetch(`/api/admin/folders/${props.folderId}/requests`, {
-        method: 'POST',
+      result = await api.post(`/api/admin/folders/${props.folderId}/requests`, {
         body: requestBody
       });
     } else {

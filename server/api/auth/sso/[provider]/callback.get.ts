@@ -240,19 +240,19 @@ export default defineEventHandler(async (event) => {
     expiresIn: tokenResponse.expires_in || 3600
   });
 
-  // Set cookies
+  // Set cookies - sameSite: 'none' for Tauri app cross-origin support
   setCookie(event, 'auth_token', token, {
     httpOnly: true,
-    secure: runtimeConfig.nodeEnv === 'production',
-    sameSite: 'lax',
+    secure: true,
+    sameSite: 'none',
     maxAge: tokenResponse.expires_in || 3600
   });
 
   const userInfoCookie = Buffer.from(JSON.stringify(normalizedUserInfo)).toString('base64');
   setCookie(event, 'user_info', userInfoCookie, {
     httpOnly: false,
-    secure: runtimeConfig.nodeEnv === 'production',
-    sameSite: 'lax',
+    secure: true,
+    sameSite: 'none',
     maxAge: tokenResponse.expires_in || 3600
   });
 

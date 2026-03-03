@@ -2,6 +2,9 @@
 import EnvironmentSwitcher from './EnvironmentSwitcher.vue';
 import WorkspaceSwitcher from './WorkspaceSwitcher.vue';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { useApiClient } from '~~/composables/useApiFetch';
+
+const api = useApiClient();
 
 interface Workspace {
   id: string;
@@ -90,7 +93,7 @@ const isSuperAdmin = ref(false);
 
 const checkSuperAdmin = async () => {
   try {
-    const data = await $fetch<{ isSuperAdmin: boolean }>('/api/admin/super/check');
+    const data = await api.get<{ isSuperAdmin: boolean }>('/api/admin/super/check');
     isSuperAdmin.value = data.isSuperAdmin;
   } catch (e) {
     isSuperAdmin.value = false;
@@ -99,10 +102,10 @@ const checkSuperAdmin = async () => {
 
 const checkAuth = async () => {
   try {
-    const data = await $fetch<AuthState>('/api/auth/check');
+    const data = await api.get<AuthState>('/api/auth/check');
     authState.value = data;
   } catch (e: any) {
-    if (e.statusCode === 401) {
+    if (e.statusCode === 401 || e.message?.includes('401')) {
       authState.value = null;
     }
   } finally {
@@ -113,7 +116,7 @@ const checkAuth = async () => {
 const logout = async () => {
   isLoggingOut.value = true;
   try {
-    await $fetch('/api/auth/logout', { method: 'POST' });
+    await api.post('/api/auth/logout');
     await navigateTo('/login');
   } catch (e) {
     console.error('Logout error:', e);

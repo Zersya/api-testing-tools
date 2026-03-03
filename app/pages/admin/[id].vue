@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useApiClient, useApiFetch } from '~~/composables/useApiFetch';
+
 interface Collection {
   id: string;
   name: string;
@@ -9,9 +11,10 @@ interface Collection {
 
 const route = useRoute();
 const id = route.params.id as string;
+const api = useApiClient();
 
-const { data: mock } = await useFetch<any>('/api/admin/mocks'); 
-const { data: collections } = await useFetch<Collection[]>('/api/admin/collections');
+const { data: mock } = await useApiFetch<any>('/api/admin/mocks');
+const { data: collections } = await useApiFetch<Collection[]>('/api/admin/collections');
 
 const form = ref({
   id: '',
@@ -97,8 +100,7 @@ const save = async () => {
       ...form.value,
       response: JSON.parse(form.value.response)
     };
-    await $fetch('/api/admin/mocks', {
-        method: 'PUT',
+    await api.put('/api/admin/mocks', {
         body: payload
     });
     await navigateTo('/admin');

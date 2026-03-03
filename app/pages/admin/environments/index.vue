@@ -28,11 +28,14 @@ const workspaces = ref<any[]>([]);
 const selectedWorkspaceId = ref<string | null>(null);
 const selectedProjectId = ref<string | null>(null);
 
+import { useApiClient } from '~~/composables/useApiFetch';
+const api = useApiClient()
+
 const refreshWorkspaces = async () => {
   try {
-    const data = await $fetch<any[]>('/api/admin/tree');
-    workspaces.value = data;
-    
+    const data = await api.get<any[]>('/api/admin/tree')
+    workspaces.value = data
+
     // Auto-select first workspace with projects if nothing selected
     if (!selectedWorkspaceId.value && data.length > 0) {
       const firstWorkspaceWithProjects = data.find((w: any) => w.projects?.length > 0);
@@ -69,7 +72,7 @@ const fetchSecretValues = async (envs: Environment[]) => {
     for (const variable of env.variables) {
       if (variable.isSecret && variable.value === '••••••••') {
         try {
-          const actualValue = await $fetch<{ value: string }>(`/api/admin/variables/${variable.id}/value`);
+          const actualValue = await api.get<{ value: string }>(`/api/admin/variables/${variable.id}/value`);
           secretValues.value[variable.id] = actualValue.value;
         } catch (e) {
           console.error('Failed to fetch secret value:', e);
@@ -84,7 +87,7 @@ const fetchSecretValues = async (envs: Environment[]) => {
 const refreshEnvironments = async () => {
   if (!currentProjectId.value) return;
   try {
-    const data = await $fetch<Environment[]>(`/api/admin/projects/${currentProjectId.value}/environments`);
+    const data = await api.get<Environment[]>(`/api/admin/projects/${currentProjectId.value}/environments`);
     environments.value = data;
     await fetchSecretValues(data);
   } catch (e) {
@@ -163,8 +166,7 @@ const createEnvironment = async () => {
   try {
     isLoading.value = true;
     console.log('Sending API request...');
-    const result = await $fetch(`/api/admin/projects/${currentProjectId.value}/environments`, {
-      method: 'POST',
+    const result = await api.post(`/api/admin/projects/${currentProjectId.value}/environments`, {
       body: {
         name: createEnvironmentForm.value.name.trim()
       }
@@ -193,8 +195,7 @@ const renameEnvironment = async () => {
 
   try {
     isLoading.value = true;
-    await $fetch(`/api/admin/environments/${environmentToRename.value.id}`, {
-      method: 'PUT',
+    await api.put(`/api/admin/environments/${environmentToRename.value.id}`, {
       body: {
         name: renameEnvironmentForm.value.name.trim()
       }
@@ -217,9 +218,7 @@ const deleteEnvironment = async () => {
 
   try {
     isLoading.value = true;
-    await $fetch(`/api/admin/environments/${environmentToDelete.value.id}`, {
-      method: 'DELETE'
-    });
+    await api.delete(`/api/admin/environments/${environmentToDelete.value.id}`);
     showDeleteConfirm.value = false;
     environmentToDelete.value = null;
     await refreshEnvironments();
@@ -237,9 +236,7 @@ const duplicateEnvironment = async () => {
 
   try {
     isLoading.value = true;
-    await $fetch(`/api/admin/environments/${environmentToDuplicate.value.id}/duplicate`, {
-      method: 'POST'
-    });
+    await api.post(`/api/admin/environments/${environmentToDuplicate.value.id}/duplicate`);
     showDuplicateConfirm.value = false;
     environmentToDuplicate.value = null;
     await refreshEnvironments();
@@ -256,9 +253,7 @@ const activateEnvironment = async (environment: Environment) => {
   }
 
   try {
-    await $fetch(`/api/admin/environments/${environment.id}/activate`, {
-      method: 'PUT'
-    });
+    await api.put(`/api/admin/environments/${environment.id}/activate`);
     await refreshEnvironments();
   } catch (e: any) {
     alert('Error activating environment: ' + e.message);
@@ -267,8 +262,7 @@ const activateEnvironment = async (environment: Environment) => {
 
 const addVariable = async (environment: Environment) => {
   try {
-    await $fetch(`/api/admin/environments/${environment.id}/variables`, {
-      method: 'POST',
+    await api.post(`/api/admin/environments/${environment.id}/variables`, {
       body: {
         key: 'NEW_VARIABLE',
         value: '',
@@ -286,8 +280,7 @@ const updateVariable = async (variable: EnvironmentVariable, key: string, value:
     secretValues.value[variable.id] = value;
   }
   try {
-    await $fetch(`/api/admin/variables/${variable.id}`, {
-      method: 'PUT',
+    await api.put(`/api/admin/variables/${variable.id}`, {
       body: {
         key: key.trim(),
         value: isSecret ? secretValues.value[variable.id] : value,
@@ -315,7 +308,7 @@ const toggleSecret = (environment: Environment, variable: EnvironmentVariable) =
       variable.value = secretValues.value[variable.id];
     } else {
       // Fetch the actual value from API
-      $fetch(`/api/admin/variables/${variable.id}`)
+      api.get(`/api/admin/variables/${variable.id}`)
         .then((data: any) => {
           secretValues.value[variable.id] = data.value;
           if (!variable.isSecret) {
@@ -328,8 +321,7 @@ const toggleSecret = (environment: Environment, variable: EnvironmentVariable) =
     }
   }
   
-  $fetch(`/api/admin/variables/${variable.id}`, {
-    method: 'PUT',
+  api.put(`/api/admin/variables/${variable.id}`, {
     body: {
       key: variable.key,
       value: secretValues.value[variable.id] || variable.value,
@@ -349,9 +341,7 @@ const toggleSecret = (environment: Environment, variable: EnvironmentVariable) =
 
 const deleteVariable = async (variableId: string) => {
   try {
-    await $fetch(`/api/admin/variables/${variableId}`, {
-      method: 'DELETE'
-    });
+    await api.delete(`/api/admin/variables/${variableId}`);
     await refreshEnvironments();
   } catch (e: any) {
     alert('Error deleting variable: ' + (e.data?.message || e.message));

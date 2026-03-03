@@ -12,6 +12,11 @@ import KeyboardShortcutsHelpModal from '~/components/KeyboardShortcutsHelpModal.
 import RenameWorkspaceModal from '~/components/RenameWorkspaceModal.vue';
 import ShareWorkspaceModal from '~/components/ShareWorkspaceModal.vue';
 import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
+import { useApiClient, useApiFetch } from '~~/composables/useApiFetch';
+
+// API client for programmatic requests
+const api = useApiClient();
+
 interface Collection {
   id: string;
   name: string;
@@ -56,13 +61,17 @@ interface HttpRequest {
   updatedAt: Date;
 }
 
-const { data: mocks, refresh: refreshMocks, error } = await useFetch<Mock[]>('/api/admin/mocks');
-const { data: collections, refresh: refreshCollections } = await useFetch<Collection[]>('/api/admin/collections');
-const { data: workspaces, refresh: refreshWorkspaces } = await useFetch<any[]>('/api/admin/tree');
-const { data: definitions, refresh: refreshDefinitions } = await useFetch<any[]>('/api/definitions');
+// Tabs state - must be defined before any await statements
+const openTabs = ref<OpenTab[]>([]);
+const activeTabKey = ref<string | null>(null);
+
+const { data: mocks, refresh: refreshMocks, error } = await useApiFetch<Mock[]>('/api/admin/mocks');
+const { data: collections, refresh: refreshCollections } = await useApiFetch<Collection[]>('/api/admin/collections');
+const { data: workspaces, refresh: refreshWorkspaces } = await useApiFetch<any[]>('/api/admin/tree');
+const { data: definitions, refresh: refreshDefinitions } = await useApiFetch<any[]>('/api/definitions');
 
 // Fetch current user info for permission checks
-const { data: authData } = await useFetch('/api/auth/check');
+const { data: authData } = await useApiFetch('/api/auth/check');
 const currentUserEmail = computed(() => authData.value?.user?.email || null);
 
 const selectedWorkspaceId = ref<string | null>(null);
@@ -214,7 +223,7 @@ const currentRequestProjectId = computed(() => {
 });
 
 // Fetch environments based on the currently selected request's project
-const { data: environments, refresh: refreshEnvironments } = await useFetch<Environment[]>(
+const { data: environments, refresh: refreshEnvironments } = await useApiFetch<Environment[]>(
   computed(() => {
     const projectId = currentRequestProjectId.value || currentProjectId.value;
     return projectId ? `/api/admin/projects/${projectId}/environments` : '';
@@ -284,7 +293,7 @@ const activateEnvironment = async (environmentId: string | null) => {
   }
   
   try {
-    await $fetch(`/api/admin/environments/${environmentId}/activate`, { method: 'PUT' });
+    await api.put(`/api/admin/environments/${environmentId}/activate`);
     await refreshEnvironments();
   } catch (e: any) {
     alert('Error activating environment: ' + e.message);
@@ -404,10 +413,6 @@ const tryItResponse = ref<any>(null);
 const tryItError = ref('');
 const tryItTime = ref(0);
 const selectedCollectionForNewMock = ref<string | null>(null);
-
-// Tabs state
-const openTabs = ref<OpenTab[]>([]);
-const activeTabKey = ref<string | null>(null);
 
 // Helper to create a new tab key
 const createTabKey = () => `tab-${crypto.randomUUID()}`;
@@ -628,7 +633,7 @@ const sendTestRequest = async () => {
         // Build the correct path with collection prefix
         const requestPath = collectionName === 'root' ? mock.path : `/c/${collectionName}${mock.path}`;
         
-        const response = await $fetch(requestPath, {
+        const response = await api.request(requestPath, {
             method: mock.method,
             headers: mock.secure ? { 'Authorization': `Bearer ${settingsForm.value.bearerToken || 'test-token'}` } : {}
         });
@@ -658,8 +663,7 @@ const handleSelectMock = (mock: any) => {
 const createResource = async () => {
     if (!resourceForm.value.name) return;
     try {
-        await $fetch('/api/admin/resource', {
-            method: 'POST',
+        await api.post('/api/admin/resource', {
             body: {
                 resourceName: resourceForm.value.name,
                 basePath: resourceForm.value.basePath + resourceForm.value.name,
@@ -682,7 +686,7 @@ const confirmDeleteMock = (mock: any) => {
 
 const deleteMock = async () => {
     if (!mockToDelete.value) return;
-    await $fetch(`/api/admin/mocks?id=${mockToDelete.value.id}`, { method: 'DELETE' });
+    await api.delete(`/api/admin/mocks?id=${mockToDelete.value.id}`);
     if (selectedMock.value?.id === mockToDelete.value.id) {
         selectedMock.value = null;
     }
@@ -692,8 +696,7 @@ const deleteMock = async () => {
 };
 
 const toggleSecure = async (mock: any) => {
-    await $fetch('/api/admin/mocks', {
-        method: 'PUT',
+    await api.put('/api/admin/mocks', {
         body: { ...mock, secure: !mock.secure }
     });
     refresh();
@@ -708,13 +711,13 @@ const previewResponse = (response: any) => {
 };
 
 const openSettings = async () => {
-    const data = await $fetch<any>('/api/admin/settings');
+    const data = await api.get<any>('/api/admin/settings');
     settingsForm.value.bearerToken = data.bearerToken || '';
     showSettingsModal.value = true;
 };
 
 const saveSettings = async () => {
-    await $fetch('/api/admin/settings', {
+    await api.put('/api/admin/settings', {
         method: 'POST',
         body: settingsForm.value
     });
@@ -772,7 +775,7 @@ const copyPath = (mock: Mock) => {
 
 const duplicateMock = async (mock: any) => {
     try {
-        await $fetch('/api/admin/mocks', {
+        await api.post('/api/admin/mocks', {
             method: 'POST',
             body: {
                 ...mock,
@@ -921,7 +924,7 @@ const handleSaveRequest = async (request: any) => {
     console.log('[Frontend Save] Sending body:', JSON.stringify(body, null, 2));
     
     try {
-      await $fetch(`/api/admin/requests/${request.id}`, {
+      await api.put(`/api/admin/requests/${request.id}`, {
         method: 'PUT',
         body
       });
@@ -1006,7 +1009,7 @@ const handleSave = async (data: any) => {
       const collectionIdToUse = data.collectionId;
       
       if (collectionIdToUse) {
-        const newFolder = await $fetch(`/api/admin/collections/${collectionIdToUse}/folders`, {
+        const newFolder = await api.post(`/api/admin/collections/${collectionIdToUse}/folders`, {
           method: 'POST',
           body: {
             name: data.newFolderName.trim()
@@ -1022,7 +1025,7 @@ const handleSave = async (data: any) => {
       
       if (targetFolderId) {
         // Save to a specific folder
-        newRequest = await $fetch(`/api/admin/folders/${targetFolderId}/requests`, {
+        newRequest = await api.post(`/api/admin/folders/${targetFolderId}/requests`, {
           method: 'POST',
           body: {
             name: data.name,
@@ -1039,7 +1042,7 @@ const handleSave = async (data: any) => {
         });
       } else if (data.collectionId) {
         // Save directly to collection root
-        newRequest = await $fetch(`/api/admin/collections/${data.collectionId}/requests`, {
+        newRequest = await api.post(`/api/admin/collections/${data.collectionId}/requests`, {
           method: 'POST',
           body: {
             name: data.name,
@@ -1070,7 +1073,7 @@ const handleSave = async (data: any) => {
       }
     } else {
       // Update existing request
-      await $fetch(`/api/admin/requests/${requestToSave.value.id}`, {
+      await api.put(`/api/admin/requests/${requestToSave.value.id}`, {
         method: 'PUT',
         body: {
           name: data.name,
@@ -1126,7 +1129,7 @@ const handleSaveAs = async (data: any) => {
       const collectionIdToUse = data.collectionId;
       
       if (collectionIdToUse) {
-        const newFolder = await $fetch(`/api/admin/collections/${collectionIdToUse}/folders`, {
+        const newFolder = await api.post(`/api/admin/collections/${collectionIdToUse}/folders`, {
           method: 'POST',
           body: {
             name: data.newFolderName.trim()
@@ -1140,7 +1143,7 @@ const handleSaveAs = async (data: any) => {
     
     if (targetFolderId) {
       // Save to a specific folder
-      newRequest = await $fetch(`/api/admin/folders/${targetFolderId}/requests`, {
+      newRequest = await api.post(`/api/admin/folders/${targetFolderId}/requests`, {
         method: 'POST',
         body: {
           name: data.name,
@@ -1153,7 +1156,7 @@ const handleSaveAs = async (data: any) => {
       });
     } else if (data.collectionId) {
       // Save directly to collection root
-      newRequest = await $fetch(`/api/admin/collections/${data.collectionId}/requests`, {
+      newRequest = await api.post(`/api/admin/collections/${data.collectionId}/requests`, {
         method: 'POST',
         body: {
           name: data.name,
@@ -1401,7 +1404,7 @@ const generateMocks = async () => {
 
   isGenerating.value = true;
   try {
-    await $fetch(`/api/definitions/${selectedDefinition.value.id}/generate-mocks`, {
+    await api.post(`/api/definitions/${selectedDefinition.value.id}/generate-mocks`, {
       method: 'POST',
       body: {
         endpoints: selectedEndpoints.value,
@@ -1450,7 +1453,7 @@ const saveCollection = async () => {
                 alert('Please select a project');
                 return;
             }
-            await $fetch(`/api/admin/projects/${collectionForm.value.projectId}/collections`, {
+            await api.post(`/api/admin/projects/${collectionForm.value.projectId}/collections`, {
                 method: 'POST',
                 body: {
                     name: collectionForm.value.name,
@@ -1458,7 +1461,7 @@ const saveCollection = async () => {
                 }
             });
         } else {
-            await $fetch('/api/admin/collections', {
+            await api.post('/api/admin/collections', {
                 method: 'PUT',
                 body: {
                     id: collectionForm.value.id,
@@ -1483,7 +1486,7 @@ const confirmDeleteCollection = (collection: Collection) => {
 const deleteCollection = async () => {
     if (!collectionToDelete.value) return;
     try {
-        await $fetch(`/api/admin/collections/${collectionToDelete.value.id}`, { method: 'DELETE' });
+        await api.delete(`/api/admin/collections/${collectionToDelete.value.id}`);
         showDeleteCollectionConfirm.value = false;
         collectionToDelete.value = null;
         refreshWorkspaces();
@@ -1504,7 +1507,7 @@ const confirmDeleteProject = (project: any) => {
 const deleteProject = async () => {
     if (!projectToDelete.value) return;
     try {
-        await $fetch(`/api/admin/projects/${projectToDelete.value.id}`, { method: 'DELETE' });
+        await api.delete(`/api/admin/projects/${projectToDelete.value.id}`);
         showDeleteProjectConfirm.value = false;
         projectToDelete.value = null;
         selectedWorkspaceId.value = null;
@@ -1529,7 +1532,7 @@ const confirmDeleteWorkspace = (workspace: { id: string; name: string }) => {
 const deleteWorkspace = async () => {
     if (!workspaceToDelete.value) return;
     try {
-        await $fetch(`/api/admin/workspaces/${workspaceToDelete.value.id}`, { method: 'DELETE' });
+        await api.delete(`/api/admin/workspaces/${workspaceToDelete.value.id}`);
         showDeleteWorkspaceConfirm.value = false;
         
         // Clear localStorage if the deleted workspace was selected
@@ -1560,7 +1563,7 @@ const deleteGroup = async () => {
     
     try {
         await Promise.all(groupToDelete.value.mocks.map(mock => 
-            $fetch(`/api/admin/mocks?id=${mock.id}`, { method: 'DELETE' })
+            api.delete(`/api/admin/mocks?id=${mock.id}`)
         ));
         
         showDeleteGroupConfirm.value = false;
@@ -1585,7 +1588,7 @@ const deleteFolder = async () => {
     if (!folderToDelete.value) return;
     
     try {
-        await $fetch(`/api/admin/folders/${folderToDelete.value.id}`, { method: 'DELETE' });
+        await api.delete(`/api/admin/folders/${folderToDelete.value.id}`);
         showDeleteFolderConfirm.value = false;
         folderToDelete.value = null;
         refreshWorkspaces();
@@ -1608,7 +1611,7 @@ const deleteRequest = async () => {
     const requestId = requestToDelete.value.id;
     
     try {
-        await $fetch(`/api/admin/requests/${requestId}`, { method: 'DELETE' });
+        await api.delete(`/api/admin/requests/${requestId}`);
         showDeleteRequestConfirm.value = false;
         requestToDelete.value = null;
         
@@ -1662,18 +1665,15 @@ const renameItem = async () => {
     
     try {
         if (renameType.value === 'project') {
-            await $fetch(`/api/admin/projects/${itemToRename.value.id}`, {
-                method: 'PUT',
+            await api.put(`/api/admin/projects/${itemToRename.value.id}`, {
                 body: { name: newName }
             });
         } else if (renameType.value === 'collection') {
-            await $fetch(`/api/admin/collections/${itemToRename.value.id}`, {
-                method: 'PUT',
+            await api.put(`/api/admin/collections/${itemToRename.value.id}`, {
                 body: { name: newName }
             });
         } else if (renameType.value === 'folder') {
-            await $fetch(`/api/admin/folders/${itemToRename.value.id}`, {
-                method: 'PUT',
+            await api.put(`/api/admin/folders/${itemToRename.value.id}`, {
                 body: { name: newName }
             });
         }
@@ -1689,8 +1689,7 @@ const renameItem = async () => {
 
 const handleReorderFolders = async (collectionId: string, updates: { id: string; parentFolderId: string | null; order: number }[]) => {
     try {
-        await $fetch('/api/admin/folders/reorder', {
-            method: 'POST',
+        await api.post('/api/admin/folders/reorder', {
             body: { collectionId, updates }
         });
         refresh();
@@ -1713,8 +1712,7 @@ const handleReorderRequests = async (
             body.collectionId = collectionId;
         }
         
-        await $fetch('/api/admin/requests/reorder', {
-            method: 'POST',
+        await api.post('/api/admin/requests/reorder', {
             body
         });
         refresh();

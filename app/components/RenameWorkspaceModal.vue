@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useApiClient } from '~~/composables/useApiFetch';
+
+const api = useApiClient();
 interface Props {
   show: boolean;
   workspace: {
@@ -72,11 +75,8 @@ const renameWorkspace = async () => {
   error.value = '';
 
   try {
-    const result = await $fetch(`/api/admin/workspaces/${props.workspace.id}`, {
-      method: 'PUT',
-      body: {
-        name: trimmedName
-      }
+    const result = await api.put(`/api/admin/workspaces/${props.workspace.id}`, {
+      body: { name: trimmedName }
     });
     emit('renamed', result);
     handleClose();

@@ -68,6 +68,7 @@ export default defineNuxtConfig({
     nodeEnv: process.env.NODE_ENV || 'development',
     public: {
       appUrl: process.env.APP_URL || 'http://localhost:3000',
+      apiBaseUrl: process.env.NUXT_PUBLIC_API_BASE_URL || 'https://api-mock.transtrack.id',
       appVersion
     }
   }

@@ -14,7 +14,7 @@ interface PublicDocsResponse {
   spec: ParsedOpenAPISpec;
 }
 
-const { data, pending, error } = await useFetch<PublicDocsResponse>(
+const { data, pending, error } = await useApiFetch<PublicDocsResponse>(
   `/api/public/docs/${slug}`
 );
 

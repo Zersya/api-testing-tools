@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import type { WorkspaceWithProjects } from './AppSidebar.vue';
+import { useApiClient } from '~~/composables/useApiFetch';
+
+const api = useApiClient();
 
 interface Props {
   show: boolean;
@@ -68,8 +71,9 @@ const success = ref<{
 } | null>(null);
 
 const currentWorkspace = computed(() => {
-  if (!selectedWorkspaceId.value) return props.workspaces[0];
-  return props.workspaces.find(w => w.id === selectedWorkspaceId.value) || props.workspaces[0];
+  const workspaces = Array.isArray(props.workspaces) ? props.workspaces : [];
+  if (!selectedWorkspaceId.value) return workspaces[0];
+  return workspaces.find(w => w.id === selectedWorkspaceId.value) || workspaces[0];
 });
 
 const currentProject = computed(() => {
@@ -80,13 +84,14 @@ const currentProject = computed(() => {
 });
 
 watch(() => props.workspaces, (newWorkspaces) => {
-  if (newWorkspaces && newWorkspaces.length > 0) {
-    const validWorkspaces = newWorkspaces.filter(w => w && w.projects && w.projects.length > 0);
+  const workspaces = Array.isArray(newWorkspaces) ? newWorkspaces : [];
+  if (workspaces.length > 0) {
+    const validWorkspaces = workspaces.filter(w => w && w.projects && w.projects.length > 0);
     if (validWorkspaces.length > 0) {
       if (!selectedWorkspaceId.value) {
         selectedWorkspaceId.value = validWorkspaces[0].id;
       }
-      const ws = newWorkspaces.find(w => w.id === selectedWorkspaceId.value);
+      const ws = workspaces.find(w => w.id === selectedWorkspaceId.value);
       if (ws && ws.projects && ws.projects.length > 0) {
         if (!selectedProjectId.value || !ws.projects.find(p => p.id === selectedProjectId.value)) {
           selectedProjectId.value = ws.projects[0].id;
@@ -97,8 +102,9 @@ watch(() => props.workspaces, (newWorkspaces) => {
 }, { immediate: true });
 
 watch(selectedWorkspaceId, (newWorkspaceId) => {
-  if (newWorkspaceId && props.workspaces) {
-    const ws = props.workspaces.find(w => w.id === newWorkspaceId);
+  const workspaces = Array.isArray(props.workspaces) ? props.workspaces : [];
+  if (newWorkspaceId && workspaces.length > 0) {
+    const ws = workspaces.find(w => w.id === newWorkspaceId);
     if (ws && ws.projects && ws.projects.length > 0) {
       const currentProjectStillExists = ws.projects.some(p => p.id === selectedProjectId.value);
       if (!currentProjectStillExists) {
@@ -111,10 +117,11 @@ watch(selectedWorkspaceId, (newWorkspaceId) => {
 });
 
 onMounted(() => {
-  if (props.workspaces.length > 0) {
-    selectedWorkspaceId.value = props.workspaces[0].id;
-    if (props.workspaces[0].projects.length > 0) {
-      selectedProjectId.value = props.workspaces[0].projects[0].id;
+  const workspaces = Array.isArray(props.workspaces) ? props.workspaces : [];
+  if (workspaces.length > 0) {
+    selectedWorkspaceId.value = workspaces[0].id;
+    if (workspaces[0].projects.length > 0) {
+      selectedProjectId.value = workspaces[0].projects[0].id;
     }
   }
 });
@@ -326,10 +333,7 @@ const importOpenApi = async (source: 'file' | 'url' | 'raw', options: { file?: F
 
       uploadProgress.value = 50;
 
-      const response = await $fetch('/api/definitions/import', {
-        method: 'POST',
-        body
-      });
+      const response = await api.post('/api/definitions/import', { body });
 
       uploadProgress.value = 100;
 
@@ -432,10 +436,7 @@ const importPostman = async (source: 'file' | 'url' | 'raw', options: { file?: F
 
       uploadProgress.value = 50;
 
-      const response = await $fetch('/api/definitions/import/postman', {
-        method: 'POST',
-        body
-      });
+      const response = await api.post('/api/definitions/import/postman', { body });
 
       uploadProgress.value = 100;
 
@@ -549,12 +550,12 @@ const triggerEnvFileInput = () => {
         <div class="grid grid-cols-2 gap-4 mb-4">
           <div>
             <label>Workspace</label>
-            <select 
-              v-model="selectedWorkspaceId" 
+            <select
+              v-model="selectedWorkspaceId"
               class="w-full"
-              @change="selectedProjectId = workspaces.find(w => w.id === selectedWorkspaceId)?.projects[0]?.id || null"
+              @change="selectedProjectId = (Array.isArray(workspaces) ? workspaces : []).find(w => w.id === selectedWorkspaceId)?.projects[0]?.id || null"
             >
-              <option v-for="workspace in workspaces" :key="workspace.id" :value="workspace.id">
+              <option v-for="workspace in (Array.isArray(workspaces) ? workspaces : [])" :key="workspace.id" :value="workspace.id">
                 {{ workspace.name }}
               </option>
             </select>

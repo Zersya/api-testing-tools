@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import Modal from './Modal.vue';
+import { useApiClient } from '~~/composables/useApiFetch';
+
+const api = useApiClient();
 
 interface ShareInfo {
   id: string;
@@ -85,7 +88,7 @@ const fetchShares = async () => {
   error.value = '';
   
   try {
-    const response = await $fetch<ShareInfo[]>(`/api/admin/workspaces/${props.workspaceId}/shares`);
+    const response = await api.get<ShareInfo[]>(`/api/admin/workspaces/${props.workspaceId}/shares`);
     shares.value = response;
   } catch (e: any) {
     error.value = e.data?.message || e.message || 'Failed to fetch shares';
@@ -102,7 +105,7 @@ const fetchMembers = async () => {
   error.value = '';
   
   try {
-    const response = await $fetch<{ members: MemberInfo[]; isOwner: boolean }>(`/api/admin/workspaces/${props.workspaceId}/members`);
+    const response = await api.get<{ members: MemberInfo[]; isOwner: boolean }>(`/api/admin/workspaces/${props.workspaceId}/members`);
     members.value = response.members;
     isOwner.value = response.isOwner;
   } catch (e: any) {
@@ -129,10 +132,7 @@ const createShare = async () => {
       body.expiresInDays = newShareForm.value.expiresInDays;
     }
     
-    await $fetch(`/api/admin/workspaces/${props.workspaceId}/shares`, {
-      method: 'POST',
-      body
-    });
+    await api.post(`/api/admin/workspaces/${props.workspaceId}/shares`, { body });
     
     successMessage.value = 'Share link created successfully!';
     await fetchShares();
@@ -158,8 +158,7 @@ const inviteMember = async () => {
   successMessage.value = '';
   
   try {
-    await $fetch(`/api/admin/workspaces/${props.workspaceId}/members`, {
-      method: 'POST',
+    await api.post(`/api/admin/workspaces/${props.workspaceId}/members`, {
       body: {
         email: newMemberForm.value.email,
         permission: newMemberForm.value.permission
@@ -190,9 +189,7 @@ const revokeShare = async (token: string) => {
   error.value = '';
   
   try {
-    await $fetch(`/api/admin/shares/${token}`, {
-      method: 'DELETE'
-    });
+    await api.delete(`/api/admin/shares/${token}`);
     
     successMessage.value = 'Share link revoked successfully!';
     await fetchShares();
@@ -211,9 +208,7 @@ const removeMember = async (memberId: string) => {
   error.value = '';
   
   try {
-    await $fetch(`/api/admin/workspaces/${props.workspaceId}/members/${memberId}`, {
-      method: 'DELETE'
-    });
+    await api.delete(`/api/admin/workspaces/${props.workspaceId}/members/${memberId}`);
     
     successMessage.value = 'Member removed successfully!';
     await fetchMembers();
@@ -228,8 +223,7 @@ const updateMemberPermission = async (memberId: string, newPermission: 'view' | 
   error.value = '';
   
   try {
-    await $fetch(`/api/admin/workspaces/${props.workspaceId}/members/${memberId}`, {
-      method: 'PUT',
+    await api.put(`/api/admin/workspaces/${props.workspaceId}/members/${memberId}`, {
       body: {
         permission: newPermission
       }

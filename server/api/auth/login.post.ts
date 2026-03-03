@@ -13,11 +13,11 @@ export default defineEventHandler(async (event) => {
         // Store user mapping for Super Admin lookups
         storeUserMapping(email, email);
 
-        // Set secure cookie
+        // Set secure cookie - sameSite: 'none' for Tauri app cross-origin support
         setCookie(event, 'auth_token', token, {
             httpOnly: true,
-            secure: config.nodeEnv === 'production',
-            sameSite: 'strict',
+            secure: true,
+            sameSite: 'none',
             maxAge: 60 * 60 * 24 // 1 day
         });
 

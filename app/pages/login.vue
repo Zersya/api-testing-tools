@@ -30,7 +30,7 @@ const isLoadingProviders = ref(true);
 const fetchSsoProviders = async () => {
   try {
     isLoadingProviders.value = true;
-    const data = await $fetch<SsoProvidersResponse>('/api/auth/sso/providers');
+    const data = await api.get<SsoProvidersResponse>('/api/auth/sso/providers');
     ssoProviders.value = data;
   } catch (e) {
     console.error('Failed to fetch SSO providers:', e);
@@ -54,13 +54,15 @@ const loginWithSso = (providerType: string, providerId?: string) => {
   window.location.href = `/api/auth/sso/${providerType}/login${params}`;
 };
 
+import { useApiClient } from '~~/composables/useApiFetch';
+const api = useApiClient()
+
 const login = async () => {
   isLoading.value = true;
   errorMessage.value = '';
 
   try {
-    await $fetch('/api/auth/login', {
-      method: 'POST',
+    await api.post('/api/auth/login', {
       body: form.value
     });
     
@@ -113,7 +115,7 @@ const checkAuthAndRedirect = async () => {
   const redirectUrl = urlParams.get('redirect');
   
   try {
-    const response = await $fetch('/api/auth/check');
+    const response = await api.get('/api/auth/check');
     if (response.status === 'logged_in') {
       // User is already logged in, redirect to intended destination or admin
       if (redirectUrl) {

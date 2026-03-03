@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, watch } from 'vue';
+import { useApiClient } from '~~/composables/useApiFetch';
+
+const api = useApiClient();
 interface FolderItem {
   id: string;
   collectionId: string;
@@ -112,9 +115,10 @@ watch(() => [props.show, props.defaultCollectionId, props.defaultFolderId], asyn
     // Reset collection creation state
     showNewCollectionUI.value = false;
     isCreatingCollection.value = false;
+    const workspaces = Array.isArray(props.workspaces) ? props.workspaces : [];
     newCollectionForm.value = {
-      workspaceId: props.workspaces[0]?.id || '',
-      projectId: props.workspaces[0]?.projects[0]?.id || '',
+      workspaceId: workspaces[0]?.id || '',
+      projectId: workspaces[0]?.projects[0]?.id || '',
       name: 'Default'
     };
     
@@ -125,13 +129,14 @@ watch(() => [props.show, props.defaultCollectionId, props.defaultFolderId], asyn
   }
 });
 
-const selectedWorkspace = computed(() => props.workspaces[0]);
+const workspacesArray = computed(() => Array.isArray(props.workspaces) ? props.workspaces : []);
+const selectedWorkspace = computed(() => workspacesArray.value[0]);
 const selectedProject = computed(() => selectedWorkspace.value?.projects[0]);
 
-const availableWorkspaces = computed(() => props.workspaces);
+const availableWorkspaces = computed(() => workspacesArray.value);
 
 const availableProjects = computed(() => {
-  const workspace = props.workspaces.find(w => w.id === newCollectionForm.value.workspaceId);
+  const workspace = workspacesArray.value.find(w => w.id === newCollectionForm.value.workspaceId);
   return workspace?.projects || [];
 });
 
@@ -145,7 +150,7 @@ const canCreateCollection = computed(() => {
 
 const findAllCollections = (): Array<CollectionItem & { projectName: string }> => {
   const result: Array<CollectionItem & { projectName: string }> = [];
-  props.workspaces.forEach(workspace => {
+  workspacesArray.value.forEach(workspace => {
     workspace.projects.forEach(project => {
       project.collections.forEach(collection => {
         result.push({
@@ -172,8 +177,8 @@ interface CollectionOption {
 
 const collectionOptions = computed((): CollectionOption[] => {
   const options: CollectionOption[] = [];
-  
-  props.workspaces.forEach(workspace => {
+
+  workspacesArray.value.forEach(workspace => {
     (workspace.projects || []).forEach(project => {
       options.push({
         type: 'project-header',
@@ -247,11 +252,8 @@ const handleCreateFolder = async () => {
       throw new Error('No collection selected');
     }
     
-    const newFolder = await $fetch(`/api/admin/collections/${collectionIdToUse}/folders`, {
-      method: 'POST',
-      body: {
-        name: form.value.newFolderName.trim()
-      }
+    const newFolder = await api.post(`/api/admin/collections/${collectionIdToUse}/folders`, {
+      body: { name: form.value.newFolderName.trim() }
     });
     
     form.value.folderId = newFolder.id;
@@ -285,11 +287,8 @@ const handleCreateCollection = async () => {
   error.value = '';
   
   try {
-    const newCollection = await $fetch(`/api/admin/projects/${newCollectionForm.value.projectId}/collections`, {
-      method: 'POST',
-      body: {
-        name: newCollectionForm.value.name.trim()
-      }
+    const newCollection = await api.post(`/api/admin/projects/${newCollectionForm.value.projectId}/collections`, {
+      body: { name: newCollectionForm.value.name.trim() }
     });
     
     // Auto-select the newly created collection

@@ -5,7 +5,7 @@ import hljs from 'highlight.js';
 const route = useRoute();
 const slug = route.params.slug as string;
 
-const { data, pending, error } = await useFetch(`/api/public/docs/markdown/${slug}`);
+const { data, pending, error } = await useApiFetch(`/api/public/docs/markdown/${slug}`);
 
 useHead({
   title: computed(() => data.value?.title || 'Documentation'),

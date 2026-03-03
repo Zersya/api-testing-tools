@@ -28,7 +28,17 @@
         {
           "identifier": "default",
           "windows": ["main"],
-          "permissions": ["shell:allow-open"]
+          "permissions": [
+            "shell:allow-open",
+            "http:default",
+            {
+              "identifier": "http:allow-fetch",
+              "allow": [
+                { "url": "https://api-mock.transtrack.id" },
+                { "url": "https://api-mock.transtrack.id/**" }
+              ]
+            }
+          ]
         }
       ]
     }
