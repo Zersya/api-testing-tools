@@ -23,6 +23,7 @@ interface RequestItem {
     responseBody: Record<string, unknown> | string | null;
     responseHeaders: Record<string, string>;
   } | null;
+  pathVariables: Record<string, { value: string; description?: string }> | null;
   order: number;
   createdAt: Date;
   updatedAt: Date;
@@ -163,7 +164,8 @@ export default defineEventHandler(async (event) => {
         headers: parsedHeaders,
         body: parseJsonField<Record<string, unknown> | string>(req.body),
         auth: parseJsonField<RequestItem['auth']>(req.auth),
-        mockConfig: parseJsonField<RequestItem['mockConfig']>(req.mockConfig)
+        mockConfig: parseJsonField<RequestItem['mockConfig']>(req.mockConfig),
+        pathVariables: parseJsonField<RequestItem['pathVariables']>(req.pathVariables)
       };
     });
 
