@@ -23,6 +23,8 @@ interface RequestItem {
     responseBody: Record<string, unknown> | string | null;
     responseHeaders: Record<string, string>;
   } | null;
+  preScript: string | null;
+  postScript: string | null;
   pathVariables: Record<string, { value: string; description?: string }> | null;
   order: number;
   createdAt: Date;
