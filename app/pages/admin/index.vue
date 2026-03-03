@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { watch } from 'vue';
+import { watch, watchEffect, nextTick } from 'vue';
 import RequestBuilder from '~/components/RequestBuilder.vue';
 import CodeExamples from '~/components/CodeExamples.vue';
 import SaveRequestDialog from '~/components/SaveRequestDialog.vue';
@@ -222,22 +222,63 @@ const currentRequestProjectId = computed(() => {
   return findProjectIdByRequestId(selectedRequest.value.id);
 });
 
-// Fetch environments based on the currently selected request's project
-const { data: environments, refresh: refreshEnvironments } = await useApiFetch<Environment[]>(
-  computed(() => {
-    const projectId = currentRequestProjectId.value || currentProjectId.value;
-    return projectId ? `/api/admin/projects/${projectId}/environments` : '';
-  }),
-  {
-    immediate: true,
-    watch: [currentRequestProjectId, currentProjectId]
+// Fetch environments manually using useApiClient for better control
+const environments = ref<Environment[]>([]);
+
+const fetchEnvironments = async () => {
+  const projectId = currentRequestProjectId.value || currentProjectId.value;
+  if (!projectId) {
+    console.log('[Debug] No project ID, skipping environments fetch');
+    environments.value = [];
+    return;
   }
-);
+
+  console.log('[Debug] Fetching environments for project:', projectId);
+  try {
+    const data = await api.get<Environment[]>(`/api/admin/projects/${projectId}/environments`);
+    console.log('[Debug] Fetched environments:', data);
+    environments.value = Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error('[Debug] Failed to fetch environments:', error);
+    environments.value = [];
+  }
+};
+
+const refreshEnvironments = fetchEnvironments;
 
 // Ensure environments is always an array
 const safeEnvironments = computed(() => {
   return Array.isArray(environments.value) ? environments.value : [];
 });
+
+// Debug: Log environments and project info
+watchEffect(() => {
+  console.log('[Debug] Environments:', environments.value);
+  console.log('[Debug] safeEnvironments:', safeEnvironments.value);
+  console.log('[Debug] currentProjectId:', currentProjectId.value);
+  console.log('[Debug] currentRequestProjectId:', currentRequestProjectId.value);
+  console.log('[Debug] selectedProjectId:', selectedProjectId.value);
+});
+
+// Fetch environments when project ID changes
+watch(() => currentRequestProjectId.value || currentProjectId.value, (newProjectId) => {
+  if (newProjectId) {
+    console.log('[Debug] Project ID changed to:', newProjectId);
+    fetchEnvironments();
+  } else {
+    environments.value = [];
+  }
+}, { immediate: true });
+
+// Refresh environments when page becomes visible (e.g., after navigating from /admin/environments)
+if (typeof window !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      console.log('[Debug] Page became visible, refreshing environments');
+      fetchEnvironments();
+    }
+  });
+}
 
 const activeEnvironment = computed(() => {
   return safeEnvironments.value.find(env => env.isActive) || null;
