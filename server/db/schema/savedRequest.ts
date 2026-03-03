@@ -30,6 +30,15 @@ export type MockConfig = {
   responseHeaders: Record<string, string>;
 } | null;
 
+/**
+ * Path variable definitions for URL path parameters
+ * e.g., /users/:userId where userId is a path variable
+ */
+export type RequestPathVariables = Record<string, {
+  value: string;
+  description?: string;
+}>;
+
 export const savedRequests = pgTable('saved_requests', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   folderId: text('folder_id')
@@ -43,6 +52,7 @@ export const savedRequests = pgTable('saved_requests', {
   body: text('body').$type<RequestBody>(),
   auth: text('auth').$type<RequestAuth>(),
   mockConfig: text('mock_config').$type<MockConfig>(),
+  pathVariables: text('path_variables').$type<RequestPathVariables>(),
   order: integer('order').notNull().default(0),
   createdAt: timestamp('created_at')
     .notNull()

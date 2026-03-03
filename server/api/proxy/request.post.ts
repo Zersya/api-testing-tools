@@ -23,6 +23,11 @@ interface EnvironmentVariable {
   isSecret: boolean;
 }
 
+interface PathVariable {
+  key: string;
+  value: string;
+}
+
 interface ProxyRequestBody {
   url: string;
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD';
@@ -32,6 +37,7 @@ interface ProxyRequestBody {
   workspaceId?: string;
   environmentId?: string;
   savedRequestId?: string;
+  pathVariables?: PathVariable[];
 }
 
 interface ProxyResponse {
@@ -129,6 +135,23 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
     let resolvedBody: any = body.body;
     let resolvedValues: ProxyResponse['resolvedValues'] | undefined;
     let environmentLoadFailed = false;
+
+    // Apply path variable substitution first
+    if (body.pathVariables && body.pathVariables.length > 0) {
+      const originalUrl = resolvedUrl;
+      body.pathVariables.forEach((variable) => {
+        if (variable.key && variable.value !== undefined) {
+          // Replace :key or {key} with the value
+          const pattern = new RegExp(`(:${variable.key})|(\\{${variable.key}\\})`, 'g');
+          resolvedUrl = resolvedUrl.replace(pattern, variable.value);
+        }
+      });
+
+      if (resolvedUrl !== originalUrl) {
+        resolvedValues = { ...resolvedValues, url: resolvedUrl };
+        console.log('[Proxy] Path variable substitution:', { original: originalUrl, resolved: resolvedUrl });
+      }
+    }
 
     if (body.environmentId) {
       try {

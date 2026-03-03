@@ -1,0 +1,1 @@
+ALTER TABLE "saved_requests" ADD COLUMN "path_variables" text;
