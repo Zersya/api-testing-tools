@@ -43,6 +43,8 @@ export const savedRequests = pgTable('saved_requests', {
   body: text('body').$type<RequestBody>(),
   auth: text('auth').$type<RequestAuth>(),
   mockConfig: text('mock_config').$type<MockConfig>(),
+  preScript: text('pre_script'), // JavaScript code to run before request
+  postScript: text('post_script'), // JavaScript code to run after request
   order: integer('order').notNull().default(0),
   createdAt: timestamp('created_at')
     .notNull()

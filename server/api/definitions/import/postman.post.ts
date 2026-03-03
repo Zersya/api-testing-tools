@@ -540,6 +540,8 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
                 responseBody: { message: 'Mock response' },
                 responseHeaders: { 'Content-Type': 'application/json' }
               }),
+              preScript: parsedRequest.preRequestScript || null,
+              postScript: parsedRequest.testScript || null,
               order: parsedRequest.order
             })
             .returning())[0];
@@ -602,6 +604,8 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
               responseBody: { message: 'Mock response' },
               responseHeaders: { 'Content-Type': 'application/json' }
             }),
+            preScript: parsedRequest.preRequestScript || null,
+            postScript: parsedRequest.testScript || null,
             order: parsedRequest.order
           })
           .returning())[0];

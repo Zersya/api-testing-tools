@@ -9,6 +9,8 @@ interface CreateRequestBody {
   headers?: RequestHeaders;
   body?: RequestBody;
   auth?: RequestAuth;
+  preScript?: string;
+  postScript?: string;
   order?: number;
 }
 
@@ -151,6 +153,8 @@ export default defineEventHandler(async (event) => {
         headers: body.headers || null,
         body: body.body || null,
         auth: body.auth || null,
+        preScript: body.preScript || null,
+        postScript: body.postScript || null,
         order
       })
       .returning())[0];
