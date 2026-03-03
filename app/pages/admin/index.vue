@@ -912,7 +912,8 @@ const handleSaveRequest = async (request: any) => {
       headers: request.headers,
       body: request.body,
       auth: request.auth,
-      mockConfig: request.mockConfig
+      mockConfig: request.mockConfig,
+      pathVariables: request.pathVariables
     };
     
     console.log('[Frontend Save] Sending body:', JSON.stringify(body, null, 2));
@@ -1027,7 +1028,9 @@ const handleSave = async (data: any) => {
             url: requestToSave.value.url,
             headers: requestToSave.value.headers,
             body: requestToSave.value.body,
-            auth: requestToSave.value.auth
+            auth: requestToSave.value.auth,
+            mockConfig: requestToSave.value.mockConfig,
+            pathVariables: requestToSave.value.pathVariables
           }
         });
       } else if (data.collectionId) {
@@ -1040,7 +1043,9 @@ const handleSave = async (data: any) => {
             url: requestToSave.value.url,
             headers: requestToSave.value.headers,
             body: requestToSave.value.body,
-            auth: requestToSave.value.auth
+            auth: requestToSave.value.auth,
+            mockConfig: requestToSave.value.mockConfig,
+            pathVariables: requestToSave.value.pathVariables
           }
         });
       } else {
@@ -1067,7 +1072,9 @@ const handleSave = async (data: any) => {
           url: requestToSave.value.url,
           headers: requestToSave.value.headers,
           body: requestToSave.value.body,
-          auth: requestToSave.value.auth
+          auth: requestToSave.value.auth,
+          mockConfig: requestToSave.value.mockConfig,
+          pathVariables: requestToSave.value.pathVariables
         }
       });
 
@@ -1080,7 +1087,9 @@ const handleSave = async (data: any) => {
           url: requestToSave.value.url,
           headers: requestToSave.value.headers,
           body: requestToSave.value.body,
-          auth: requestToSave.value.auth
+          auth: requestToSave.value.auth,
+          mockConfig: requestToSave.value.mockConfig,
+          pathVariables: requestToSave.value.pathVariables
         };
       }
       
