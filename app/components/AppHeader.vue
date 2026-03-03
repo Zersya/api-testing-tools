@@ -82,6 +82,9 @@ const route = useRoute();
 const isEnvironmentsPage = computed(() => route.path === '/admin/environments');
 const isSuperAdminPage = computed(() => route.path === '/admin/super-admin');
 
+// Version display
+const { currentVersion } = useVersion();
+
 // Check if current user is Super Admin - fetch from server
 const isSuperAdmin = ref(false);
 
@@ -191,6 +194,7 @@ watch(() => authState.value?.user?.email, async (newEmail) => {
           <path d="M10 10H14M10 12H14M10 14H12" stroke="#FF6C37" stroke-width="1.5" stroke-linecap="round"/>
         </svg>
         <span class="text-[15px] font-semibold text-text-primary">{{ title }}</span>
+        <span class="text-[10px] text-text-muted font-medium px-1.5 py-0.5 bg-bg-tertiary rounded border border-border-default" title="App Version">v{{ currentVersion }}</span>
       </div>
     </div>
 
@@ -344,6 +348,11 @@ watch(() => authState.value?.user?.email, async (newEmail) => {
             </svg>
             {{ isLoggingOut ? 'Signing out...' : 'Sign Out' }}
           </button>
+
+          <!-- Version Info -->
+          <div class="px-3 py-2 border-t border-border-default mt-1">
+            <p class="text-[10px] text-text-muted text-center">Version {{ currentVersion }}</p>
+          </div>
         </div>
       </div>
     </div>
