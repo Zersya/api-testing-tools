@@ -213,6 +213,8 @@ export interface ParsedPostmanRequest {
   auth: RequestAuth;
   order: number;
   responseExamples: ParsedPostmanResponseExample[];
+  preRequestScript?: string;
+  testScript?: string;
 }
 
 export interface ParsedPostmanVariable {
@@ -599,6 +601,24 @@ function parsePostmanRequest(
     }
   }
 
+  // Parse scripts from events
+  let preRequestScript: string | undefined;
+  let testScript: string | undefined;
+  if (item.event && Array.isArray(item.event)) {
+    for (const event of item.event) {
+      if (event.listen === 'prerequest' && event.script?.exec) {
+        preRequestScript = Array.isArray(event.script.exec)
+          ? event.script.exec.join('\n')
+          : event.script.exec;
+      }
+      if (event.listen === 'test' && event.script?.exec) {
+        testScript = Array.isArray(event.script.exec)
+          ? event.script.exec.join('\n')
+          : event.script.exec;
+      }
+    }
+  }
+
   return {
     name: item.name || 'Unnamed Request',
     description,
@@ -612,7 +632,9 @@ function parsePostmanRequest(
     bodyOptions,
     auth,
     order,
-    responseExamples
+    responseExamples,
+    preRequestScript,
+    testScript
   };
 }
 

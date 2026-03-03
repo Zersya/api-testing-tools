@@ -10,6 +10,8 @@ interface UpdateRequestBody {
   body?: RequestBody;
   auth?: RequestAuth;
   mockConfig?: MockConfig;
+  preScript?: string;
+  postScript?: string;
   pathVariables?: RequestPathVariables;
   order?: number;
 }
@@ -63,6 +65,8 @@ export default defineEventHandler(async (event) => {
       body: RequestBody;
       auth: RequestAuth;
       mockConfig: MockConfig;
+      preScript: string | null;
+      postScript: string | null;
       pathVariables: RequestPathVariables | null;
       order: number;
       updatedAt: Date;
@@ -159,6 +163,16 @@ export default defineEventHandler(async (event) => {
       updateData.mockConfig = body.mockConfig;
     } else {
       console.log('[Request PUT] mockConfig is undefined, not updating');
+    }
+
+    // Set preScript (can be null or string)
+    if (body.preScript !== undefined) {
+      updateData.preScript = body.preScript || null;
+    }
+
+    // Set postScript (can be null or string)
+    if (body.postScript !== undefined) {
+      updateData.postScript = body.postScript || null;
     }
 
     // Set pathVariables (can be null or object)

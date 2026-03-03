@@ -14,6 +14,7 @@ import { environments, environmentVariables } from '../../db/schema';
 import type { HttpMethod, RequestData, ResponseData } from '../../db/schema/requestHistory';
 import type { MockConfig } from '../../db/schema/savedRequest';
 import { eq, inArray, sql, and } from 'drizzle-orm';
+import { executePreScript, executePostScript, type ScriptLogEntry } from '../../services/script-runner';
 
 interface EnvironmentVariable {
   id: string;
@@ -57,6 +58,8 @@ interface ProxyResponse {
     headers?: Record<string, string>;
     body?: any;
   };
+  scriptLogs?: ScriptLogEntry[];
+  scriptErrors?: string[];
 }
 
 interface ProxyErrorResponse {
@@ -72,6 +75,8 @@ interface ProxyErrorResponse {
     durationMs: number;
   };
   variableWarnings?: string[];
+  scriptLogs?: ScriptLogEntry[];
+  scriptErrors?: string[];
 }
 
 const VALID_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'] as const;
@@ -81,7 +86,14 @@ const MAX_TIMEOUT = 120000;
 export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyErrorResponse> => {
   const startTime = Date.now();
   const variableWarnings: string[] = [];
-  
+  const scriptLogs: ScriptLogEntry[] = [];
+  const scriptErrors: string[] = [];
+
+  // Variables to hold script-modified request data
+  let scriptModifiedUrl: string | undefined;
+  let scriptModifiedHeaders: Record<string, string> | undefined;
+  let scriptModifiedBody: any;
+
   try {
     const body = await readBody<ProxyRequestBody>(event);
 
@@ -244,6 +256,71 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
       }
     }
 
+    // Load saved request and execute pre-script if available
+    let savedRequest: { id: string; preScript: string | null; postScript: string | null } | undefined;
+
+    if (body.savedRequestId && body.environmentId) {
+      try {
+        console.log('[Proxy] Loading saved request for scripts:', body.savedRequestId);
+
+        const result = await db
+          .select({
+            id: savedRequests.id,
+            preScript: savedRequests.preScript,
+            postScript: savedRequests.postScript
+          })
+          .from(savedRequests)
+          .where(eq(savedRequests.id, body.savedRequestId))
+          .limit(1);
+
+        savedRequest = result[0];
+        console.log('[Proxy] Saved request loaded:', savedRequest ? 'FOUND' : 'NOT FOUND');
+
+        // Execute pre-script if exists
+        if (savedRequest?.preScript) {
+          console.log('[Proxy] Executing pre-script');
+
+          const preResult = await executePreScript({
+            code: savedRequest.preScript,
+            context: {
+              url: resolvedUrl,
+              method: method,
+              headers: { ...resolvedHeaders },
+              body: resolvedBody
+            },
+            environmentId: body.environmentId
+          });
+
+          scriptLogs.push(...preResult.logs);
+          scriptErrors.push(...preResult.errors);
+
+          if (preResult.success && preResult.modifiedContext) {
+            console.log('[Proxy] Pre-script executed successfully');
+            scriptModifiedUrl = preResult.modifiedContext.url;
+            scriptModifiedHeaders = preResult.modifiedContext.headers;
+            scriptModifiedBody = preResult.modifiedContext.body;
+
+            // Apply modifications
+            if (scriptModifiedUrl !== resolvedUrl) {
+              console.log('[Proxy] Pre-script modified URL:', { from: resolvedUrl, to: scriptModifiedUrl });
+              resolvedUrl = scriptModifiedUrl;
+            }
+            if (scriptModifiedHeaders) {
+              resolvedHeaders = scriptModifiedHeaders;
+            }
+            if (scriptModifiedBody !== undefined) {
+              resolvedBody = scriptModifiedBody;
+            }
+          } else {
+            console.error('[Proxy] Pre-script execution failed:', preResult.errors);
+          }
+        }
+      } catch (error) {
+        console.error('[Proxy] Failed to load/execute pre-script:', error);
+        scriptErrors.push('Failed to execute pre-request script');
+      }
+    }
+
     // Check for unresolved variables in URL and return clear error
     // Match both {{...}} and URL-encoded %7B%7B...%7D%7D
     const unresolvedPattern = /(\{\{|%7B%7B)([^{}%]+)(\}\}|%7D%7D)/g;
@@ -402,7 +479,9 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
                 endTime: new Date(endTime).toISOString(),
                 durationMs: endTime - startTime
               },
-              variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined
+              variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined,
+              scriptLogs: scriptLogs.length > 0 ? scriptLogs : undefined,
+              scriptErrors: scriptErrors.length > 0 ? scriptErrors : undefined
             };
 
             // Log mock request to history
@@ -457,7 +536,9 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
             endTime: new Date(errorEndTime).toISOString(),
             durationMs: errorEndTime - startTime
           },
-          variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined
+          variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined,
+          scriptLogs: scriptLogs.length > 0 ? scriptLogs : undefined,
+          scriptErrors: scriptErrors.length > 0 ? scriptErrors : undefined
         };
       } catch (error: any) {
         console.error('Error handling mock request:', error);
@@ -474,7 +555,9 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
             endTime: new Date(errorEndTime).toISOString(),
             durationMs: errorEndTime - startTime
           },
-          variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined
+          variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined,
+          scriptLogs: scriptLogs.length > 0 ? scriptLogs : undefined,
+          scriptErrors: scriptErrors.length > 0 ? scriptErrors : undefined
         };
       }
     }
@@ -544,6 +627,42 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
       responseBody = null;
     }
 
+    // Execute post-script if available
+    if (savedRequest?.postScript && body.environmentId) {
+      try {
+        console.log('[Proxy] Executing post-script');
+
+        const postResult = await executePostScript({
+          code: savedRequest.postScript,
+          context: {
+            url: resolvedUrl,
+            method: method,
+            headers: { ...resolvedHeaders },
+            body: resolvedBody
+          },
+          response: {
+            status: response.status,
+            statusText: response.statusText,
+            headers: responseHeaders,
+            body: responseBody
+          },
+          environmentId: body.environmentId
+        });
+
+        scriptLogs.push(...postResult.logs);
+        scriptErrors.push(...postResult.errors);
+
+        if (postResult.success) {
+          console.log('[Proxy] Post-script executed successfully');
+        } else {
+          console.error('[Proxy] Post-script execution failed:', postResult.errors);
+        }
+      } catch (error) {
+        console.error('[Proxy] Failed to execute post-script:', error);
+        scriptErrors.push('Failed to execute post-response script');
+      }
+    }
+
     const proxyResponse: ProxyResponse = {
       success: true,
       status: response.status,
@@ -556,7 +675,9 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
         durationMs: endTime - startTime
       },
       variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined,
-      resolvedValues: resolvedValues && Object.keys(resolvedValues).length > 0 ? resolvedValues : undefined
+      resolvedValues: resolvedValues && Object.keys(resolvedValues).length > 0 ? resolvedValues : undefined,
+      scriptLogs: scriptLogs.length > 0 ? scriptLogs : undefined,
+      scriptErrors: scriptErrors.length > 0 ? scriptErrors : undefined
     };
 
     if (body.workspaceId) {
@@ -609,7 +730,9 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
           endTime: new Date(errorEndTime).toISOString(),
           durationMs: errorEndTime - startTime
         },
-        variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined
+        variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined,
+        scriptLogs: scriptLogs.length > 0 ? scriptLogs : undefined,
+        scriptErrors: scriptErrors.length > 0 ? scriptErrors : undefined
       };
     }
 
@@ -626,7 +749,9 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
           endTime: new Date(errorEndTime).toISOString(),
           durationMs: errorEndTime - startTime
         },
-        variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined
+        variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined,
+        scriptLogs: scriptLogs.length > 0 ? scriptLogs : undefined,
+        scriptErrors: scriptErrors.length > 0 ? scriptErrors : undefined
       };
     }
 
@@ -643,7 +768,9 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
           endTime: new Date(errorEndTime).toISOString(),
           durationMs: errorEndTime - startTime
         },
-        variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined
+        variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined,
+        scriptLogs: scriptLogs.length > 0 ? scriptLogs : undefined,
+        scriptErrors: scriptErrors.length > 0 ? scriptErrors : undefined
       };
     }
 
@@ -660,7 +787,9 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
           endTime: new Date(errorEndTime).toISOString(),
           durationMs: errorEndTime - startTime
         },
-        variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined
+        variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined,
+        scriptLogs: scriptLogs.length > 0 ? scriptLogs : undefined,
+        scriptErrors: scriptErrors.length > 0 ? scriptErrors : undefined
       };
     }
 
@@ -676,7 +805,9 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
         endTime: new Date(errorEndTime).toISOString(),
         durationMs: errorEndTime - startTime
       },
-      variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined
+      variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined,
+      scriptLogs: scriptLogs.length > 0 ? scriptLogs : undefined,
+      scriptErrors: scriptErrors.length > 0 ? scriptErrors : undefined
     };
   }
 });
