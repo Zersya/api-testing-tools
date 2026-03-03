@@ -150,12 +150,12 @@ const selectedWorkspaceId = ref<string | null>(null);
 const activeView = ref<'hierarchy' | 'mocks' | 'history' | 'definitions'>('mocks');
 const contextMenu = ref<{ x: number; y: number; type: string; data: any } | null>(null);
 
-const expandedCollections = ref<Set<string>>(new Set());
-const expandedGroups = ref<Set<string>>(new Set());
-const expandedWorkspaces = ref<Set<string>>(new Set());
-const expandedProjects = ref<Set<string>>(new Set());
-const expandedCollectionsHierarchy = ref<Set<string>>(new Set());
-const expandedFolders = ref<Set<string>>(new Set());
+const expandedCollections = useExpandedState('mock-service-expanded-collections');
+const expandedGroups = useExpandedState('mock-service-expanded-groups');
+const expandedWorkspaces = useExpandedState('mock-service-expanded-workspaces');
+const expandedProjects = useExpandedState('mock-service-expanded-projects');
+const expandedCollectionsHierarchy = useExpandedState('mock-service-expanded-collections-hierarchy');
+const expandedFolders = useExpandedState('mock-service-expanded-folders');
 
 const draggingFolderId = ref<string | null>(null);
 const draggingRequestId = ref<string | null>(null);
@@ -237,17 +237,23 @@ watch(selectedWorkspaceId, (newId) => {
   }
 });
 
-// Expand all collections by default
+// Expand all collections by default (only on first load - no saved state)
 onMounted(() => {
-  props.collections.forEach(c => {
-    expandedCollections.value.add(c.id);
-    // Also expand all groups within
-    collectionsWithGroups.value.forEach(coll => {
-      coll.groups.forEach(g => {
-        expandedGroups.value.add(`${coll.id}:${g.name}`);
+  // Only expand by default if there's no saved state
+  const hasSavedCollections = typeof window !== 'undefined' && localStorage.getItem('mock-service-expanded-collections');
+  const hasSavedGroups = typeof window !== 'undefined' && localStorage.getItem('mock-service-expanded-groups');
+
+  if (!hasSavedCollections && !hasSavedGroups) {
+    props.collections.forEach(c => {
+      expandedCollections.value.add(c.id);
+      // Also expand all groups within
+      collectionsWithGroups.value.forEach(coll => {
+        coll.groups.forEach(g => {
+          expandedGroups.value.add(`${coll.id}:${g.name}`);
+        });
       });
     });
-  });
+  }
 
   // Load selected workspace from localStorage
   const savedWorkspaceId = typeof window !== 'undefined' ? localStorage.getItem('selectedWorkspaceId') : null;
@@ -275,15 +281,23 @@ onMounted(() => {
 });
 
 watch(() => props.collections, (newCollections) => {
-  newCollections.forEach(c => expandedCollections.value.add(c.id));
+  // Only auto-expand if there's no saved state
+  const hasSavedCollections = typeof window !== 'undefined' && localStorage.getItem('mock-service-expanded-collections');
+  if (!hasSavedCollections) {
+    newCollections.forEach(c => expandedCollections.value.add(c.id));
+  }
 }, { deep: true });
 
 watch(() => collectionsWithGroups.value, (newCollections) => {
-  newCollections.forEach(coll => {
-    coll.groups.forEach(g => {
-      expandedGroups.value.add(`${coll.id}:${g.name}`);
+  // Only auto-expand if there's no saved state
+  const hasSavedGroups = typeof window !== 'undefined' && localStorage.getItem('mock-service-expanded-groups');
+  if (!hasSavedGroups) {
+    newCollections.forEach(coll => {
+      coll.groups.forEach(g => {
+        expandedGroups.value.add(`${coll.id}:${g.name}`);
+      });
     });
-  });
+  }
 }, { deep: true });
 
 const toggleCollection = (collectionId: string) => {
