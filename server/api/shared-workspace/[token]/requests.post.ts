@@ -2,7 +2,7 @@ import { db } from '../../../db';
 import { savedRequests, folders, collections, projects } from '../../../db/schema';
 import { eq, desc } from 'drizzle-orm';
 import { validateShareToken } from '../../../utils/permissions';
-import type { HttpMethod, RequestHeaders, RequestBody, RequestAuth } from '../../../db/schema/savedRequest';
+import type { HttpMethod, RequestHeaders, RequestBody, RequestAuth, RequestPathVariables } from '../../../db/schema/savedRequest';
 
 interface CreateRequestBody {
   folderId: string;
@@ -12,6 +12,7 @@ interface CreateRequestBody {
   headers?: RequestHeaders;
   body?: RequestBody;
   auth?: RequestAuth;
+  pathVariables?: RequestPathVariables;
 }
 
 const validMethods: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
@@ -145,6 +146,7 @@ export default defineEventHandler(async (event) => {
         headers: body.headers || null,
         body: body.body || null,
         auth: body.auth || null,
+        pathVariables: body.pathVariables || null,
         order: nextOrder
       })
       .returning();

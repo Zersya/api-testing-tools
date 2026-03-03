@@ -13,11 +13,18 @@ interface QueryParam {
   enabled?: boolean;
 }
 
+interface PathVariable {
+  key: string;
+  value: string;
+  enabled?: boolean;
+}
+
 interface Props {
   method: string;
   url: string;
   headers?: HeaderParam[];
   queryParams?: QueryParam[];
+  pathVariables?: PathVariable[];
   body?: string | Record<string, unknown> | null;
   bodyFormat?: 'none' | 'json' | 'form-data' | 'urlencoded' | 'raw' | 'binary';
   authType?: string;
@@ -32,6 +39,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   headers: () => [],
   queryParams: () => [],
+  pathVariables: () => [],
   body: null,
   bodyFormat: 'none',
   authType: 'none',
@@ -47,15 +55,33 @@ type Language = 'curl' | 'javascript' | 'python' | 'go' | 'ruby' | 'http';
 
 const activeLanguage = ref<Language>('curl');
 
-// Function to substitute variables in a string
+// Function to substitute path variables in a string (e.g., :userId)
+const substitutePathVariables = (input: string): string => {
+  if (!input || !props.pathVariables || props.pathVariables.length === 0) {
+    return input;
+  }
+
+  let result = input;
+  props.pathVariables.forEach((variable) => {
+    if (variable.enabled !== false && variable.key) {
+      // Replace only :key syntax (not {{environmentVariables}})
+      const pattern = new RegExp(`:${variable.key}(?![a-zA-Z0-9_])`, 'g');
+      result = result.replace(pattern, variable.value || '');
+    }
+  });
+
+  return result;
+};
+
+// Function to substitute environment variables in a string (e.g., {{baseUrl}})
 const substituteVariables = (input: string): string => {
   if (!input || !props.variables || Object.keys(props.variables).length === 0) {
     return input;
   }
-  
+
   let result = input;
   const variablePattern = /\{\{([^{}]+)\}\}/g;
-  
+
   // Replace variables with their values
   result = result.replace(variablePattern, (match, varName) => {
     const trimmedName = varName.trim();
@@ -64,7 +90,7 @@ const substituteVariables = (input: string): string => {
     }
     return match; // Keep original if not found
   });
-  
+
   return result;
 };
 
@@ -109,9 +135,12 @@ const getMockUrl = (originalUrl: string): string => {
 };
 
 const getFullUrl = computed(() => {
-  // First substitute environment variables in the URL
-  let url = substituteVariables(props.url);
-  
+  // First substitute path variables in the URL
+  let url = substitutePathVariables(props.url);
+
+  // Then substitute environment variables in the URL
+  url = substituteVariables(url);
+
   // If CLOUD MOCK environment, transform to mock URL
   if (props.isMockEnvironment) {
     url = getMockUrl(url);
