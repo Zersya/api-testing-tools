@@ -101,7 +101,7 @@ const emit = defineEmits<{
 
 type TabType = 'params' | 'headers' | 'body' | 'auth' | 'mock' | 'examples' | 'response';
 type BodyFormat = 'none' | 'json' | 'form-data' | 'urlencoded' | 'raw' | 'binary';
-type ResponseViewType = 'pretty' | 'preview' | 'raw' | 'headers' | 'cookies';
+type ResponseViewType = 'pretty' | 'preview' | 'raw' | 'headers' | 'cookies' | 'imagePreview';
 
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'] as const;
 const COMMON_HEADERS = [
@@ -1209,6 +1209,36 @@ const isXmlResponse = () => {
 const isHtmlResponse = () => {
   const contentType = getContentType();
   return contentType.includes('html');
+};
+
+const isImageResponse = () => {
+  const contentType = getContentType();
+  return contentType.includes('image/');
+};
+
+const getImageData = () => {
+  if (!response.value || !('success' in response.value) || !response.value.body) {
+    return null;
+  }
+  const body = response.value.body;
+  // Handle binary response format from server
+  if (body._binary && body.data) {
+    const contentType = getContentType();
+    return {
+      src: `data:${contentType};base64,${body.data}`,
+      mimeType: contentType,
+      size: body.size || 0
+    };
+  }
+  return null;
+};
+
+const formatBytes = (bytes: number): string => {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
 const getResponseText = () => {
@@ -2611,6 +2641,14 @@ defineExpose({
                   Preview
                 </button>
                 <button
+                  v-if="isImageResponse()"
+                  @click="responseViewType = 'imagePreview'"
+                  class="px-3 py-2 text-xs font-medium transition-colors duration-fast whitespace-nowrap"
+                  :class="responseViewType === 'imagePreview' ? 'text-text-primary border-b-2 border-accent-blue' : 'text-text-muted hover:text-text-secondary'"
+                >
+                  Preview
+                </button>
+                <button
                   @click="responseViewType = 'raw'"
                   class="px-3 py-2 text-xs font-medium transition-colors duration-fast whitespace-nowrap"
                   :class="responseViewType === 'raw' ? 'text-text-primary border-b-2 border-accent-blue' : 'text-text-muted hover:text-text-secondary'"
@@ -2682,6 +2720,21 @@ defineExpose({
                   :srcdoc="`<!DOCTYPE html><html><head><style>body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; margin: 0; }</style></head><body><pre>${escapeHtml(getResponseText())}</pre></body></html>`"
                   class="w-full h-full border-none rounded bg-bg-tertiary"
                 ></iframe>
+              </div>
+
+              <div v-else-if="responseViewType === 'imagePreview' && isImageResponse()" class="h-full flex flex-col">
+                <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
+                  <span class="text-xs text-text-muted">{{ getContentType().split(';')[0] }}</span>
+                  <span v-if="getImageData()?.size" class="text-xs text-text-muted">({{ formatBytes(getImageData()!.size) }})</span>
+                </div>
+                <div class="flex-1 flex items-center justify-center bg-bg-tertiary rounded border border-border-default p-4 overflow-auto">
+                  <img
+                    v-if="getImageData()?.src"
+                    :src="getImageData()!.src"
+                    alt="Response preview"
+                    class="max-w-full max-h-full object-contain rounded shadow-lg"
+                  />
+                </div>
               </div>
 
               <div v-else-if="responseViewType === 'raw'" class="space-y-1">
