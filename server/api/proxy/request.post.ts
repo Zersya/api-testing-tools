@@ -183,11 +183,12 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
             const substituteWithLimit = (input: string, maxIterations: number = 10): string => {
               let result = input;
               let iterations = 0;
-              const variablePattern = /\{\{([^{}]+)\}\}/g;
+              // Match both {{...}} and URL-encoded %7B%7B...%7D%7D
+              const variablePattern = /(\{\{|%7B%7B)([^{}%]+)(\}\}|%7D%7D)/g;
 
               let match;
               while ((match = variablePattern.exec(result)) !== null && iterations < maxIterations) {
-                const trimmedName = match[1].trim();
+                const trimmedName = match[2].trim();
                 console.log(`[Proxy] Substituting {{${trimmedName}}}:`, variables.hasOwnProperty(trimmedName) ? 'FOUND' : 'NOT FOUND');
                 if (variables.hasOwnProperty(trimmedName)) {
                   result = result.replace(match[0], variables[trimmedName]);
@@ -244,11 +245,12 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
     }
 
     // Check for unresolved variables in URL and return clear error
-    const unresolvedPattern = /\{\{([^{}]+)\}\}/g;
+    // Match both {{...}} and URL-encoded %7B%7B...%7D%7D
+    const unresolvedPattern = /(\{\{|%7B%7B)([^{}%]+)(\}\}|%7D%7D)/g;
     let unresolvedMatch;
     const unresolvedVariables: string[] = [];
     while ((unresolvedMatch = unresolvedPattern.exec(resolvedUrl)) !== null) {
-      const varName = unresolvedMatch[1].trim();
+      const varName = unresolvedMatch[2].trim();
       unresolvedVariables.push(varName);
       variableWarnings.push(`Undefined variable: {{${varName}}}`);
     }
