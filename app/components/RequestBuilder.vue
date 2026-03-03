@@ -1031,7 +1031,9 @@ const handleOAuthCallback = async () => {
       }
     }
 
-    const response = await $fetch<{
+    const { useApiClient } = await import('~~/composables/useApiFetch');
+    const api = useApiClient();
+    const response = await api.post<{
       access_token: string;
       refresh_token?: string;
       expires_in: number;
@@ -1039,7 +1041,6 @@ const handleOAuthCallback = async () => {
       error?: string;
       error_description?: string;
     }>(tokenUrl, {
-      method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Accept': 'application/json'
@@ -1092,7 +1093,9 @@ const refreshAccessToken = async () => {
       body.client_secret = oauth2.value.clientSecret;
     }
 
-    const response = await $fetch<{
+    const { useApiClient } = await import('~~/composables/useApiFetch');
+    const api = useApiClient();
+    const response = await api.post<{
       access_token: string;
       refresh_token?: string;
       expires_in: number;
@@ -1100,7 +1103,6 @@ const refreshAccessToken = async () => {
       error?: string;
       error_description?: string;
     }>(oauth2.value.tokenUrl, {
-      method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Accept': 'application/json'
@@ -1150,14 +1152,15 @@ const getClientCredentialsToken = async () => {
       body.scope = oauth2.value.scopes;
     }
 
-    const response = await $fetch<{
+    const { useApiClient } = await import('~~/composables/useApiFetch');
+    const api = useApiClient();
+    const response = await api.post<{
       access_token: string;
       expires_in?: number;
       token_type?: string;
       error?: string;
       error_description?: string;
     }>(oauth2.value.tokenUrl, {
-      method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Accept': 'application/json'

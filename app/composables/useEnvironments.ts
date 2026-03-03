@@ -52,7 +52,7 @@ export function useEnvironments() {
 
     loading.value = true;
     try {
-      const response = await $fetch<WorkspaceEnvironments>(
+      const response = await api.get<WorkspaceEnvironments>(
         `/api/admin/projects/${projectId}/environments`
       );
       environments.value = response.environments || [];
