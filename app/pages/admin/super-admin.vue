@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
 import RequestBuilder from '~/components/RequestBuilder.vue';
+import SuperAdminInviteModal from '~/components/SuperAdminInviteModal.vue';
 
 // Types
 interface RequestItem {
@@ -142,6 +143,14 @@ const expandedFolders = ref<Set<string>>(new Set());
 const tooltipVisible = ref(false);
 const tooltipContent = ref('');
 const tooltipPosition = ref({ x: 0, y: 0 });
+
+// Invite modal state
+const showInviteModal = ref(false);
+const selectedWorkspaceForInvite = ref<{
+  id: string;
+  name: string;
+  ownerEmail: string;
+} | null>(null);
 
 // Fetch data
 const fetchData = async () => {
@@ -329,6 +338,21 @@ const renderFolderTree = (folders: FolderTreeItem[], workspaceId: string, projec
     projectId,
     collectionId
   }));
+};
+
+// Invite modal handlers
+const openInviteModal = (workspace: WorkspaceWithDetails) => {
+  selectedWorkspaceForInvite.value = {
+    id: workspace.id,
+    name: workspace.name,
+    ownerEmail: workspace.ownerEmail
+  };
+  showInviteModal.value = true;
+};
+
+const closeInviteModal = () => {
+  showInviteModal.value = false;
+  selectedWorkspaceForInvite.value = null;
 };
 
 // Expand/Collapse All
@@ -583,6 +607,21 @@ const collapseAll = () => {
               <span class="text-[11px] font-medium text-text-muted bg-bg-tertiary py-0.5 px-2 rounded-full">
                 {{ workspace.projectCount }}
               </span>
+
+              <!-- Invite Member Button -->
+              <button
+                @click.stop="openInviteModal(workspace)"
+                class="inline-flex items-center gap-1.5 py-1 px-2 text-[11px] font-medium text-accent-blue hover:text-accent-blue-hover hover:bg-accent-blue/10 rounded transition-colors"
+                title="Invite members to this workspace"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                  <circle cx="8.5" cy="7" r="4"/>
+                  <line x1="20" y1="8" x2="20" y2="14"/>
+                  <line x1="23" y1="11" x2="17" y2="11"/>
+                </svg>
+                Invite
+              </button>
             </div>
 
             <!-- Owner Info -->
@@ -865,6 +904,16 @@ const collapseAll = () => {
         {{ tooltipContent }}
       </div>
     </Teleport>
+
+    <!-- Super Admin Invite Modal -->
+    <SuperAdminInviteModal
+      :show="showInviteModal"
+      :workspace-id="selectedWorkspaceForInvite?.id || ''"
+      :workspace-name="selectedWorkspaceForInvite?.name || ''"
+      :owner-email="selectedWorkspaceForInvite?.ownerEmail || ''"
+      @close="closeInviteModal"
+      @invited="fetchData"
+    />
   </div>
 </template>
 
