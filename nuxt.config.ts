@@ -1,3 +1,10 @@
+import { readFileSync } from 'fs'
+import { resolve } from 'path'
+
+// Read version from package.json
+const packageJson = JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf-8'))
+const appVersion = packageJson.version || '0.0.0'
+
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   compatibilityDate: '2024-11-01',
@@ -42,7 +49,8 @@ export default defineNuxtConfig({
     jwtSecret: process.env.JWT_SECRET || 'super-secret-jwt-key-change-me',
     nodeEnv: process.env.NODE_ENV || 'development',
     public: {
-      appUrl: process.env.APP_URL || 'http://localhost:3000'
+      appUrl: process.env.APP_URL || 'http://localhost:3000',
+      appVersion
     }
   }
 })
