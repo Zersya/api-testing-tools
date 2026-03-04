@@ -1,5 +1,5 @@
 import { db } from '../../db';
-import { workspaces } from '../../db/schema';
+import { workspaces, projects, environments } from '../../db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 
 interface CreateWorkspaceBody {
@@ -70,7 +70,32 @@ export default defineEventHandler(async (event) => {
       })
       .returning())[0];
 
-    return newWorkspace;
+    // Automatically create a default project for the workspace
+    const defaultProject = (await db
+      .insert(projects)
+      .values({
+        workspaceId: newWorkspace.id,
+        name: 'My Project'
+      })
+      .returning())[0];
+
+    // Automatically create CLOUD MOCK environment for the default project
+    try {
+      await db.insert(environments).values({
+        projectId: defaultProject.id,
+        name: 'CLOUD MOCK',
+        isActive: false,
+        isMockEnvironment: true
+      });
+    } catch (mockEnvError) {
+      console.error('Failed to create CLOUD MOCK environment:', mockEnvError);
+      // Don't fail the workspace creation if mock env creation fails
+    }
+
+    return {
+      ...newWorkspace,
+      defaultProject
+    };
   } catch (error: any) {
     // Re-throw if it's already an H3 error
     if (error.statusCode) {
