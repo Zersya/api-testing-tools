@@ -40,8 +40,16 @@ print("✅ CFBundleURLTypes added successfully")
 EOF
 fi
 
+# Clean up any backup file that might interfere with signing
+rm -f "$PLIST_PATH.backup"
+
 # Re-sign the app (required after modifying plist)
 echo "🔏 Re-signing the app..."
+
+# Clear all extended attributes (macOS uses -c not -cr)
+xattr -c "$APP_PATH" 2>/dev/null || true
+
+# Sign the entire app bundle with deep signing
 codesign --force --deep --sign - "$APP_PATH"
 
 # Clear quarantine
