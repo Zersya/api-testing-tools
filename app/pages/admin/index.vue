@@ -135,6 +135,8 @@ const currentWorkspaceId = computed(() => selectedWorkspaceId.value);
 
 const currentProjectId = computed(() => selectedProjectId.value);
 
+const hasWorkspaces = computed(() => workspaces.value && workspaces.value.length > 0);
+
 interface EnvironmentVariable {
   id: string;
   environmentId: string;
@@ -1870,8 +1872,31 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
 
       <!-- Main Content -->
       <main class="flex flex-col flex-1 overflow-hidden bg-bg-primary">
+        <!-- No Workspaces Empty State -->
+        <div v-if="!hasWorkspaces" class="flex flex-col items-center justify-center h-full p-10 text-center">
+          <div class="mb-8">
+            <svg width="140" height="140" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round" class="text-accent-blue opacity-40">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <line x1="3" y1="9" x2="21" y2="9"/>
+              <line x1="9" y1="21" x2="9" y2="9"/>
+            </svg>
+          </div>
+          <h2 class="text-2xl font-semibold text-text-primary mb-3">Welcome to Mock Services</h2>
+          <p class="text-text-secondary mb-3 max-w-[380px]">Get started by creating your first workspace. We'll automatically create a default project for you.</p>
+          <div class="flex flex-col items-center gap-4">
+            <button class="btn btn-primary text-base px-6 py-2.5" @click="openCreateWorkspace">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Create Your First Workspace
+            </button>
+            <p class="text-xs text-text-muted">A default project named "My Project" will be created automatically</p>
+          </div>
+        </div>
+
         <!-- Empty State -->
-        <div v-if="!selectedMock && !selectedRequest && openTabs.length === 0" class="flex flex-col items-center justify-center h-full p-10 text-center">
+        <div v-else-if="!selectedMock && !selectedRequest && openTabs.length === 0" class="flex flex-col items-center justify-center h-full p-10 text-center">
           <div class="mb-6">
             <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round" class="opacity-30">
               <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
