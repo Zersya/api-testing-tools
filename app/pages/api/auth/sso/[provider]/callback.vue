@@ -1,9 +1,19 @@
 <script setup lang="ts">
-// Client-side handler for SSO callback in Tauri
+// Client-side handler for SSO callback
 // This page proxies the callback to the server API
 
 const route = useRoute();
 const router = useRouter();
+
+// Get the API base URL - works for both web and Tauri
+const getApiBaseUrl = () => {
+  // In Tauri production build, use the external API
+  if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
+    return 'https://api-mock.transtrack.id';
+  }
+  // In web/dev mode, use relative URL
+  return '';
+};
 
 onMounted(async () => {
   const provider = route.params.provider as string;
@@ -14,7 +24,8 @@ onMounted(async () => {
   try {
     // Forward the callback to the server API using fetch
     const queryString = new URLSearchParams(query as Record<string, string>).toString();
-    const apiUrl = `/api/auth/sso/${provider}/callback?${queryString}`;
+    const apiBase = getApiBaseUrl();
+    const apiUrl = `${apiBase}/api/auth/sso/${provider}/callback?${queryString}`;
 
     console.log(`[SSO Callback Page] Calling API: ${apiUrl}`);
 

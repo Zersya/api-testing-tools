@@ -52,6 +52,7 @@ interface UserInfo {
 }
 
 export default defineEventHandler(async (event) => {
+  try {
   const providerType = getRouterParam(event, 'provider');
   const query = getQuery(event);
   const code = query.code as string;
@@ -137,16 +138,24 @@ export default defineEventHandler(async (event) => {
   console.log(`[SSO Callback] Session cleared from store`);
 
   // Get provider configuration from database
-  const setting = (await db
-    .select()
-    .from(schema.settings)
-    .where(
-      and(
-        eq(schema.settings.key, 'sso_config'),
-        isNull(schema.settings.workspaceId)
+  console.log(`[SSO Callback] Fetching SSO config from database...`);
+  let setting: any;
+  try {
+    setting = (await db
+      .select()
+      .from(schema.settings)
+      .where(
+        and(
+          eq(schema.settings.key, 'sso_config'),
+          isNull(schema.settings.workspaceId)
+        )
       )
-    )
-    .limit(1))[0];
+      .limit(1))[0];
+    console.log(`[SSO Callback] Database query successful`);
+  } catch (dbError: any) {
+    console.error(`[SSO Callback] Database query failed:`, dbError.message);
+    throw dbError;
+  }
   
   // Parse SSO config, handling both string and object formats
   let rawConfig = setting?.value;
@@ -225,6 +234,7 @@ export default defineEventHandler(async (event) => {
 
   let tokenResponse: TokenResponse;
   try {
+    console.log(`[SSO Callback] Exchanging code for tokens at: ${tokenUrl.substring(0, 50)}...`);
     const tokenFetchResponse = await fetch(tokenUrl, {
       method: 'POST',
       headers: {
@@ -234,7 +244,9 @@ export default defineEventHandler(async (event) => {
       body: new URLSearchParams(tokenBody).toString()
     });
 
+    console.log(`[SSO Callback] Token response status: ${tokenFetchResponse.status}`);
     tokenResponse = await tokenFetchResponse.json();
+    console.log(`[SSO Callback] Token response received:`, tokenResponse.error ? `Error: ${tokenResponse.error}` : 'Success');
 
     if (tokenResponse.error) {
       throw createError({
@@ -271,6 +283,7 @@ export default defineEventHandler(async (event) => {
 
   // Normalize user info based on provider
   const normalizedUserInfo = normalizeUserInfo(userInfo, provider.type);
+  console.log(`[SSO Callback] User info normalized:`, { sub: normalizedUserInfo.sub, email: normalizedUserInfo.email });
 
   // Create JWT - always use the global JWT secret for consistency
   const runtimeConfig = useRuntimeConfig();
@@ -285,9 +298,17 @@ export default defineEventHandler(async (event) => {
     providerName: provider.name
   };
 
-  const token = jwt.sign(jwtPayload, jwtSecret, {
-    expiresIn: tokenResponse.expires_in || 3600
-  });
+  console.log(`[SSO Callback] Creating JWT...`);
+  let token: string;
+  try {
+    token = jwt.sign(jwtPayload, jwtSecret, {
+      expiresIn: tokenResponse.expires_in || 3600
+    });
+    console.log(`[SSO Callback] JWT created successfully`);
+  } catch (jwtError: any) {
+    console.error(`[SSO Callback] JWT signing failed:`, jwtError.message);
+    throw jwtError;
+  }
 
   // Set cookies - use lax for localhost (sameSite: 'none' requires secure: true)
   setCookie(event, 'auth_token', token, {
@@ -327,6 +348,14 @@ export default defineEventHandler(async (event) => {
 
   // Server-side redirect
   return sendRedirect(event, redirectUrl);
+  } catch (e: any) {
+    console.error('[SSO Callback] UNEXPECTED ERROR:', e);
+    console.error('[SSO Callback] Error stack:', e.stack);
+    throw createError({
+      statusCode: 500,
+      statusMessage: `SSO Error: ${e.message || 'Unknown error'}`
+    });
+  }
 });
 
 function normalizeUserInfo(userInfo: UserInfo | null, providerType: string): {

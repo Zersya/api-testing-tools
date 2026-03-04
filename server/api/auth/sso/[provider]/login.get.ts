@@ -151,7 +151,7 @@ export default defineEventHandler(async (event) => {
   authorizationUrl.searchParams.set('code_challenge', codeChallenge);
   authorizationUrl.searchParams.set('code_challenge_method', 'S256');
 
-  // Store session data in cookie
+  // Store session data
   const sessionData = {
     state,
     codeVerifier,
@@ -161,33 +161,27 @@ export default defineEventHandler(async (event) => {
     redirectUrl: redirectUrl || '/admin'
   };
 
-  // Determine if we're in Tauri desktop app
   const userAgent = getHeader(event, 'user-agent') || '';
-  const isTauri = userAgent.includes('Tauri') || userAgent.includes('tauri') || userAgent.includes('WebKit');
   const clientIP = getHeader(event, 'x-forwarded-for') || 'unknown';
 
   console.log(`[SSO Login] User-Agent: ${userAgent.substring(0, 100)}`);
-  console.log(`[SSO Login] Setting cookie - isTauri: ${isTauri}, nodeEnv: ${runtimeConfig.nodeEnv}, IP: ${clientIP}`);
   console.log(`[SSO Login] State: ${state}, Provider: ${provider.id}`);
-  console.log(`[SSO Login] isTauriRequest: ${isTauriRequest}, callbackUrl: ${finalCallbackUrl}`);
+  console.log(`[SSO Login] callbackUrl: ${finalCallbackUrl}`);
   console.log(`[SSO Login] Authorization URL: ${authorizationUrl.toString()}`);
 
-  // Store session data in cookie
-  // For Tauri with external browser flow, we need sameSite: 'none' so the cookie
-  // is sent when the external browser redirects back via custom protocol
-  // Note: sameSite: 'none' requires secure: true, but we'll use lax for localhost compatibility
-  const isSecure = !isTauriRequest; // Non-Tauri uses standard web flow
+  // Store session data in cookie for web flow
   setCookie(event, 'sso_oauth_state', JSON.stringify(sessionData), {
     httpOnly: true,
     secure: false, // Must be false for localhost
     sameSite: 'lax',
-    path: '/', // Ensure cookie is available on all paths
+    path: '/',
     maxAge: 60 * 10 // 10 minutes
   });
 
-  // Also store in server-side session store as fallback (for Tauri/external browser issues)
+  // ALWAYS store in server-side session store as primary/fallback
+  // This is critical for Tauri where cookies may not work during OAuth
   sessionStore.set(state, { ...sessionData, createdAt: Date.now() });
-  console.log(`[SSO Login] Session stored in memory for state: ${state.substring(0, 8)}...`);
+  console.log(`[SSO Login] Session stored in memory for state: ${state.substring(0, 8)}..., store size: ${sessionStore.size}`);
 
   // If Tauri request, return JSON with the authorization URL instead of redirecting
   if (isTauriRequest) {

@@ -1,27 +1,6 @@
 <script setup lang="ts">
 import { SSO_PROVIDER_METADATA, type SsoProviderType } from '../types/sso';
 
-// Tauri event listener - only used in Tauri mode
-let tauriListen: typeof import('@tauri-apps/api/event').listen | null = null;
-let tauriInvoke: typeof import('@tauri-apps/api/core').invoke | null = null;
-
-// Lazy load Tauri modules only when needed
-const loadTauriModules = async () => {
-  if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
-    try {
-      const event = await import('@tauri-apps/api/event');
-      const core = await import('@tauri-apps/api/core');
-      tauriListen = event.listen;
-      tauriInvoke = core.invoke;
-      return true;
-    } catch (e) {
-      console.error('Failed to load Tauri modules:', e);
-      return false;
-    }
-  }
-  return false;
-};
-
 interface SsoProviderInfo {
   id: string;
   type: SsoProviderType;
@@ -33,9 +12,6 @@ interface SsoProvidersResponse {
   allowMultipleProviders: boolean;
   defaultProvider?: string;
 }
-
-// Computed property to check if running in Tauri
-const isTauri = computed(() => typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__);
 
 definePageMeta({
   layout: 'empty'
@@ -50,7 +26,6 @@ const isLoading = ref(false);
 const errorMessage = ref('');
 const ssoProviders = ref<SsoProvidersResponse>({ providers: [], allowMultipleProviders: true });
 const isLoadingProviders = ref(true);
-const isOauthPending = ref(false);
 
 const fetchSsoProviders = async () => {
   try {
@@ -64,7 +39,8 @@ const fetchSsoProviders = async () => {
   }
 };
 
-let oauthUnlisten: (() => void) | null = null;
+// Check if running in Tauri
+const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
 
 const loginWithSso = async (providerType: string, providerId?: string) => {
   const urlParams = new URLSearchParams(window.location.search);
@@ -79,126 +55,13 @@ const loginWithSso = async (providerType: string, providerId?: string) => {
     params += params ? `&redirect=${encodeURIComponent(redirectUrl)}` : `?redirect=${encodeURIComponent(redirectUrl)}`;
   }
 
-  // If running in Tauri, use custom protocol OAuth flow
-  if (isTauri.value) {
-    try {
-      isOauthPending.value = true;
-      errorMessage.value = '';
-
-      // Load Tauri modules
-      const tauriLoaded = await loadTauriModules();
-      if (!tauriLoaded || !tauriListen || !tauriInvoke) {
-        throw new Error('Tauri modules not available');
-      }
-
-      // First, set up event listener for oauth-callback BEFORE opening browser
-      if (oauthUnlisten) {
-        oauthUnlisten();
-        oauthUnlisten = null;
-      }
-
-      oauthUnlisten = await tauriListen('oauth-callback', async (event: any) => {
-        console.log('[Tauri OAuth] Received callback:', event.payload);
-
-        const { state, code, error: oauthError } = event.payload;
-
-        if (oauthUnlisten) {
-          oauthUnlisten();
-          oauthUnlisten = null;
-        }
-
-        if (oauthError) {
-          errorMessage.value = `OAuth error: ${oauthError}`;
-          isOauthPending.value = false;
-          return;
-        }
-
-        if (!state || !code) {
-          errorMessage.value = 'Invalid OAuth callback: missing state or code';
-          isOauthPending.value = false;
-          return;
-        }
-
-        try {
-          // Exchange the code for tokens by calling the callback endpoint
-          const callbackUrl = `/api/auth/sso/${providerType}/callback?state=${encodeURIComponent(state)}&code=${encodeURIComponent(code)}`;
-          console.log('[Tauri OAuth] Calling callback:', callbackUrl);
-
-          const response = await fetch(callbackUrl, {
-            method: 'GET',
-            credentials: 'include',
-            headers: {
-              'Accept': 'application/json'
-            }
-          });
-
-          if (response.ok) {
-            const data = await response.json();
-            console.log('[Tauri OAuth] Success:', data);
-            // Navigate to the redirect URL
-            const targetUrl = redirectUrl ? decodeURIComponent(redirectUrl) : (data.redirectUrl || '/admin');
-            await navigateTo(targetUrl, { external: true });
-          } else {
-            const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
-            console.error('[Tauri OAuth] Error:', errorData);
-            errorMessage.value = errorData.message || 'SSO authentication failed';
-          }
-        } catch (e: any) {
-          console.error('[Tauri OAuth] Exception:', e);
-          errorMessage.value = e.message || 'SSO authentication failed';
-        } finally {
-          isOauthPending.value = false;
-        }
-      });
-
-      // Now fetch the OAuth URL from the backend with custom protocol callback
-      // We need to modify the backend to support custom protocol callback URLs for Tauri
-      const tauriCallbackUrl = `id.mock-service://oauth/callback`;
-
-      // Call the login endpoint to get the authorization URL
-      // We pass a special header or parameter to indicate we want custom protocol
-      const loginUrl = `/api/auth/sso/${providerType}/login${params}`;
-      console.log('[Tauri OAuth] Initiating OAuth flow:', loginUrl);
-
-      // Call backend to get the OAuth URL as JSON (backend returns JSON when X-Tauri-Mode is true)
-      const response = await fetch(loginUrl, {
-        method: 'GET',
-        credentials: 'include',
-        headers: {
-          'Accept': 'application/json',
-          'X-Tauri-Mode': 'true',
-          'X-Custom-Callback': tauriCallbackUrl
-        }
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: 'Failed to initiate SSO' }));
-        throw new Error(errorData.message || 'Failed to initiate SSO login');
-      }
-
-      const data = await response.json();
-      if (!data.authorizationUrl) {
-        throw new Error('Invalid response: missing authorizationUrl');
-      }
-
-      console.log('[Tauri OAuth] Opening browser with URL:', data.authorizationUrl.substring(0, 100) + '...');
-
-      // Call backend to open URL in default browser via opener plugin
-      await tauriInvoke!('open_oauth_window', {
-        url: data.authorizationUrl,
-        state: data.state
-      });
-    } catch (e: any) {
-      console.error('[Tauri OAuth] Error:', e);
-      errorMessage.value = e.message || 'Failed to initiate SSO login';
-      isOauthPending.value = false;
-      if (oauthUnlisten) {
-        oauthUnlisten();
-        oauthUnlisten = null;
-      }
-    }
+  if (isTauri) {
+    // Tauri: Navigate to external API for SSO
+    // The external API will redirect to Keycloak, then back to the API
+    // We need to add the external API URL since this is a static build
+    window.location.href = `https://api-mock.transtrack.id/api/auth/sso/${providerType}/login${params}`;
   } else {
-    // Standard web flow - use normal redirect
+    // Web: Use standard redirect flow
     window.location.href = `/api/auth/sso/${providerType}/login${params}`;
   }
 };
@@ -259,11 +122,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  // Clean up OAuth event listener
-  if (oauthUnlisten) {
-    oauthUnlisten();
-    oauthUnlisten = null;
-  }
+  // Cleanup if needed
 });
 
 const checkAuthAndRedirect = async () => {
@@ -329,21 +188,17 @@ const checkAuthAndRedirect = async () => {
             :key="provider.id"
             type="button"
             @click="loginWithSso(provider.type, provider.id)"
-            :disabled="isOauthPending"
-            class="w-full flex items-center justify-center gap-3 py-3.5 px-4 rounded-[10px] text-[15px] font-semibold cursor-pointer transition-all duration-normal hover:not-disabled:-translate-y-px hover:not-disabled:shadow-lg active:not-disabled:translate-y-0 disabled:opacity-70 disabled:cursor-not-allowed"
+            class="w-full flex items-center justify-center gap-3 py-3.5 px-4 rounded-[10px] text-[15px] font-semibold cursor-pointer transition-all duration-normal hover:-translate-y-px hover:shadow-lg active:translate-y-0"
             :style="{
               backgroundColor: getProviderColor(provider.type),
               color: 'white',
               boxShadow: `0 4px 14px ${getProviderColor(provider.type)}40`
             }"
           >
-            <svg v-if="isOauthPending" class="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
-            </svg>
-            <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
               <path :d="getProviderIcon(provider.type)" />
             </svg>
-            <span>{{ isOauthPending ? 'Connecting...' : `Sign in with ${provider.name}` }}</span>
+            <span>Sign in with {{ provider.name }}</span>
           </button>
         </div>
 
