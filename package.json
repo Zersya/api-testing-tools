@@ -22,7 +22,10 @@
     "version:major:push": "node scripts/bump-version.js major --push",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "tauri:build:universal": "tauri build --target universal-apple-darwin",
+    "tauri:signer:generate": "cargo tauri signer generate",
+    "tauri:signer:sign": "cargo tauri signer sign"
   },
   "dependencies": {
     "@nuxtjs/tailwindcss": "^6.14.0",

@@ -18,6 +18,7 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(OAuthState {
             pending: Mutex::new(None),
             callback_data: Arc::new(Mutex::new(None)),
@@ -25,7 +26,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::api::fetch,
             commands::oauth::open_oauth_window,
-            commands::oauth::check_oauth_callback
+            commands::oauth::check_oauth_callback,
+            commands::updater::check_update,
+            commands::updater::install_update
         ])
         .setup(|app| {
             // Handle custom protocol on macOS

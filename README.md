@@ -109,6 +109,112 @@ bun tauri build --target x86_64-apple-darwin
 - **Backend:** Tauri v2, Rust
 - **Build Tool:** Bun
 
+## Auto-Update (macOS Desktop App)
+
+The desktop app includes a built-in auto-update feature using Tauri's updater plugin.
+
+### How it Works
+
+1. The app automatically checks for updates on startup (every 24 hours)
+2. When an update is available, a notification appears
+3. Users can view release notes and install with one click
+4. The app downloads, verifies, installs the update, and restarts
+
+### Setup for Developers
+
+#### 1. Generate Signing Keys
+
+Updates must be cryptographically signed. Generate keys with:
+
+```bash
+bash scripts/generate-updater-keys.sh
+```
+
+This outputs:
+- **Public Key**: Add to `src-tauri/tauri.conf.json` → `plugins.updater.pubkey`
+- **Private Key**: Keep secret! Add to GitHub Secrets as `TAURI_SIGNING_PRIVATE_KEY`
+
+#### 2. Configure Update Server
+
+Edit `src-tauri/tauri.conf.json`:
+
+```json
+"plugins": {
+  "updater": {
+    "pubkey": "YOUR_PUBLIC_KEY_HERE",
+    "endpoints": [
+      "https://your-server.com/api/app/updates"
+    ]
+  }
+}
+```
+
+Edit `server/api/app/updates.get.ts` to set the latest version:
+
+```typescript
+const latestVersion = '0.2.2'; // Bump for new releases
+const baseUrl = 'https://your-cdn.com/updates';
+```
+
+#### 3. Configure GitHub Secrets (for CI/CD)
+
+Add to your GitHub repository:
+- `TAURI_SIGNING_PRIVATE_KEY` - The private key from step 1
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` - (Optional) If you set a password
+
+#### 4. Release an Update
+
+**Option A: GitHub Actions (Recommended)**
+
+```bash
+# Tag and push a new version
+git tag v0.2.2
+git push origin v0.2.2
+```
+
+GitHub Actions will:
+- Build the universal macOS app
+- Sign update files
+- Create a GitHub release
+- Upload artifacts
+
+**Option B: Manual Build**
+
+```bash
+# Build the app
+bun tauri:build --target universal-apple-darwin
+
+# Sign the update file
+cargo tauri signer sign \
+  --private-key "$TAURI_SIGNING_PRIVATE_KEY" \
+  src-tauri/target/universal-apple-darwin/release/bundle/macos/*.tar.gz
+
+# Upload to your server
+scp src-tauri/target/universal-apple-darwin/release/bundle/macos/*.tar.gz \
+   user@server:/var/www/updates/
+scp src-tauri/target/universal-apple-darwin/release/bundle/macos/*.sig \
+   user@server:/var/www/updates/
+```
+
+### Manual Update Check
+
+Users can manually check for updates in:
+- **App Settings** → "Check for Updates" button
+- Or wait for automatic check on startup
+
+### Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| "No updates available" | Verify `latestVersion` > `currentVersion` in server endpoint |
+| Signature verification fails | Ensure public/private key pair matches |
+| Update downloads but doesn't install | Check macOS Gatekeeper; app needs proper entitlements |
+| Auto-check not working | Verify `initAutoUpdate()` is called in layout |
+
+### Documentation
+
+See [AUTO_UPDATE_README.md](AUTO_UPDATE_README.md) for detailed documentation.
+
 ## License
 
 MIT
