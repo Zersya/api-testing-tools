@@ -6,10 +6,10 @@
  * Or via npm: npm run version:patch | npm run version:minor | npm run version:major
  */
 
-const { execSync } = require('child_process');
-const fs = require('fs');
-const path = require('path');
-const readline = require('readline');
+import { execSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import readline from 'readline';
 
 const packageJsonPath = path.join(process.cwd(), 'package.json');
 
