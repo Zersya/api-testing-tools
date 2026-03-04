@@ -2,28 +2,27 @@
 interface Props {
   node: any;
   searchQuery: string;
+  showComma?: boolean;
+  keyLabel?: string;
 }
 
-defineProps<Props>();
+withDefaults(defineProps<Props>(), {
+  showComma: false,
+  keyLabel: undefined
+});
 
-const emit = defineEmits<{
+defineEmits<{
   toggle: [path: string];
 }>();
 
 const getNodeClass = (type: string) => {
   switch (type) {
-    case 'string':
-      return 'text-accent-green';
-    case 'number':
-      return 'text-accent-orange';
-    case 'boolean':
-      return 'text-accent-purple';
-    case 'null':
-      return 'text-accent-red';
-    case 'key':
-      return 'text-accent-blue';
-    default:
-      return 'text-text-primary';
+    case 'string':  return 'text-accent-green';
+    case 'number':  return 'text-accent-orange';
+    case 'boolean': return 'text-accent-purple';
+    case 'null':    return 'text-accent-red';
+    case 'key':     return 'text-accent-blue';
+    default:        return 'text-text-primary';
   }
 };
 
@@ -34,9 +33,8 @@ const isHighlighted = (value: string, query: string) => {
 
 const highlightText = (text: string, query: string): string => {
   if (!query) return text;
-  
   const regex = new RegExp(`(${escapeRegex(query)})`, 'gi');
-  return text.replace(regex, '<mark class="bg-accent-yellow text-text-primary px-0.5 rounded">$1</mark>');
+  return text.replace(regex, '<mark class="bg-accent-yellow/60 text-text-primary px-0.5 rounded">$1</mark>');
 };
 
 const escapeRegex = (str: string): string => {
@@ -49,123 +47,132 @@ const quoteString = (value: string): string => {
 </script>
 
 <template>
-  <div v-if="node" class="json-node">
+  <div v-if="node" class="json-node font-mono text-xs">
+
+    <!-- ── ARRAY ─────────────────────────────────────────────── -->
     <template v-if="node.type === 'array'">
-      <div class="flex items-start py-0.5">
+      <!-- Header line: [toggle] ["key": ] [ -->
+      <div class="flex items-center leading-5">
         <button
           @click="$emit('toggle', node.path)"
-          class="p-0.5 text-text-muted hover:text-text-secondary transition-colors duration-fast flex-shrink-0"
+          class="w-4 h-4 flex items-center justify-center flex-shrink-0 mr-1 text-text-muted hover:text-text-secondary transition-colors duration-fast"
         >
-          <svg v-if="node.expanded" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg v-if="node.expanded" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="6 9 12 15 18 9"></polyline>
           </svg>
-          <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg v-else width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="9 18 15 12 9 6"></polyline>
           </svg>
         </button>
+        <template v-if="keyLabel !== undefined">
+          <span :class="getNodeClass('key')" v-html="highlightText(quoteString(keyLabel), searchQuery)"></span>
+          <span class="text-text-secondary">:&nbsp;</span>
+        </template>
         <span class="text-text-secondary">[</span>
-        <span v-if="!node.expanded && node.length > 0" class="ml-2 text-text-muted">
-          {{ node.length }} items...
-        </span>
-        <span v-if="!node.expanded">]</span>
+        <template v-if="!node.expanded">
+          <span v-if="node.length > 0" class="mx-1 text-text-muted text-[11px]">{{ node.length }}</span>
+          <span class="text-text-secondary">]<span v-if="showComma">,</span></span>
+        </template>
       </div>
-      
-      <div v-if="node.expanded" class="ml-6">
-        <div v-for="(child, index) in node.children" :key="child.path" class="relative">
+
+      <!-- Expanded children -->
+      <div v-if="node.expanded" class="border-l border-border-default/30 ml-2 pl-3">
+        <div v-for="(child, index) in node.children" :key="child.path" class="leading-5">
           <JsonNode
             :node="child"
             :search-query="searchQuery"
+            :show-comma="index < node.children.length - 1"
             @toggle="$emit('toggle', $event)"
           />
-          <span v-if="index < node.children.length - 1" class="text-text-secondary">,</span>
         </div>
-        <div class="flex items-start py-0.5">
-          <span class="flex-shrink-0 w-4"></span>
-          <span class="text-text-secondary">]</span>
+        <div class="leading-5">
+          <span class="text-text-secondary">]<span v-if="showComma">,</span></span>
         </div>
       </div>
     </template>
 
+    <!-- ── OBJECT ─────────────────────────────────────────────── -->
     <template v-else-if="node.type === 'object'">
-      <div class="flex items-start py-0.5">
+      <!-- Header line: [toggle] ["key": ] { -->
+      <div class="flex items-center leading-5">
         <button
           @click="$emit('toggle', node.path)"
-          class="p-0.5 text-text-muted hover:text-text-secondary transition-colors duration-fast flex-shrink-0"
+          class="w-4 h-4 flex items-center justify-center flex-shrink-0 mr-1 text-text-muted hover:text-text-secondary transition-colors duration-fast"
         >
-          <svg v-if="node.expanded" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg v-if="node.expanded" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="6 9 12 15 18 9"></polyline>
           </svg>
-          <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg v-else width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="9 18 15 12 9 6"></polyline>
           </svg>
         </button>
+        <template v-if="keyLabel !== undefined">
+          <span :class="getNodeClass('key')" v-html="highlightText(quoteString(keyLabel), searchQuery)"></span>
+          <span class="text-text-secondary">:&nbsp;</span>
+        </template>
         <span class="text-text-secondary">{</span>
-        <span v-if="!node.expanded && node.entries.length > 0" class="ml-2 text-text-muted">
-          {{ node.entries.length }} keys...
-        </span>
-        <span v-if="!node.expanded">}</span>
+        <template v-if="!node.expanded">
+          <span v-if="node.entries.length > 0" class="mx-1 text-text-muted text-[11px]">{{ node.entries.length }}</span>
+          <span class="text-text-secondary">}<span v-if="showComma">,</span></span>
+        </template>
       </div>
-      
-      <div v-if="node.expanded" class="ml-6">
-        <div v-for="(entry, index) in node.entries" :key="entry.value.path" class="relative py-0.5">
-          <div class="flex items-start">
-            <span class="flex-shrink-0 w-4"></span>
-            <span class="font-mono text-xs">
-              <span
-                :class="getNodeClass('key')"
-                v-html="highlightText(quoteString(entry.key), searchQuery)"
-              ></span>
-              <span class="text-text-secondary">:</span>
-            </span>
-            <JsonNode
-              :node="entry.value"
-              :search-query="searchQuery"
-              @toggle="$emit('toggle', $event)"
-            />
-            <span class="text-text-secondary">{{ index < node.entries.length - 1 ? ',' : '' }}</span>
-          </div>
+
+      <!-- Expanded entries -->
+      <div v-if="node.expanded" class="border-l border-border-default/30 ml-2 pl-3">
+        <div v-for="(entry, index) in node.entries" :key="entry.value.path" class="leading-5">
+          <JsonNode
+            :node="entry.value"
+            :key-label="entry.key"
+            :search-query="searchQuery"
+            :show-comma="index < node.entries.length - 1"
+            @toggle="$emit('toggle', $event)"
+          />
         </div>
-        <div class="flex items-start py-0.5">
-          <span class="flex-shrink-0 w-4"></span>
-          <span class="text-text-secondary">}</span>
+        <div class="leading-5">
+          <span class="text-text-secondary">}<span v-if="showComma">,</span></span>
         </div>
       </div>
     </template>
 
-    <template v-else-if="node.type === 'string'">
-      <span
-        class="font-mono text-xs"
-        :class="getNodeClass('string')"
-        v-html="highlightText(quoteString(node.value), searchQuery)"
-      ></span>
-    </template>
-
-    <template v-else-if="node.type === 'number'">
-      <span
-        class="font-mono text-xs"
-        :class="[getNodeClass('number'), { 'bg-accent-yellow/20 px-0.5 rounded': isHighlighted(node.value, searchQuery) }]"
-        v-html="highlightText(node.value, searchQuery)"
-      ></span>
-    </template>
-
-    <template v-else-if="node.type === 'boolean'">
-      <span
-        class="font-mono text-xs"
-        :class="[getNodeClass('boolean'), { 'bg-accent-yellow/20 px-0.5 rounded': isHighlighted(node.value, searchQuery) }]"
-        v-html="highlightText(node.value, searchQuery)"
-      ></span>
-    </template>
-
-    <template v-else-if="node.type === 'null'">
-      <span
-        class="font-mono text-xs"
-        :class="[getNodeClass('null'), { 'bg-accent-yellow/20 px-0.5 rounded': isHighlighted(node.value, searchQuery) }]"
-        v-html="highlightText(node.value, searchQuery)"
-      ></span>
-    </template>
-
+    <!-- ── SCALAR (string / number / boolean / null / other) ─── -->
     <template v-else>
-      <span class="font-mono text-xs text-text-primary">{{ node.value }}</span>
+      <div class="flex items-center leading-5">
+        <!-- Spacer aligns key text with object/array keys that have a toggle btn -->
+        <span class="w-4 h-4 flex-shrink-0 mr-1"></span>
+
+        <!-- Key label when inside an object -->
+        <template v-if="keyLabel !== undefined">
+          <span :class="getNodeClass('key')" v-html="highlightText(quoteString(keyLabel), searchQuery)"></span>
+          <span class="text-text-secondary">:&nbsp;</span>
+        </template>
+
+        <!-- Value -->
+        <span
+          v-if="node.type === 'string'"
+          :class="[getNodeClass('string'), { 'bg-accent-yellow/30 px-0.5 rounded': isHighlighted(node.value, searchQuery) }]"
+          class="break-all"
+          v-html="highlightText(quoteString(node.value), searchQuery)"
+        ></span>
+        <span
+          v-else-if="node.type === 'number'"
+          :class="[getNodeClass('number'), { 'bg-accent-yellow/30 px-0.5 rounded': isHighlighted(node.value, searchQuery) }]"
+          v-html="highlightText(node.value, searchQuery)"
+        ></span>
+        <span
+          v-else-if="node.type === 'boolean'"
+          :class="[getNodeClass('boolean'), { 'bg-accent-yellow/30 px-0.5 rounded': isHighlighted(node.value, searchQuery) }]"
+          v-html="highlightText(node.value, searchQuery)"
+        ></span>
+        <span
+          v-else-if="node.type === 'null'"
+          :class="[getNodeClass('null'), { 'bg-accent-yellow/30 px-0.5 rounded': isHighlighted(node.value, searchQuery) }]"
+          v-html="highlightText(node.value, searchQuery)"
+        ></span>
+        <span v-else class="text-text-primary">{{ node.value }}</span>
+
+        <span v-if="showComma" class="text-text-secondary">,</span>
+      </div>
     </template>
+
   </div>
 </template>
