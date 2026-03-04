@@ -2,6 +2,29 @@ import type { SsoConfig, SsoProvider, KeycloakProvider, AzureProvider, GenericOI
 import { DEFAULT_OAUTH_ENDPOINTS, getAzureEndpoints, getKeycloakEndpoints } from '../../../../../app/types/sso';
 import { db, schema } from '../../../../db';
 import { eq, and, isNull } from 'drizzle-orm';
+import { getHeader } from 'h3';
+
+// Use global session store shared with callback handler
+declare global {
+  var ssoSessionStore: Map<string, any> | undefined;
+}
+
+// Initialize global session store if not exists
+if (!global.ssoSessionStore) {
+  global.ssoSessionStore = new Map<string, any>();
+
+  // Clean up old sessions every 5 minutes
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, value] of global.ssoSessionStore!.entries()) {
+      if (now - value.createdAt > 10 * 60 * 1000) { // 10 minutes
+        global.ssoSessionStore!.delete(key);
+      }
+    }
+  }, 5 * 60 * 1000);
+}
+
+const sessionStore = global.ssoSessionStore;
 
 export default defineEventHandler(async (event) => {
   const providerType = getRouterParam(event, 'provider');
@@ -108,36 +131,76 @@ export default defineEventHandler(async (event) => {
       });
   }
 
-  // Build authorization URL
+  // Get redirect URL from query params (if user was trying to access a shared workspace)
+  const redirectUrl = query.redirect as string | undefined;
+
+  // Check if this is a Tauri request asking for JSON response
+  const isTauriRequest = getHeader(event, 'x-tauri-mode') === 'true';
+  const customCallbackUrl = getHeader(event, 'x-custom-callback') as string | undefined;
+
+  // Use custom callback URL if provided (for Tauri custom protocol)
+  const finalCallbackUrl = customCallbackUrl || callbackUrl;
+
+  // Build authorization URL with the correct callback URL
   const authorizationUrl = new URL(authUrl);
   authorizationUrl.searchParams.set('response_type', 'code');
   authorizationUrl.searchParams.set('client_id', provider.clientId);
-  authorizationUrl.searchParams.set('redirect_uri', callbackUrl);
+  authorizationUrl.searchParams.set('redirect_uri', finalCallbackUrl);
   authorizationUrl.searchParams.set('scope', scopes.join(' '));
   authorizationUrl.searchParams.set('state', state);
   authorizationUrl.searchParams.set('code_challenge', codeChallenge);
   authorizationUrl.searchParams.set('code_challenge_method', 'S256');
 
-  // Get redirect URL from query params (if user was trying to access a shared workspace)
-  const redirectUrl = query.redirect as string | undefined;
-  
   // Store session data in cookie
   const sessionData = {
     state,
     codeVerifier,
-    callbackUrl,
+    callbackUrl: finalCallbackUrl,
     providerId: provider.id,
     providerType: provider.type,
     redirectUrl: redirectUrl || '/admin'
   };
 
+  // Determine if we're in Tauri desktop app
+  const userAgent = getHeader(event, 'user-agent') || '';
+  const isTauri = userAgent.includes('Tauri') || userAgent.includes('tauri') || userAgent.includes('WebKit');
+  const clientIP = getHeader(event, 'x-forwarded-for') || 'unknown';
+
+  console.log(`[SSO Login] User-Agent: ${userAgent.substring(0, 100)}`);
+  console.log(`[SSO Login] Setting cookie - isTauri: ${isTauri}, nodeEnv: ${runtimeConfig.nodeEnv}, IP: ${clientIP}`);
+  console.log(`[SSO Login] State: ${state}, Provider: ${provider.id}`);
+  console.log(`[SSO Login] isTauriRequest: ${isTauriRequest}, callbackUrl: ${finalCallbackUrl}`);
+  console.log(`[SSO Login] Authorization URL: ${authorizationUrl.toString()}`);
+
+  // Store session data in cookie
+  // For Tauri with external browser flow, we need sameSite: 'none' so the cookie
+  // is sent when the external browser redirects back via custom protocol
+  // Note: sameSite: 'none' requires secure: true, but we'll use lax for localhost compatibility
+  const isSecure = !isTauriRequest; // Non-Tauri uses standard web flow
   setCookie(event, 'sso_oauth_state', JSON.stringify(sessionData), {
     httpOnly: true,
-    secure: runtimeConfig.nodeEnv === 'production',
+    secure: false, // Must be false for localhost
     sameSite: 'lax',
+    path: '/', // Ensure cookie is available on all paths
     maxAge: 60 * 10 // 10 minutes
   });
 
+  // Also store in server-side session store as fallback (for Tauri/external browser issues)
+  sessionStore.set(state, { ...sessionData, createdAt: Date.now() });
+  console.log(`[SSO Login] Session stored in memory for state: ${state.substring(0, 8)}...`);
+
+  // If Tauri request, return JSON with the authorization URL instead of redirecting
+  if (isTauriRequest) {
+    console.log(`[SSO Login] Returning JSON for Tauri mode`);
+    return {
+      authorizationUrl: authorizationUrl.toString(),
+      state,
+      providerId: provider.id,
+      providerType: provider.type
+    };
+  }
+
+  console.log(`[SSO Login] Cookie set, redirecting to: ${authorizationUrl.toString().substring(0, 100)}...`);
   return sendRedirect(event, authorizationUrl.toString());
 });
 

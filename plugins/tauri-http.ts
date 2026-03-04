@@ -18,8 +18,8 @@ if (isTauri) {
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString()
 
-    // Only intercept relative URLs
-    if (typeof input === 'string' && input.startsWith('/')) {
+    // Only intercept relative URLs, but skip SSO auth routes (they need to be handled locally)
+    if (typeof input === 'string' && input.startsWith('/') && !input.startsWith('/api/auth/sso')) {
       const newUrl = buildUrl(input)
       console.log(`[Tauri HTTP] Intercepted: ${input} -> ${newUrl}`)
 
@@ -52,7 +52,8 @@ if (isTauri) {
   if ((globalThis as any).$fetch) {
     const original$fetch = (globalThis as any).$fetch
     ;(globalThis as any).$fetch = async (request: string, opts: any = {}) => {
-      if (typeof request === 'string' && request.startsWith('/')) {
+      // Skip SSO auth routes (they need to be handled locally)
+      if (typeof request === 'string' && request.startsWith('/') && !request.startsWith('/api/auth/sso')) {
         const url = buildUrl(request)
         console.log(`[Tauri HTTP] $fetch intercepted: ${request} -> ${url}`)
 
