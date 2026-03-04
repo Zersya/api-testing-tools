@@ -28,7 +28,8 @@ const log = (msg, color = 'reset') => console.log(`${colors[color]}${msg}${color
 // Execute git command and return output
 function execGit(command, options = {}) {
   try {
-    return execSync(command, { encoding: 'utf-8', stdio: options.silent ? 'pipe' : 'inherit', ...options }).trim();
+    const result = execSync(command, { encoding: 'utf-8', stdio: options.silent ? 'pipe' : 'inherit', ...options });
+    return result ? result.trim() : '';
   } catch (error) {
     if (options.ignoreError) return null;
     throw error;
