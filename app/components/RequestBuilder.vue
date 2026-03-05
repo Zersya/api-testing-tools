@@ -1424,6 +1424,64 @@ const copyResponseBody = async () => {
   }
 };
 
+const getJsonPreviewHtml = () => {
+  if (!response.value || !('success' in response.value)) return '';
+
+  const body = response.value.body;
+  let jsonStr = '';
+  if (typeof body === 'string') {
+    try {
+      jsonStr = JSON.stringify(JSON.parse(body), null, 2);
+    } catch {
+      jsonStr = body;
+    }
+  } else if (typeof body === 'object') {
+    jsonStr = JSON.stringify(body, null, 2);
+  } else {
+    jsonStr = String(body);
+  }
+
+  const escaped = escapeHtml(jsonStr);
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, Monaco, monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      padding: 16px;
+      background: #1e1e1e;
+      color: #d4d4d4;
+    }
+    pre { white-space: pre-wrap; word-wrap: break-word; }
+    .string { color: #7ee787; }
+    .number { color: #79c0ff; }
+    .boolean { color: #ff7b72; }
+    .null { color: #ff7b72; }
+    .key { color: #dcdcaa; }
+  </style>
+</head>
+<body>
+  <pre>${escaped}</pre>
+  <script>
+    (function() {
+      const pre = document.querySelector('pre');
+      let html = pre.innerHTML;
+      html = html.replace(/"([^"]+)":/g, '<span class="key">"$1"</span>:');
+      html = html.replace(/: "([^"]*)"/g, ': <span class="string">"$1"</span>');
+      html = html.replace(/: (\d+\.?\d*)/g, ': <span class="number">$1</span>');
+      html = html.replace(/: (true|false)/g, ': <span class="boolean">$1</span>');
+      html = html.replace(/: (null)/g, ': <span class="null">$1</span>');
+      pre.innerHTML = html;
+    })();
+  <\/script>
+</body>
+</html>`;
+};
+
 const insertSnippet = (type: 'pre' | 'post', snippet: string) => {
   const snippets: Record<string, string> = {
     'env-get': `const value = pm.environment.get("key");`,
@@ -2933,7 +2991,7 @@ defineExpose({
                   Pretty
                 </button>
                 <button
-                  v-if="isJsonResponse()"
+                  v-if="isJsonResponse() || isHtmlResponse()"
                   @click="responseViewType = 'preview'"
                   class="px-3 py-2 text-xs font-medium transition-colors duration-fast whitespace-nowrap"
                   :class="responseViewType === 'preview' ? 'text-text-primary border-b-2 border-accent-blue' : 'text-text-muted hover:text-text-secondary'"
@@ -3023,11 +3081,26 @@ defineExpose({
                 </div>
               </div>
 
-              <div v-else-if="responseViewType === 'preview' && isJsonResponse()" class="h-full">
-                <iframe
-                  :srcdoc="`<!DOCTYPE html><html><head><style>body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; margin: 0; }</style></head><body><pre>${escapeHtml(getResponseText())}</pre></body></html>`"
-                  class="w-full h-full border-none rounded bg-bg-tertiary"
-                ></iframe>
+              <div v-else-if="responseViewType === 'preview'" class="h-full flex flex-col">
+                <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
+                  <span class="text-xs text-text-muted">{{ getContentType().split(';')[0] }}</span>
+                </div>
+                <div class="flex-1 overflow-hidden rounded border border-border-default bg-bg-tertiary">
+                  <iframe
+                    v-if="isHtmlResponse()"
+                    :srcdoc="getResponseText()"
+                    class="w-full h-full border-none"
+                    sandbox="allow-same-origin"
+                  ></iframe>
+                  <iframe
+                    v-else-if="isJsonResponse()"
+                    :srcdoc="getJsonPreviewHtml()"
+                    class="w-full h-full border-none"
+                  ></iframe>
+                  <div v-else class="w-full h-full flex items-center justify-center text-text-muted text-xs">
+                    Preview not available for this content type
+                  </div>
+                </div>
               </div>
 
               <div v-else-if="responseViewType === 'imagePreview' && isImageResponse()" class="h-full flex flex-col">
