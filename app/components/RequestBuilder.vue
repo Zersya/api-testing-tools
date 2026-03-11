@@ -1999,11 +1999,11 @@ defineExpose({
 
     <div class="flex-1 flex flex-col overflow-hidden">
       <div class="p-4 border-b border-border-default bg-bg-secondary">
-        <div class="flex gap-2 bg-bg-input border border-border-default rounded-lg p-1">
+        <div class="flex gap-2 bg-bg-input border border-border-default rounded-lg p-1 min-w-0">
           <select 
             v-model="form.method" 
             :class="[
-              'py-2.5 px-3 bg-transparent border-none border-r border-border-default font-semibold text-sm cursor-pointer min-w-[100px] focus:outline-none',
+              'py-2.5 px-3 bg-transparent border-none border-r border-border-default font-semibold text-sm cursor-pointer min-w-[100px] shrink-0 focus:outline-none',
               methodColors[form.method] || 'text-text-primary'
             ]"
           >
@@ -2013,11 +2013,11 @@ defineExpose({
             v-model="form.url"
             :variables="environmentVariables"
             placeholder="https://api.example.com/endpoint"
-            class="flex-1 py-2.5 px-3 bg-transparent border-none text-text-primary font-mono text-sm focus:outline-none placeholder:text-text-muted"
+            class="flex-1 min-w-0 py-2.5 px-3 bg-transparent border-none text-text-primary font-mono text-sm focus:outline-none placeholder:text-text-muted overflow-hidden"
             @keyup.enter="sendRequest"
           />
           <button 
-            class="py-2.5 px-8 bg-accent-blue text-white font-semibold rounded-md border-none cursor-pointer transition-all duration-fast hover:bg-[#1976D2] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2" 
+            class="shrink-0 py-2.5 px-8 bg-accent-blue text-white font-semibold rounded-md border-none cursor-pointer transition-all duration-fast hover:bg-[#1976D2] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2" 
             @click="sendRequest" 
             :disabled="isLoading || !form.url"
           >
