@@ -215,6 +215,9 @@ const inheritFromParent = ref(false);
 const expandedNodes = ref(new Set<string>());
 const showSearch = ref(false);
 const searchQuery = ref('');
+const responseContentRef = ref<HTMLElement | null>(null);
+const searchMatches = ref<HTMLElement[]>([]);
+const activeSearchMatchIndex = ref(-1);
 
 // Mock configuration state
 const mockConfig = ref<import('../../server/db/schema/savedRequest').MockConfig | null>(null);
@@ -1550,6 +1553,8 @@ const toggleNode = (path: string) => {
   } else {
     expandedNodes.value.add(path);
   }
+
+  updateSearchMatches(false);
 };
 
 const expandAll = () => {
@@ -1569,10 +1574,13 @@ const expandAll = () => {
     const highlighted = highlightJson(response.value.body);
     expandRecursive(highlighted);
   }
+
+  updateSearchMatches(false);
 };
 
 const collapseAll = () => {
   expandedNodes.value.clear();
+  updateSearchMatches(false);
 };
 
 const highlightXml = (xml: string) => {
@@ -1591,6 +1599,12 @@ const highlightXml = (xml: string) => {
   });
 };
 
+const escapeHtml = (str: string): string => {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+};
+
 const getHighlightedJson = computed(() => {
   if (!response.value || !('success' in response.value)) return null;
   
@@ -1600,66 +1614,125 @@ const getHighlightedJson = computed(() => {
   return highlightJson(body);
 });
 
-const escapeHtml = (str: string): string => {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
+const focusResponseSearchInput = () => {
+  nextTick(() => {
+    const searchInput = document.querySelector('#response-search-input') as HTMLInputElement;
+    searchInput?.focus();
+    searchInput?.select();
+  });
 };
 
-const getFilteredJson = computed(() => {
-  if (!searchQuery.value) return getHighlightedJson.value;
-  
-  const filterData = (data: any, query: string): any => {
-    const queryLower = query.toLowerCase();
-    
-    if (!query) return data;
-    
-    const hasMatch = (obj: any): boolean => {
-      if (obj.type === 'string' && obj.value.toLowerCase().includes(queryLower)) {
-        return true;
-      }
-      if (obj.type === 'number' || obj.type === 'boolean' || obj.type === 'null') {
-        if (String(obj.value).toLowerCase().includes(queryLower)) {
-          return true;
-        }
-      }
-      if (obj.children) {
-        return obj.children.some(hasMatch);
-      }
-      if (obj.entries) {
-        return obj.entries.some((entry: any) => 
-          entry.key.toLowerCase().includes(queryLower) || hasMatch(entry.value)
-        );
-      }
-      return false;
-    };
-    
-    if (!hasMatch(data)) return null;
-    
-    if (data.type === 'array') {
-      return {
-        ...data,
-        children: data.children.map((child: any) => filterData(child, query)).filter(Boolean)
-      };
-    }
-    
-    if (data.type === 'object') {
-      return {
-        ...data,
-        entries: data.entries
-          .map((entry: any) => ({
-            key: entry.key,
-            value: filterData(entry.value, query)
-          }))
-          .filter((entry: any) => entry.value !== null || entry.key.toLowerCase().includes(queryLower))
-      };
-    }
-    
-    return data;
-  };
-  
-  if (!getHighlightedJson.value) return null;
-  return filterData(getHighlightedJson.value, searchQuery.value);
+const clearActiveSearchMatch = () => {
+  searchMatches.value.forEach((element) => {
+    element.classList.remove('response-search-highlight-active');
+  });
+};
+
+const focusSearchMatch = (index: number) => {
+  if (index < 0 || index >= searchMatches.value.length) {
+    activeSearchMatchIndex.value = -1;
+    clearActiveSearchMatch();
+    return;
+  }
+
+  clearActiveSearchMatch();
+  activeSearchMatchIndex.value = index;
+
+  const activeMatch = searchMatches.value[index];
+  if (!activeMatch) return;
+
+  activeMatch.classList.add('response-search-highlight-active');
+  activeMatch.scrollIntoView({
+    behavior: 'smooth',
+    block: 'center'
+  });
+};
+
+const updateSearchMatches = async (resetToFirstMatch = true) => {
+  await nextTick();
+
+  clearActiveSearchMatch();
+
+  if (
+    !searchQuery.value.trim() ||
+    activeTab.value !== 'response' ||
+    responseViewType.value !== 'pretty' ||
+    !responseContentRef.value
+  ) {
+    searchMatches.value = [];
+    activeSearchMatchIndex.value = -1;
+    return;
+  }
+
+  const highlightedElements = Array.from(
+    responseContentRef.value.querySelectorAll<HTMLElement>('.response-search-highlight')
+  );
+
+  searchMatches.value = highlightedElements;
+
+  if (searchMatches.value.length === 0) {
+    activeSearchMatchIndex.value = -1;
+    return;
+  }
+
+  const targetIndex = resetToFirstMatch
+    ? 0
+    : Math.min(
+      Math.max(activeSearchMatchIndex.value, 0),
+      searchMatches.value.length - 1
+    );
+
+  focusSearchMatch(targetIndex);
+};
+
+const goToNextSearchMatch = () => {
+  if (searchMatches.value.length === 0) return;
+
+  const nextIndex = activeSearchMatchIndex.value + 1 >= searchMatches.value.length
+    ? 0
+    : activeSearchMatchIndex.value + 1;
+
+  focusSearchMatch(nextIndex);
+};
+
+const goToPreviousSearchMatch = () => {
+  if (searchMatches.value.length === 0) return;
+
+  const previousIndex = activeSearchMatchIndex.value - 1 < 0
+    ? searchMatches.value.length - 1
+    : activeSearchMatchIndex.value - 1;
+
+  focusSearchMatch(previousIndex);
+};
+
+const handleSearchInputEnter = (event: KeyboardEvent) => {
+  if (event.shiftKey) {
+    goToPreviousSearchMatch();
+    return;
+  }
+
+  goToNextSearchMatch();
+};
+
+const openResponseSearch = () => {
+  showSearch.value = true;
+  focusResponseSearchInput();
+};
+
+const closeResponseSearch = () => {
+  showSearch.value = false;
+  searchQuery.value = '';
+  searchMatches.value = [];
+  activeSearchMatchIndex.value = -1;
+  clearActiveSearchMatch();
+};
+
+watch(searchQuery, () => {
+  updateSearchMatches(true);
+});
+
+watch([responseViewType, activeTab], () => {
+  updateSearchMatches(true);
 });
 
 const handleKeydown = (e: KeyboardEvent) => {
@@ -1674,15 +1747,10 @@ const handleKeydown = (e: KeyboardEvent) => {
     openSaveAsDialog();
   } else if ((e.metaKey || e.ctrlKey) && e.key === 'f' && activeTab.value === 'response') {
     e.preventDefault();
-    showSearch.value = !showSearch.value;
-    if (showSearch.value) {
-      nextTick(() => {
-        const searchInput = document.querySelector('#response-search-input') as HTMLInputElement;
-        searchInput?.focus();
-      });
-    }
+    openResponseSearch();
   }
 };
+
 
 const openSaveDialog = () => {
   emit('saveRequest', {
@@ -1852,6 +1920,8 @@ const sendRequest = async () => {
   activeTab.value = 'response';
   searchQuery.value = '';
   showSearch.value = false;
+  searchMatches.value = [];
+  activeSearchMatchIndex.value = -1;
   expandedNodes.value.clear();
 
   try {
@@ -2006,11 +2076,11 @@ defineExpose({
 
     <div class="flex-1 flex flex-col overflow-hidden">
       <div class="p-4 border-b border-border-default bg-bg-secondary">
-        <div class="flex gap-2 bg-bg-input border border-border-default rounded-lg p-1">
+        <div class="flex gap-2 bg-bg-input border border-border-default rounded-lg p-1 min-w-0">
           <select 
             v-model="form.method" 
             :class="[
-              'py-2.5 px-3 bg-transparent border-none border-r border-border-default font-semibold text-sm cursor-pointer min-w-[100px] focus:outline-none',
+              'py-2.5 px-3 bg-transparent border-none border-r border-border-default font-semibold text-sm cursor-pointer min-w-[100px] shrink-0 focus:outline-none',
               methodColors[form.method] || 'text-text-primary'
             ]"
           >
@@ -2020,11 +2090,11 @@ defineExpose({
             v-model="form.url"
             :variables="environmentVariables"
             placeholder="https://api.example.com/endpoint"
-            class="flex-1 py-2.5 px-3 bg-transparent border-none text-text-primary font-mono text-sm focus:outline-none placeholder:text-text-muted"
+            class="flex-1 min-w-0 py-2.5 px-3 bg-transparent border-none text-text-primary font-mono text-sm focus:outline-none placeholder:text-text-muted overflow-hidden"
             @keyup.enter="sendRequest"
           />
           <button 
-            class="py-2.5 px-8 bg-accent-blue text-white font-semibold rounded-md border-none cursor-pointer transition-all duration-fast hover:bg-[#1976D2] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2" 
+            class="shrink-0 py-2.5 px-8 bg-accent-blue text-white font-semibold rounded-md border-none cursor-pointer transition-all duration-fast hover:bg-[#1976D2] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2" 
             @click="sendRequest" 
             :disabled="isLoading || !form.url"
           >
@@ -2925,7 +2995,7 @@ defineExpose({
                 </div>
                 <div class="flex items-center gap-2">
                   <button 
-                    @click="showSearch = !showSearch"
+                    @click="openResponseSearch"
                     class="p-1.5 text-text-muted hover:text-text-secondary transition-colors duration-fast"
                     title="Search (Cmd/Ctrl+F)"
                   >
@@ -2959,11 +3029,37 @@ defineExpose({
                     type="text"
                     class="flex-1 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs focus:outline-none focus:border-accent-blue placeholder:text-text-muted"
                     placeholder="Search in response..."
+                    @keydown.enter.prevent="handleSearchInputEnter"
+                    @keydown.esc.prevent="closeResponseSearch"
                   />
+                  <span v-if="searchQuery" class="text-[11px] text-text-muted whitespace-nowrap">
+                    {{ searchMatches.length === 0 ? '0' : activeSearchMatchIndex + 1 }} / {{ searchMatches.length }}
+                  </span>
+                  <button
+                    :disabled="searchMatches.length === 0"
+                    @click="goToPreviousSearchMatch"
+                    class="p-1 text-text-muted hover:text-text-secondary disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="Previous match (Shift+Enter)"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="18 15 12 9 6 15"></polyline>
+                    </svg>
+                  </button>
+                  <button
+                    :disabled="searchMatches.length === 0"
+                    @click="goToNextSearchMatch"
+                    class="p-1 text-text-muted hover:text-text-secondary disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="Next match (Enter)"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                  </button>
                   <button
                     v-if="searchQuery"
                     @click="searchQuery = ''"
                     class="p-1 text-text-muted hover:text-text-secondary"
+                    title="Clear"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -2971,8 +3067,9 @@ defineExpose({
                     </svg>
                   </button>
                   <button
-                    @click="showSearch = false"
+                    @click="closeResponseSearch"
                     class="p-1 text-text-muted hover:text-text-secondary"
+                    title="Close"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -3039,8 +3136,8 @@ defineExpose({
               </div>
             </div>
 
-            <div v-if="response.success" class="flex-1 overflow-auto p-4">
-              <div v-if="responseViewType === 'pretty' && isJsonResponse() && getFilteredJson" class="space-y-1">
+            <div v-if="response.success" ref="responseContentRef" class="flex-1 overflow-auto p-4">
+              <div v-if="responseViewType === 'pretty' && isJsonResponse() && getHighlightedJson" class="space-y-1">
                 <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
                   <span class="text-xs text-text-muted">JSON</span>
                   <button
@@ -3058,7 +3155,7 @@ defineExpose({
                   </button>
                 </div>
                 <JsonNode
-                  :node="getFilteredJson"
+                  :node="getHighlightedJson"
                   :search-query="searchQuery"
                   @toggle="toggleNode"
                 />
@@ -3229,5 +3326,14 @@ defineExpose({
 <style scoped>
 kbd {
   user-select: none;
+}
+
+:deep(.response-search-highlight) {
+  transition: background-color 120ms ease;
+}
+
+:deep(.response-search-highlight.response-search-highlight-active) {
+  background-color: rgba(59, 130, 246, 0.45);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.75);
 }
 </style>

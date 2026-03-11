@@ -288,6 +288,7 @@ export default defineEventHandler(async (event) => {
   // Create JWT - always use the global JWT secret for consistency
   const runtimeConfig = useRuntimeConfig();
   const jwtSecret = runtimeConfig.jwtSecret;
+  // const AUTH_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 5; // 5 days
 
   const jwtPayload = {
     email: normalizedUserInfo.email,

@@ -147,7 +147,7 @@ const emit = defineEmits<{
 }>();
 
 const selectedWorkspaceId = ref<string | null>(null);
-const activeView = ref<'hierarchy' | 'mocks' | 'history' | 'definitions'>('mocks');
+const activeView = ref<'hierarchy' | 'mocks' | 'history' | 'definitions'>('hierarchy');
 const contextMenu = ref<{ x: number; y: number; type: string; data: any } | null>(null);
 
 const expandedCollections = useExpandedState('mock-service-expanded-collections');
@@ -165,6 +165,8 @@ const dropTarget = ref<{
   position: 'before' | 'after' | 'inside';
 } | null>(null);
 
+const workspaceSearchQuery = ref('');
+
 const localWorkspaces = ref<WorkspaceWithProjects[]>([]);
 
 const currentWorkspace = computed(() => {
@@ -175,6 +177,87 @@ const currentWorkspace = computed(() => {
 
 const currentProject = computed(() => {
   return currentWorkspace.value?.projects?.[0];
+});
+
+// Search filter helpers for hierarchy (collections, folders, requests)
+const matchesSearch = (text: string, q: string): boolean => {
+  if (!text || !q) return false;
+  return text.toLowerCase().includes(q.toLowerCase());
+};
+
+const filterFolderBySearch = (
+  folder: FolderWithRequestsAndChildren,
+  q: string
+): FolderWithRequestsAndChildren | null => {
+  const nameMatch = matchesSearch(folder.name, q);
+  // When parent folder name matches, show it with all its children (no filtering of descendants)
+  if (nameMatch) {
+    return { ...folder, children: folder.children, requests: folder.requests };
+  }
+  const filteredChildren = folder.children
+    .map((child) => filterFolderBySearch(child, q))
+    .filter((f): f is FolderWithRequestsAndChildren => f !== null);
+  const filteredRequests = folder.requests.filter(
+    (r) => matchesSearch(r.name, q) || matchesSearch(r.method, q)
+  );
+  const hasMatch = filteredChildren.length > 0 || filteredRequests.length > 0;
+  if (!hasMatch) return null;
+  return {
+    ...folder,
+    children: filteredChildren,
+    requests: filteredRequests
+  };
+};
+
+const filterCollectionBySearch = (
+  collection: CollectionWithFolders,
+  q: string
+): CollectionWithFolders | null => {
+  const nameMatch = matchesSearch(collection.name, q);
+  // When collection name matches, show it with all folders and requests (full tree)
+  if (nameMatch) {
+    return { ...collection, folders: collection.folders, requests: collection.requests };
+  }
+  const filteredFolders = collection.folders
+    .map((f) => filterFolderBySearch(f, q))
+    .filter((f): f is FolderWithRequestsAndChildren => f !== null);
+  const filteredRootRequests = collection.requests.filter(
+    (r) => matchesSearch(r.name, q) || matchesSearch(r.method, q)
+  );
+  const hasMatch = filteredFolders.length > 0 || filteredRootRequests.length > 0;
+  if (!hasMatch) return null;
+  return {
+    ...collection,
+    folders: filteredFolders,
+    requests: filteredRootRequests
+  };
+};
+
+const filteredProjects = computed((): ProjectWithCollections[] => {
+  const projects = currentWorkspace.value?.projects ?? [];
+  const q = workspaceSearchQuery.value.trim().toLowerCase();
+  if (!q) return projects;
+  return projects
+    .map((project) => ({
+      ...project,
+      collections: project.collections
+        .map((c) => filterCollectionBySearch(c, q))
+        .filter((c): c is CollectionWithFolders => c !== null)
+    }))
+    .filter((p) => p.collections.length > 0);
+});
+
+// Auto-expand all when search is active so results are visible
+watch(workspaceSearchQuery, (query) => {
+  const q = query.trim();
+  if (!q || !currentWorkspace.value) return;
+  currentWorkspace.value.projects.forEach((project) => {
+    expandedProjects.value.add(project.id);
+    project.collections.forEach((coll) => {
+      expandedCollectionsHierarchy.value.add(coll.id);
+      collectAllFolderIds(coll.folders).forEach((id) => expandedFolders.value.add(id));
+    });
+  });
 });
 
 // Build collections with their grouped mocks
@@ -1005,6 +1088,48 @@ watch(activeView, (newView) => {
       </button>
     </div>
 
+    <!-- Workspace search (Postman-style: search requests, folders, collections) -->
+    <div v-if="activeView === 'hierarchy' && currentWorkspace" class="p-2 border-b border-border-default">
+      <div class="flex items-center gap-1.5 bg-bg-input border border-border-default rounded-lg overflow-hidden">
+        <button
+          type="button"
+          class="flex items-center justify-center w-8 h-8 shrink-0 text-text-muted hover:bg-bg-hover hover:text-text-primary transition-colors"
+          @click="emit('createProject', currentWorkspace.id)"
+          title="New Project"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        </button>
+        <span class="w-px h-5 bg-border-default shrink-0" aria-hidden="true"></span>
+        <label class="flex-1 flex items-center gap-2 min-w-0">
+          <svg class="w-4 h-4 text-text-muted shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input
+            v-model="workspaceSearchQuery"
+            type="text"
+            placeholder="Search requests, folders, collections..."
+            class="flex-1 min-w-0 py-2 pr-2 bg-transparent border-none text-text-primary text-[13px] placeholder:text-text-muted focus:outline-none"
+          />
+          <button
+            v-if="workspaceSearchQuery"
+            type="button"
+            class="flex items-center justify-center w-6 h-6 rounded-full shrink-0 text-text-muted hover:bg-bg-hover hover:text-text-primary transition-colors"
+            aria-label="Clear search"
+            @click="workspaceSearchQuery = ''"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </label>
+      </div>
+    </div>
+
     <!-- Projects Header -->
     <div v-if="activeView === 'hierarchy' && currentWorkspace" class="flex items-center justify-between py-2 px-4 border-b border-border-default">
       <div class="flex items-center gap-2">
@@ -1053,7 +1178,7 @@ watch(activeView, (newView) => {
     <!-- Hierarchy View -->
     <div v-if="activeView === 'hierarchy'" class="flex-1 overflow-y-auto py-2">
       <div v-if="currentWorkspace">
-        <!-- Empty State -->
+        <!-- Empty State: no projects -->
         <div v-if="currentWorkspace.projects.length === 0" class="flex flex-col items-center justify-center gap-3 py-10 px-5 text-text-muted text-center">
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
             <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
@@ -1062,8 +1187,18 @@ watch(activeView, (newView) => {
           <button class="btn btn-sm btn-secondary" @click="emit('createProject', currentWorkspace.id)">Create First Project</button>
         </div>
 
-        <!-- Projects -->
-        <div v-for="project in currentWorkspace.projects" :key="project.id">
+        <!-- Empty State: search returned no results -->
+        <div v-else-if="workspaceSearchQuery.trim() && filteredProjects.length === 0" class="flex flex-col items-center justify-center gap-3 py-10 px-5 text-text-muted text-center">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <p class="text-[13px] m-0">No matching requests, folders, or collections</p>
+          <button type="button" class="text-xs text-accent-blue hover:underline" @click="workspaceSearchQuery = ''">Clear search</button>
+        </div>
+
+        <!-- Projects (filtered by search when workspaceSearchQuery is set) -->
+        <div v-for="project in filteredProjects" :key="project.id">
           <!-- Project Header -->
           <div
             class="flex items-center gap-2 py-2.5 px-3 text-text-primary text-[13px] font-semibold cursor-pointer transition-colors duration-fast hover:bg-bg-hover group"
