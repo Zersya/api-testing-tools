@@ -475,8 +475,7 @@ const createEnvironmentFromSettings = async () => {
 
   try {
     isEnvironmentSettingsLoading.value = true;
-    await $fetch(`/api/admin/projects/${currentProjectId.value}/environments`, {
-      method: 'POST',
+    await api.post(`/api/admin/projects/${currentProjectId.value}/environments`, {
       body: {
         name: environmentCreateForm.value.name.trim()
       }
@@ -498,8 +497,7 @@ const renameEnvironmentFromSettings = async () => {
 
   try {
     isEnvironmentSettingsLoading.value = true;
-    await $fetch(`/api/admin/environments/${environmentToRename.value.id}`, {
-      method: 'PUT',
+    await api.put(`/api/admin/environments/${environmentToRename.value.id}`, {
       body: {
         name: environmentRenameForm.value.name.trim()
       }
@@ -522,9 +520,7 @@ const deleteEnvironmentFromSettings = async () => {
 
   try {
     isEnvironmentSettingsLoading.value = true;
-    await $fetch(`/api/admin/environments/${environmentToDelete.value.id}`, {
-      method: 'DELETE'
-    });
+    await api.delete(`/api/admin/environments/${environmentToDelete.value.id}`);
     showEnvironmentDeleteConfirm.value = false;
     environmentToDelete.value = null;
     await refreshEnvironmentSources();
@@ -542,9 +538,7 @@ const duplicateEnvironmentFromSettings = async () => {
 
   try {
     isEnvironmentSettingsLoading.value = true;
-    await $fetch(`/api/admin/environments/${environmentToDuplicate.value.id}/duplicate`, {
-      method: 'POST'
-    });
+    await api.post(`/api/admin/environments/${environmentToDuplicate.value.id}/duplicate`);
     showEnvironmentDuplicateConfirm.value = false;
     environmentToDuplicate.value = null;
     await refreshEnvironmentSources();
@@ -561,9 +555,7 @@ const activateEnvironmentFromSettings = async (environment: Environment) => {
   }
 
   try {
-    await $fetch(`/api/admin/environments/${environment.id}/activate`, {
-      method: 'PUT'
-    });
+    await api.put(`/api/admin/environments/${environment.id}/activate`);
     await refreshEnvironmentSources();
   } catch (e: any) {
     alert('Error activating environment: ' + (e.data?.message || e.message));
@@ -572,8 +564,7 @@ const activateEnvironmentFromSettings = async (environment: Environment) => {
 
 const addVariableFromSettings = async (environment: Environment) => {
   try {
-    await $fetch(`/api/admin/environments/${environment.id}/variables`, {
-      method: 'POST',
+    await api.post(`/api/admin/environments/${environment.id}/variables`, {
       body: {
         key: 'NEW_VARIABLE',
         value: '',
@@ -592,8 +583,7 @@ const updateVariableFromSettings = async (variable: EnvironmentVariable, key: st
   }
 
   try {
-    await $fetch(`/api/admin/variables/${variable.id}`, {
-      method: 'PUT',
+    await api.put(`/api/admin/variables/${variable.id}`, {
       body: {
         key: key.trim(),
         value: isSecret ? environmentSettingsSecretValues.value[variable.id] : value,
@@ -618,7 +608,7 @@ const toggleSecretFromSettings = (variable: EnvironmentVariable) => {
     if (environmentSettingsSecretValues.value[variable.id]) {
       variable.value = environmentSettingsSecretValues.value[variable.id];
     } else {
-      $fetch(`/api/admin/variables/${variable.id}`)
+      api.get(`/api/admin/variables/${variable.id}`)
         .then((data: any) => {
           environmentSettingsSecretValues.value[variable.id] = data.value;
           if (!variable.isSecret) {
@@ -631,8 +621,7 @@ const toggleSecretFromSettings = (variable: EnvironmentVariable) => {
     }
   }
 
-  $fetch(`/api/admin/variables/${variable.id}`, {
-    method: 'PUT',
+  api.put(`/api/admin/variables/${variable.id}`, {
     body: {
       key: variable.key,
       value: environmentSettingsSecretValues.value[variable.id] || variable.value,
@@ -651,9 +640,7 @@ const toggleSecretFromSettings = (variable: EnvironmentVariable) => {
 
 const deleteVariableFromSettings = async (variableId: string) => {
   try {
-    await $fetch(`/api/admin/variables/${variableId}`, {
-      method: 'DELETE'
-    });
+    await api.delete(`/api/admin/variables/${variableId}`);
     await refreshEnvironmentSources();
   } catch (e: any) {
     alert('Error deleting variable: ' + (e.data?.message || e.message));

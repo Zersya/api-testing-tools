@@ -3,12 +3,28 @@ const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTER
 console.log('[Tauri HTTP Plugin] File loaded, isTauri:', isTauri)
 
 if (isTauri) {
-  const TAURI_API_BASE_URL = 'https://api-mock.transtrack.id'
+  const getConfiguredApiBaseUrl = (): string => {
+    const publicConfig = (window as any).__NUXT__?.config?.public
+    if (publicConfig && typeof publicConfig.apiBaseUrl === 'string') {
+      return publicConfig.apiBaseUrl
+    }
+    return ''
+  }
+
+  const TAURI_API_BASE_URL = (getConfiguredApiBaseUrl() || 'https://api-mock.transtrack.id').replace(/\/+$/, '')
 
   const buildUrl = (path: string): string => {
     if (path.startsWith('http://') || path.startsWith('https://')) return path
-    if (!path.startsWith('/')) path = '/' + path
-    return `${TAURI_API_BASE_URL}${path}`
+
+    const cleanPath = path.startsWith('/') ? path : `/${path}`
+    let resolvedPath = cleanPath
+
+    // Prevent duplicated /api segment when base URL already includes it
+    if (TAURI_API_BASE_URL.endsWith('/api') && cleanPath.startsWith('/api/')) {
+      resolvedPath = cleanPath.slice('/api'.length)
+    }
+
+    return `${TAURI_API_BASE_URL}${resolvedPath}`
   }
 
   // Store original fetch

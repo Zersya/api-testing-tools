@@ -9,9 +9,36 @@ function isTauri(): boolean {
 }
 
 /**
- * Production API base URL for Tauri app
+ * Fallback API base URL for Tauri app when runtime config is missing
  */
-const TAURI_API_BASE_URL = 'https://api-mock.transtrack.id'
+const DEFAULT_TAURI_API_BASE_URL = 'https://api-mock.transtrack.id'
+
+function normalizeBaseUrl(baseUrl: string): string {
+  return baseUrl.replace(/\/+$/, '')
+}
+
+function resolveApiBaseUrl(config: ReturnType<typeof useRuntimeConfig>, inTauri: boolean): string {
+  const configuredBaseUrl = typeof config?.public?.apiBaseUrl === 'string'
+    ? config.public.apiBaseUrl
+    : ''
+
+  const fallbackBaseUrl = inTauri ? DEFAULT_TAURI_API_BASE_URL : ''
+  return normalizeBaseUrl(configuredBaseUrl || fallbackBaseUrl)
+}
+
+function joinApiUrl(baseUrl: string, path: string): string {
+  const cleanPath = path.startsWith('/') ? path : `/${path}`
+  if (!baseUrl) return cleanPath
+
+  let resolvedPath = cleanPath
+
+  // Prevent duplicated /api segment when base URL already includes it
+  if (baseUrl.endsWith('/api') && cleanPath.startsWith('/api/')) {
+    resolvedPath = cleanPath.slice('/api'.length)
+  }
+
+  return `${baseUrl}${resolvedPath}`
+}
 
 /**
  * Wrapper around useFetch that automatically prepends the API base URL.
@@ -28,10 +55,10 @@ export function useApiFetch<T>(
   const buildUrl = (path: string | null | undefined): string => {
     if (!path || typeof path !== 'string') return ''
     if (path.startsWith('http://') || path.startsWith('https://')) return path
+
     const inTauri = isTauri()
-    const baseUrl = inTauri ? TAURI_API_BASE_URL : (config.public.apiBaseUrl || '')
-    const cleanPath = path.startsWith('/') ? path : `/${path}`
-    return `${baseUrl}${cleanPath}`
+    const baseUrl = resolveApiBaseUrl(config, inTauri)
+    return joinApiUrl(baseUrl, path)
   }
 
   // Handle reactive URLs
@@ -99,10 +126,10 @@ export function useApiClient() {
   const buildUrl = (path: string | null | undefined): string => {
     if (!path || typeof path !== 'string') return ''
     if (path.startsWith('http://') || path.startsWith('https://')) return path
+
     const inTauri = isTauri()
-    const baseUrl = inTauri ? TAURI_API_BASE_URL : (config.public.apiBaseUrl || '')
-    const cleanPath = path.startsWith('/') ? path : `/${path}`
-    return `${baseUrl}${cleanPath}`
+    const baseUrl = resolveApiBaseUrl(config, inTauri)
+    return joinApiUrl(baseUrl, path)
   }
 
   const baseFetch = async <T>(path: string, options?: any) => {
