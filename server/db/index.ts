@@ -25,32 +25,96 @@ const pool = new Pool({
 
 export const db = drizzle(pool, { schema });
 
+// Resolve module directory safely across environments (including Windows/macOS bundles)
+function getCurrentModuleDir(): string {
+  try {
+    return dirname(fileURLToPath(import.meta.url));
+  } catch (error: any) {
+    console.warn('[Database] Could not resolve module directory from import.meta.url:', error?.message || error);
+    return process.cwd();
+  }
+}
+
+function normalizeCandidatePath(candidatePath: string): string {
+  try {
+    if (candidatePath.startsWith('file://')) {
+      return fileURLToPath(candidatePath);
+    }
+
+    return resolve(candidatePath);
+  } catch {
+    return candidatePath;
+  }
+}
+
+function getRuntimeBasePaths(): string[] {
+  const execDir = dirname(process.execPath);
+  const moduleDir = getCurrentModuleDir();
+  const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+
+  const basePaths = [
+    process.cwd(),
+    moduleDir,
+    execDir,
+    resolve(execDir, '..'),
+    resolve(execDir, 'resources'),
+    resolve(execDir, '..', 'resources'),
+    resolve(execDir, '..', 'Resources'),
+  ];
+
+  if (resourcesPath) {
+    basePaths.push(resourcesPath);
+  }
+
+  return [...new Set(basePaths.map((basePath) => normalizeCandidatePath(basePath)))];
+}
+
+function hasMigrationFiles(path: string): boolean {
+  try {
+    return readdirSync(path).some((entry) => entry.endsWith('.sql'));
+  } catch {
+    return false;
+  }
+}
+
+function isUsableMigrationsPath(path: string): boolean {
+  if (!existsSync(path)) {
+    return false;
+  }
+
+  const hasJournal = existsSync(join(path, 'meta', '_journal.json'));
+  return hasJournal || hasMigrationFiles(path);
+}
+
 // Function to find drizzle migrations directory
 function findMigrationsPath(): string | null {
-  // Get current file directory in ESM
-  const currentFilePath = fileURLToPath(import.meta.url);
-  const currentDir = dirname(currentFilePath);
-  
-  // Try multiple possible locations
+  const runtimeBasePaths = getRuntimeBasePaths();
+  const envPath = process.env.MIGRATIONS_PATH;
+
   const possiblePaths = [
-    resolve(process.cwd(), 'drizzle'),
-    resolve(process.cwd(), '.output', 'server', 'drizzle'),
-    resolve(process.cwd(), '.output', 'drizzle'),
-    resolve(currentDir, '..', '..', 'drizzle'),
-    resolve(currentDir, '..', '..', '..', 'drizzle'),
+    ...(envPath ? [envPath] : []),
+    ...runtimeBasePaths.flatMap((basePath) => [
+      resolve(basePath, 'drizzle'),
+      resolve(basePath, '.output', 'server', 'drizzle'),
+      resolve(basePath, '.output', 'drizzle'),
+    ]),
     '/app/drizzle',
     '/app/.output/server/drizzle',
   ];
-  
+
+  const uniquePaths = [...new Set(possiblePaths.map((candidatePath) => normalizeCandidatePath(candidatePath)))];
+
   console.log('[Database] Searching for migrations in:');
-  for (const path of possiblePaths) {
-    const exists = existsSync(path);
-    console.log(`  - ${path}: ${exists ? 'FOUND' : 'not found'}`);
-    if (exists) {
-      return path;
+  for (const candidatePath of uniquePaths) {
+    const exists = existsSync(candidatePath);
+    const usable = isUsableMigrationsPath(candidatePath);
+    console.log(`  - ${candidatePath}: ${usable ? 'FOUND' : exists ? 'exists but not migrations folder' : 'not found'}`);
+
+    if (usable) {
+      return candidatePath;
     }
   }
-  
+
   return null;
 }
 
