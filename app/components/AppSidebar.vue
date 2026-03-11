@@ -147,7 +147,7 @@ const emit = defineEmits<{
 }>();
 
 const selectedWorkspaceId = ref<string | null>(null);
-const activeView = ref<'hierarchy' | 'mocks' | 'history' | 'definitions'>('mocks');
+const activeView = ref<'hierarchy' | 'mocks' | 'history' | 'definitions'>('hierarchy');
 const contextMenu = ref<{ x: number; y: number; type: string; data: any } | null>(null);
 
 const expandedCollections = useExpandedState('mock-service-expanded-collections');
