@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { SSO_PROVIDER_METADATA, type SsoProvider, type SsoProviderType, type SsoConfig } from '../../types/sso';
+import { useApiClient } from '~~/composables/useApiFetch';
+
+const api = useApiClient();
 
 interface ProviderForm {
   id?: string;
@@ -58,7 +61,7 @@ const form = ref<ProviderForm>({ ...defaultForm });
 
 const fetchConfig = async () => {
   try {
-    const data = await $fetch<SsoConfig>('/api/admin/sso');
+    const data = await api.get<SsoConfig>('/api/admin/sso');
     ssoConfig.value = data;
   } catch (e: any) {
     console.error('Failed to fetch SSO config:', e);
@@ -67,8 +70,8 @@ const fetchConfig = async () => {
 
 const openAddModal = (type: SsoProviderType) => {
   selectedProviderType.value = type;
-  form.value = { 
-    ...defaultForm, 
+  form.value = {
+    ...defaultForm,
     type,
     name: SSO_PROVIDER_METADATA[type].name
   };
@@ -153,13 +156,11 @@ const saveProvider = async () => {
     }
 
     if (showEditModal.value && editingProvider.value?.id) {
-      await $fetch(`/api/admin/sso/providers/${editingProvider.value.id}`, {
-        method: 'PUT',
+      await api.put(`/api/admin/sso/providers/${editingProvider.value.id}`, {
         body: payload
       });
     } else {
-      await $fetch('/api/admin/sso/providers', {
-        method: 'POST',
+      await api.post('/api/admin/sso/providers', {
         body: payload
       });
     }
@@ -168,7 +169,7 @@ const saveProvider = async () => {
     saveMessage.value = 'Provider saved successfully';
     closeModals();
     await fetchConfig();
-    
+
     setTimeout(() => {
       saveStatus.value = 'idle';
       saveMessage.value = '';
@@ -185,7 +186,7 @@ const deleteProvider = async (id: string) => {
   if (!confirm('Are you sure you want to delete this provider?')) return;
 
   try {
-    await $fetch(`/api/admin/sso/providers/${id}`, { method: 'DELETE' });
+    await api.delete(`/api/admin/sso/providers/${id}`);
     await fetchConfig();
   } catch (e: any) {
     alert('Failed to delete provider: ' + (e.data?.message || e.message));
@@ -194,8 +195,7 @@ const deleteProvider = async (id: string) => {
 
 const toggleProvider = async (provider: SsoProvider) => {
   try {
-    await $fetch(`/api/admin/sso/providers/${provider.id}`, {
-      method: 'PUT',
+    await api.put(`/api/admin/sso/providers/${provider.id}`, {
       body: { enabled: !provider.enabled }
     });
     await fetchConfig();
@@ -258,14 +258,14 @@ onMounted(() => {
 
         <!-- Provider Cards -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-          <div 
-            v-for="meta in providerTypes" 
+          <div
+            v-for="meta in providerTypes"
             :key="meta.type"
             class="bg-bg-secondary border border-border-default rounded-xl p-5 hover:border-accent-blue/50 transition-colors cursor-pointer group"
             @click="openAddModal(meta.type)"
           >
             <div class="flex items-start gap-4">
-              <div 
+              <div
                 class="w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0"
                 :style="{ backgroundColor: meta.color + '20', color: meta.color }"
               >
@@ -303,13 +303,13 @@ onMounted(() => {
           </div>
 
           <div v-else class="divide-y divide-border-default">
-            <div 
-              v-for="provider in ssoConfig.providers" 
+            <div
+              v-for="provider in ssoConfig.providers"
               :key="provider.id"
               class="flex items-center justify-between px-6 py-4 hover:bg-bg-hover/50 transition-colors"
             >
               <div class="flex items-center gap-4">
-                <div 
+                <div
                   class="w-10 h-10 rounded-lg flex items-center justify-center"
                   :style="{ backgroundColor: getProviderMetadata(provider.type).color + '20', color: getProviderMetadata(provider.type).color }"
                 >
@@ -320,7 +320,7 @@ onMounted(() => {
                 <div>
                   <div class="flex items-center gap-2">
                     <h4 class="text-sm font-medium text-text-primary">{{ provider.name }}</h4>
-                    <span 
+                    <span
                       :class="['text-[10px] px-2 py-0.5 rounded-full font-medium', provider.enabled ? 'bg-accent-green/20 text-accent-green' : 'bg-text-muted/20 text-text-muted']"
                     >
                       {{ provider.enabled ? 'Enabled' : 'Disabled' }}
@@ -378,7 +378,7 @@ onMounted(() => {
           <!-- Modal Header -->
           <div class="px-6 py-4 border-b border-border-default flex items-center justify-between">
             <div class="flex items-center gap-3">
-              <div 
+              <div
                 v-if="selectedProviderType || form.type"
                 class="w-10 h-10 rounded-lg flex items-center justify-center"
                 :style="{ backgroundColor: getProviderMetadata(selectedProviderType || form.type).color + '20', color: getProviderMetadata(selectedProviderType || form.type).color }"

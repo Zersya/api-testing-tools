@@ -30,7 +30,7 @@ const isLoadingProviders = ref(true);
 const fetchSsoProviders = async () => {
   try {
     isLoadingProviders.value = true;
-    const data = await $fetch<SsoProvidersResponse>('/api/auth/sso/providers');
+    const data = await api.get<SsoProvidersResponse>('/api/auth/sso/providers');
     ssoProviders.value = data;
   } catch (e) {
     console.error('Failed to fetch SSO providers:', e);
@@ -39,10 +39,14 @@ const fetchSsoProviders = async () => {
   }
 };
 
-const loginWithSso = (providerType: string, providerId?: string) => {
+// Check if running in Tauri
+const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
+
+const loginWithSso = async (providerType: string, providerId?: string) => {
   const urlParams = new URLSearchParams(window.location.search);
   const redirectUrl = urlParams.get('redirect');
-  
+
+  // Build query params for the API
   let params = '';
   if (providerId) {
     params += `?providerId=${providerId}`;
@@ -50,17 +54,27 @@ const loginWithSso = (providerType: string, providerId?: string) => {
   if (redirectUrl) {
     params += params ? `&redirect=${encodeURIComponent(redirectUrl)}` : `?redirect=${encodeURIComponent(redirectUrl)}`;
   }
-  
-  window.location.href = `/api/auth/sso/${providerType}/login${params}`;
+
+  if (isTauri) {
+    // Tauri: Navigate to external API for SSO
+    // The external API will redirect to Keycloak, then back to the API
+    // We need to add the external API URL since this is a static build
+    window.location.href = `https://api-mock.transtrack.id/api/auth/sso/${providerType}/login${params}`;
+  } else {
+    // Web: Use standard redirect flow
+    window.location.href = `/api/auth/sso/${providerType}/login${params}`;
+  }
 };
+
+import { useApiClient } from '~~/composables/useApiFetch';
+const api = useApiClient()
 
 const login = async () => {
   isLoading.value = true;
   errorMessage.value = '';
 
   try {
-    await $fetch('/api/auth/login', {
-      method: 'POST',
+    await api.post('/api/auth/login', {
       body: form.value
     });
     
@@ -102,9 +116,13 @@ const hasAnySso = computed(() => {
 
 onMounted(() => {
   fetchSsoProviders();
-  
+
   // Check if user is already logged in
   checkAuthAndRedirect();
+});
+
+onUnmounted(() => {
+  // Cleanup if needed
 });
 
 const checkAuthAndRedirect = async () => {
@@ -113,7 +131,7 @@ const checkAuthAndRedirect = async () => {
   const redirectUrl = urlParams.get('redirect');
   
   try {
-    const response = await $fetch('/api/auth/check');
+    const response = await api.get('/api/auth/check');
     if (response.status === 'logged_in') {
       // User is already logged in, redirect to intended destination or admin
       if (redirectUrl) {
@@ -170,8 +188,8 @@ const checkAuthAndRedirect = async () => {
             :key="provider.id"
             type="button"
             @click="loginWithSso(provider.type, provider.id)"
-            class="w-full flex items-center justify-center gap-3 py-3.5 px-4 rounded-[10px] text-[15px] font-semibold cursor-pointer transition-all duration-normal hover:not-disabled:-translate-y-px hover:not-disabled:shadow-lg active:not-disabled:translate-y-0 disabled:opacity-70 disabled:cursor-not-allowed"
-            :style="{ 
+            class="w-full flex items-center justify-center gap-3 py-3.5 px-4 rounded-[10px] text-[15px] font-semibold cursor-pointer transition-all duration-normal hover:-translate-y-px hover:shadow-lg active:translate-y-0"
+            :style="{
               backgroundColor: getProviderColor(provider.type),
               color: 'white',
               boxShadow: `0 4px 14px ${getProviderColor(provider.type)}40`

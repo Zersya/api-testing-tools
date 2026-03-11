@@ -8,6 +8,8 @@ import FolderTreeItem from '~/components/FolderTreeItem.vue';
 
 const route = useRoute();
 const token = computed(() => route.params.token as string);
+import { useApiClient } from '~~/composables/useApiFetch';
+const api = useApiClient();
 
 interface HttpRequest {
   id: string;
@@ -90,9 +92,7 @@ const selectedEnvironments = ref<Record<string, string>>({});
 
 onMounted(async () => {
   try {
-    const response = await $fetch<SharedWorkspace>(`/api/shared-workspace/${token.value}`, {
-      credentials: 'include'
-    });
+    const response = await api.get<SharedWorkspace>(`/api/shared-workspace/${token.value}`);
     workspace.value = response;
     
     // Initialize selected environments with active ones
@@ -275,7 +275,7 @@ const handleRequestSave = async (request: HttpRequest) => {
   
   try {
     // Save via shared workspace API
-    await $fetch(`/api/shared-workspace/${token.value}/requests/${request.id}`, {
+    await api.request(`/api/shared-workspace/${token.value}/requests/${request.id}`, {
       method: 'PUT',
       credentials: 'include',
       body: {
@@ -287,9 +287,9 @@ const handleRequestSave = async (request: HttpRequest) => {
         auth: request.auth
       }
     });
-    
+
     // Refresh workspace data
-    const response = await $fetch<SharedWorkspace>(`/api/shared-workspace/${token.value}`, {
+    const response = await api.request<SharedWorkspace>(`/api/shared-workspace/${token.value}`, {
       credentials: 'include'
     });
     workspace.value = response;

@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import Modal from './Modal.vue';
+import { useApiClient } from '~~/composables/useApiFetch';
+
+const api = useApiClient();
 
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'] as const;
 
@@ -100,7 +103,7 @@ const fetchHistory = async () => {
       queryParams.append('status', filterStatus.value);
     }
     
-    const response = await $fetch<HistoryResponse>(`/api/history?${queryParams.toString()}`);
+    const response = await api.get<HistoryResponse>(`/api/history?${queryParams.toString()}`);
     
     history.value = response.data.map(entry => ({
       ...entry,
@@ -143,7 +146,7 @@ const clearHistory = async () => {
   if (!props.workspaceId) return;
   
   try {
-    await $fetch(`/api/history?workspaceId=${props.workspaceId}`, { method: 'DELETE' });
+    await api.delete(`/api/history?workspaceId=${props.workspaceId}`);
     history.value = [];
     total.value = 0;
     page.value = 1;

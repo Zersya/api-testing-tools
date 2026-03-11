@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import MethodBadge from '~/components/MethodBadge.vue';
+import { useApiClient, useApiFetch } from '~~/composables/useApiFetch';
 
-const { data: definitions, refresh } = await useFetch('/api/definitions');
-const { data: collections } = await useFetch('/api/admin/collections');
+const api = useApiClient();
+
+const { data: definitions, refresh } = await useApiFetch('/api/definitions');
+const { data: collections } = await useApiFetch('/api/admin/collections');
 // Fetch projects to use for import
-const { data: projects } = await useFetch('/api/admin/workspaces/personal/projects');
+const { data: projects } = await useApiFetch('/api/admin/workspaces/personal/projects');
 
 const showGenerateModal = ref(false);
 const showImportModal = ref(false);
@@ -33,7 +36,7 @@ if (projects.value && projects.value.length > 0) {
 const openGenerateModal = async (def: any) => {
     selectedDefinition.value = def;
     // Fetch details to get endpoints
-    const { data: details } = await useFetch(`/api/definitions/${def.id}`);
+    const { data: details } = await useApiFetch(`/api/definitions/${def.id}`);
     if (details.value && details.value.parsedInfo) {
         selectedDefinition.value = { ...def, ...details.value };
         // Select all by default
@@ -140,8 +143,7 @@ const generateMocks = async () => {
     
     isGenerating.value = true;
     try {
-        await $fetch(`/api/definitions/${selectedDefinition.value.id}/generate-mocks`, {
-            method: 'POST',
+        await api.post(`/api/definitions/${selectedDefinition.value.id}/generate-mocks`, {
             body: {
                 endpoints: selectedEndpoints.value,
                 collection: targetCollection.value,
@@ -185,8 +187,7 @@ const handleImport = async () => {
             }
             formData.append('file', importForm.value.file);
             
-            await $fetch('/api/definitions/import', {
-                method: 'POST',
+            await api.post('/api/definitions/import', {
                 body: formData
             });
         } else {
@@ -201,8 +202,7 @@ const handleImport = async () => {
                 body.content = importForm.value.content;
             }
             
-            await $fetch('/api/definitions/import', {
-                method: 'POST',
+            await api.post('/api/definitions/import', {
                 body
             });
         }

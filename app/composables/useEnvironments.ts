@@ -1,4 +1,5 @@
 import { ref, computed, watch } from 'vue';
+import { useApiClient } from './useApiFetch';
 
 interface Environment {
   id: string;
@@ -24,6 +25,7 @@ interface WorkspaceEnvironments {
 const STORAGE_KEY = 'mock-service-active-environment';
 
 export function useEnvironments() {
+  const api = useApiClient();
   const environments = ref<Environment[]>([]);
   const activeEnvironmentId = ref<string | null>(null);
   const loading = ref(false);
@@ -50,7 +52,7 @@ export function useEnvironments() {
 
     loading.value = true;
     try {
-      const response = await $fetch<WorkspaceEnvironments>(
+      const response = await api.get<WorkspaceEnvironments>(
         `/api/admin/projects/${projectId}/environments`
       );
       environments.value = response.environments || [];
@@ -78,8 +80,7 @@ export function useEnvironments() {
 
   async function setActiveEnvironment(environmentId: string, projectId: string) {
     try {
-      await $fetch(`/api/admin/environments/${environmentId}/activate`, {
-        method: 'PUT',
+      await api.put(`/api/admin/environments/${environmentId}/activate`, {
         body: { projectId }
       });
 
@@ -111,12 +112,9 @@ export function useEnvironments() {
 
   async function createEnvironment(projectId: string, name: string) {
     try {
-      const response = await $fetch<Environment>(
+      const response = await api.post<Environment>(
         `/api/admin/projects/${projectId}/environments`,
-        {
-          method: 'POST',
-          body: { name }
-        }
+        { body: { name } }
       );
       environments.value.push(response);
       return response;
@@ -128,9 +126,7 @@ export function useEnvironments() {
 
   async function deleteEnvironment(environmentId: string) {
     try {
-      await $fetch(`/api/admin/environments/${environmentId}`, {
-        method: 'DELETE'
-      });
+      await api.delete(`/api/admin/environments/${environmentId}`);
       environments.value = environments.value.filter(e => e.id !== environmentId);
 
       if (activeEnvironmentId.value === environmentId) {
@@ -145,12 +141,9 @@ export function useEnvironments() {
 
   async function duplicateEnvironment(environmentId: string, name?: string) {
     try {
-      const response = await $fetch<Environment>(
+      const response = await api.post<Environment>(
         `/api/admin/environments/${environmentId}/duplicate`,
-        {
-          method: 'POST',
-          body: { name }
-        }
+        { body: { name } }
       );
       environments.value.push(response);
       return response;
@@ -162,12 +155,9 @@ export function useEnvironments() {
 
   async function addVariable(environmentId: string, key: string, value: string, isSecret: boolean = false) {
     try {
-      const response = await $fetch<Variable>(
+      const response = await api.post<Variable>(
         `/api/admin/environments/${environmentId}/variables`,
-        {
-          method: 'POST',
-          body: { key, value, isSecret }
-        }
+        { body: { key, value, isSecret } }
       );
 
       const env = environments.value.find(e => e.id === environmentId);
@@ -185,12 +175,9 @@ export function useEnvironments() {
 
   async function updateVariable(variableId: string, key: string, value: string, isSecret: boolean) {
     try {
-      const response = await $fetch<Variable>(
+      const response = await api.put<Variable>(
         `/api/admin/variables/${variableId}`,
-        {
-          method: 'PUT',
-          body: { key, value, isSecret }
-        }
+        { body: { key, value, isSecret } }
       );
 
       for (const env of environments.value) {
@@ -210,9 +197,7 @@ export function useEnvironments() {
 
   async function deleteVariable(variableId: string) {
     try {
-      await $fetch(`/api/admin/variables/${variableId}`, {
-        method: 'DELETE'
-      });
+      await api.delete(`/api/admin/variables/${variableId}`);
 
       for (const env of environments.value) {
         if (env.variables) {

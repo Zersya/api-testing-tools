@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import Modal from './Modal.vue';
+import { useApiClient } from '~~/composables/useApiFetch';
+
+const api = useApiClient();
 
 interface MemberInfo {
   id: string;
@@ -54,7 +57,7 @@ const fetchMembers = async () => {
   error.value = '';
 
   try {
-    const response = await $fetch<{ members: MemberInfo[]; isOwner: boolean }>(`/api/admin/super/workspaces/${props.workspaceId}/members`);
+    const response = await api.get<{ members: MemberInfo[]; isOwner: boolean }>(`/api/admin/super/workspaces/${props.workspaceId}/members`);
     members.value = response.members;
   } catch (e: any) {
     error.value = e.data?.message || e.message || 'Failed to fetch members';
@@ -72,8 +75,7 @@ const inviteMember = async () => {
   successMessage.value = '';
 
   try {
-    await $fetch(`/api/admin/super/workspaces/${props.workspaceId}/members`, {
-      method: 'POST',
+    await api.post(`/api/admin/super/workspaces/${props.workspaceId}/members`, {
       body: {
         email: newMemberForm.value.email,
         permission: newMemberForm.value.permission
@@ -104,9 +106,7 @@ const removeMember = async (memberId: string) => {
   error.value = '';
 
   try {
-    await $fetch(`/api/admin/workspaces/${props.workspaceId}/members/${memberId}`, {
-      method: 'DELETE'
-    });
+    await api.delete(`/api/admin/workspaces/${props.workspaceId}/members/${memberId}`);
 
     successMessage.value = 'Member removed successfully!';
     await fetchMembers();
@@ -121,8 +121,7 @@ const updateMemberPermission = async (memberId: string, newPermission: 'view' | 
   error.value = '';
 
   try {
-    await $fetch(`/api/admin/workspaces/${props.workspaceId}/members/${memberId}`, {
-      method: 'PUT',
+    await api.put(`/api/admin/workspaces/${props.workspaceId}/members/${memberId}`, {
       body: {
         permission: newPermission
       }

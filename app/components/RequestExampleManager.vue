@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue';
+import { useApiClient } from '~~/composables/useApiFetch';
+
+const api = useApiClient();
 
 interface RequestExample {
   id: string;
@@ -58,7 +61,7 @@ const fetchExamples = async () => {
   error.value = null;
   
   try {
-    const response = await $fetch<RequestExample[]>(`/api/admin/requests/${props.requestId}/examples`);
+    const response = await api.get<RequestExample[]>(`/api/admin/requests/${props.requestId}/examples`);
     examples.value = response;
   } catch (err: any) {
     error.value = err.message || 'Failed to fetch examples';
@@ -129,8 +132,7 @@ const createExample = async () => {
       }
     }
     
-    await $fetch(`/api/admin/requests/${props.requestId}/examples`, {
-      method: 'POST',
+    await api.post(`/api/admin/requests/${props.requestId}/examples`, {
       body: {
         name: formName.value.trim(),
         statusCode: formStatusCode.value,
@@ -180,8 +182,7 @@ const updateExample = async () => {
       }
     }
     
-    await $fetch(`/api/admin/requests/${props.requestId}/examples/${editingExample.value.id}`, {
-      method: 'PUT',
+    await api.put(`/api/admin/requests/${props.requestId}/examples/${editingExample.value.id}`, {
       body: {
         name: formName.value.trim(),
         statusCode: formStatusCode.value,
@@ -207,9 +208,7 @@ const deleteExample = async (example: RequestExample) => {
   error.value = null;
   
   try {
-    await $fetch(`/api/admin/requests/${props.requestId}/examples/${example.id}`, {
-      method: 'DELETE'
-    });
+    await api.delete(`/api/admin/requests/${props.requestId}/examples/${example.id}`);
     await fetchExamples();
   } catch (err: any) {
     error.value = err.message || 'Failed to delete example';

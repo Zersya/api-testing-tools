@@ -1,0 +1,75 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Mock Service",
+  "version": "0.2.1",
+  "identifier": "id.mock-service",
+  "build": {
+    "beforeDevCommand": "bun run dev",
+    "beforeBuildCommand": "bun run generate",
+    "devUrl": "http://localhost:3000",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "fullscreen": false,
+        "resizable": true,
+        "title": "Mock Service",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null,
+      "capabilities": [
+        {
+          "identifier": "default",
+          "windows": ["main"],
+          "permissions": [
+            "shell:allow-open",
+            "core:event:allow-listen",
+            "core:event:allow-emit",
+            "http:default",
+            {
+              "identifier": "http:allow-fetch",
+              "allow": [
+                { "url": "https://api-mock.transtrack.id" },
+                { "url": "https://api-mock.transtrack.id/**" },
+                { "url": "http://localhost:3000" },
+                { "url": "http://localhost:3000/**" }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "frameworks": [],
+      "minimumSystemVersion": "10.13",
+      "signingIdentity": null,
+      "entitlements": null
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhGNTgxRjFDMDc1RjRERDMKUldUbll3ZVNYQy9QdUV5Nlg1Yi9rQ3cyNDk2eUtKZWF2aHRUQTV0c1k2d0dDeDJBR2J5Mk1qb1AK",
+      "endpoints": [
+        "https://api-mock.transtrack.id/api/app/updates"
+      ]
+    }
+  }
+}

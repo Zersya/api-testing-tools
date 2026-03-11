@@ -3,6 +3,30 @@ import type { SsoConfig, SsoProvider, KeycloakProvider, AzureProvider, GenericOI
 import { DEFAULT_OAUTH_ENDPOINTS, getAzureEndpoints, getKeycloakEndpoints } from '../../../../../app/types/sso';
 import { db, schema } from '../../../../db';
 import { eq, and, isNull } from 'drizzle-orm';
+import { getHeader, getRequestURL } from 'h3';
+
+// Import session store from login handler (shared memory)
+// Note: In production, use Redis or a database for session storage
+declare global {
+  var ssoSessionStore: Map<string, any> | undefined;
+}
+
+// Initialize global session store if not exists
+if (!global.ssoSessionStore) {
+  global.ssoSessionStore = new Map<string, any>();
+
+  // Clean up old sessions every 5 minutes
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, value] of global.ssoSessionStore!.entries()) {
+      if (now - value.createdAt > 10 * 60 * 1000) { // 10 minutes
+        global.ssoSessionStore!.delete(key);
+      }
+    }
+  }, 5 * 60 * 1000);
+}
+
+const sessionStore = global.ssoSessionStore;
 
 interface TokenResponse {
   access_token: string;
@@ -28,6 +52,7 @@ interface UserInfo {
 }
 
 export default defineEventHandler(async (event) => {
+  try {
   const providerType = getRouterParam(event, 'provider');
   const query = getQuery(event);
   const code = query.code as string;
@@ -53,26 +78,41 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  // Get session data from cookie
-  const stateCookie = getCookie(event, 'sso_oauth_state');
+  // Get session data from cookie or session store
+  let stateCookie = getCookie(event, 'sso_oauth_state');
+  const allCookies = getHeader(event, 'cookie') || '';
   console.log(`[SSO Callback] State cookie: ${stateCookie ? 'present' : 'missing'}`);
-  
-  if (!stateCookie) {
-    console.error(`[SSO Callback] OAuth state cookie missing`);
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'OAuth state expired. Please try logging in again.'
-    });
-  }
+  console.log(`[SSO Callback] All cookies header: ${allCookies.substring(0, 200)}...`);
+  console.log(`[SSO Callback] User-Agent: ${getHeader(event, 'user-agent')?.substring(0, 100)}`);
+  console.log(`[SSO Callback] Looking for state: ${state.substring(0, 8)}...`);
 
   let sessionData: any;
-  try {
-    sessionData = JSON.parse(stateCookie);
-  } catch {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid OAuth state'
-    });
+
+  if (stateCookie) {
+    try {
+      sessionData = JSON.parse(stateCookie);
+      console.log(`[SSO Callback] Using cookie session data`);
+    } catch {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Invalid OAuth state'
+      });
+    }
+  } else {
+    // Try session store as fallback
+    console.log(`[SSO Callback] Cookie missing, checking session store. Store size: ${sessionStore.size}`);
+    console.log(`[SSO Callback] Available states: ${Array.from(sessionStore.keys()).map(s => s.substring(0, 8)).join(', ')}`);
+
+    sessionData = sessionStore.get(state);
+    if (sessionData) {
+      console.log(`[SSO Callback] Found session in store`);
+    } else {
+      console.error(`[SSO Callback] Session not found in store`);
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'OAuth state expired. Please try logging in again.'
+      });
+    }
   }
 
   if (state !== sessionData.state) {
@@ -85,19 +125,37 @@ export default defineEventHandler(async (event) => {
 
   console.log(`[SSO Callback] State validation successful`);
 
+  // Determine if we're in Tauri desktop app
+  const userAgent = getHeader(event, 'user-agent') || '';
+  const isTauri = userAgent.includes('Tauri') || userAgent.includes('tauri');
+
+  console.log(`[SSO Callback] isTauri: ${isTauri}, User-Agent: ${userAgent.substring(0, 50)}`);
+  console.log(`[SSO Callback] Session data callbackUrl: ${sessionData.callbackUrl?.substring(0, 50)}...`);
+
+  // Clear the state cookie and session store
   deleteCookie(event, 'sso_oauth_state');
+  sessionStore.delete(state);
+  console.log(`[SSO Callback] Session cleared from store`);
 
   // Get provider configuration from database
-  const setting = (await db
-    .select()
-    .from(schema.settings)
-    .where(
-      and(
-        eq(schema.settings.key, 'sso_config'),
-        isNull(schema.settings.workspaceId)
+  console.log(`[SSO Callback] Fetching SSO config from database...`);
+  let setting: any;
+  try {
+    setting = (await db
+      .select()
+      .from(schema.settings)
+      .where(
+        and(
+          eq(schema.settings.key, 'sso_config'),
+          isNull(schema.settings.workspaceId)
+        )
       )
-    )
-    .limit(1))[0];
+      .limit(1))[0];
+    console.log(`[SSO Callback] Database query successful`);
+  } catch (dbError: any) {
+    console.error(`[SSO Callback] Database query failed:`, dbError.message);
+    throw dbError;
+  }
   
   // Parse SSO config, handling both string and object formats
   let rawConfig = setting?.value;
@@ -176,6 +234,7 @@ export default defineEventHandler(async (event) => {
 
   let tokenResponse: TokenResponse;
   try {
+    console.log(`[SSO Callback] Exchanging code for tokens at: ${tokenUrl.substring(0, 50)}...`);
     const tokenFetchResponse = await fetch(tokenUrl, {
       method: 'POST',
       headers: {
@@ -185,7 +244,9 @@ export default defineEventHandler(async (event) => {
       body: new URLSearchParams(tokenBody).toString()
     });
 
+    console.log(`[SSO Callback] Token response status: ${tokenFetchResponse.status}`);
     tokenResponse = await tokenFetchResponse.json();
+    console.log(`[SSO Callback] Token response received:`, tokenResponse.error ? `Error: ${tokenResponse.error}` : 'Success');
 
     if (tokenResponse.error) {
       throw createError({
@@ -222,11 +283,12 @@ export default defineEventHandler(async (event) => {
 
   // Normalize user info based on provider
   const normalizedUserInfo = normalizeUserInfo(userInfo, provider.type);
+  console.log(`[SSO Callback] User info normalized:`, { sub: normalizedUserInfo.sub, email: normalizedUserInfo.email });
 
   // Create JWT - always use the global JWT secret for consistency
   const runtimeConfig = useRuntimeConfig();
   const jwtSecret = runtimeConfig.jwtSecret;
-  const AUTH_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 5; // 5 days
+  // const AUTH_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 5; // 5 days
 
   const jwtPayload = {
     email: normalizedUserInfo.email,
@@ -237,31 +299,64 @@ export default defineEventHandler(async (event) => {
     providerName: provider.name
   };
 
-  const token = jwt.sign(jwtPayload, jwtSecret, {
-    expiresIn: AUTH_SESSION_MAX_AGE_SECONDS
-  });
+  console.log(`[SSO Callback] Creating JWT...`);
+  let token: string;
+  try {
+    token = jwt.sign(jwtPayload, jwtSecret, {
+      expiresIn: tokenResponse.expires_in || 3600
+    });
+    console.log(`[SSO Callback] JWT created successfully`);
+  } catch (jwtError: any) {
+    console.error(`[SSO Callback] JWT signing failed:`, jwtError.message);
+    throw jwtError;
+  }
 
-  // Set cookies
+  // Set cookies - use lax for localhost (sameSite: 'none' requires secure: true)
   setCookie(event, 'auth_token', token, {
     httpOnly: true,
-    secure: runtimeConfig.nodeEnv === 'production',
+    secure: false, // Must be false for localhost
     sameSite: 'lax',
-    maxAge: AUTH_SESSION_MAX_AGE_SECONDS
+    path: '/',
+    maxAge: tokenResponse.expires_in || 3600
   });
 
   const userInfoCookie = Buffer.from(JSON.stringify(normalizedUserInfo)).toString('base64');
   setCookie(event, 'user_info', userInfoCookie, {
     httpOnly: false,
-    secure: runtimeConfig.nodeEnv === 'production',
+    secure: false, // Must be false for localhost
     sameSite: 'lax',
-    maxAge: AUTH_SESSION_MAX_AGE_SECONDS
+    path: '/',
+    maxAge: tokenResponse.expires_in || 3600
   });
 
   // Get redirect URL from session data
   let redirectUrl = sessionData.redirectUrl || '/admin';
-  
-  console.log(`[SSO Callback] Authentication successful, redirecting to ${redirectUrl}`);
+
+  // Check if this is an AJAX/fetch request (client-side handler)
+  const acceptHeader = getHeader(event, 'accept') || '';
+  const isFetch = acceptHeader.includes('application/json') || getHeader(event, 'x-requested-with') === 'XMLHttpRequest';
+
+  console.log(`[SSO Callback] Authentication successful, redirectUrl: ${redirectUrl}, isFetch: ${isFetch}`);
+
+  if (isFetch) {
+    // Return JSON for client-side handler
+    return {
+      success: true,
+      redirectUrl,
+      user: normalizedUserInfo
+    };
+  }
+
+  // Server-side redirect
   return sendRedirect(event, redirectUrl);
+  } catch (e: any) {
+    console.error('[SSO Callback] UNEXPECTED ERROR:', e);
+    console.error('[SSO Callback] Error stack:', e.stack);
+    throw createError({
+      statusCode: 500,
+      statusMessage: `SSO Error: ${e.message || 'Unknown error'}`
+    });
+  }
 });
 
 function normalizeUserInfo(userInfo: UserInfo | null, providerType: string): {

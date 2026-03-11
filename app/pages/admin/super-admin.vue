@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import RequestBuilder from '~/components/RequestBuilder.vue';
 import SuperAdminInviteModal from '~/components/SuperAdminInviteModal.vue';
+import { useApiClient } from '~~/composables/useApiFetch';
 
 // Types
 interface RequestItem {
@@ -153,18 +154,20 @@ const selectedWorkspaceForInvite = ref<{
 } | null>(null);
 
 // Fetch data
+const { get: apiGet } = useApiClient();
+
 const fetchData = async () => {
   isLoading.value = true;
   error.value = null;
-  
+
   try {
-    const response = await $fetch<{
+    const response = await apiGet<{
       workspaces: WorkspaceWithDetails[];
       summary: Summary;
     }>('/api/admin/super/projects', {
       query: searchTerm.value ? { search: searchTerm.value } : undefined
     });
-    
+
     workspaces.value = response.workspaces;
     summary.value = response.summary;
   } catch (e: any) {

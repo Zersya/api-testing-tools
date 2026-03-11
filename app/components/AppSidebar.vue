@@ -170,8 +170,9 @@ const workspaceSearchQuery = ref('');
 const localWorkspaces = ref<WorkspaceWithProjects[]>([]);
 
 const currentWorkspace = computed(() => {
-  if (!selectedWorkspaceId.value) return props.workspaces[0] || localWorkspaces.value[0];
-  return props.workspaces.find(w => w.id === selectedWorkspaceId.value) || localWorkspaces.value[0];
+  const workspaces = Array.isArray(props.workspaces) ? props.workspaces : [];
+  if (!selectedWorkspaceId.value) return workspaces[0] || localWorkspaces.value[0];
+  return workspaces.find(w => w.id === selectedWorkspaceId.value) || localWorkspaces.value[0];
 });
 
 const currentProject = computed(() => {
@@ -261,8 +262,8 @@ watch(workspaceSearchQuery, (query) => {
 
 // Build collections with their grouped mocks
 const collectionsWithGroups = computed((): CollectionWithGroups[] => {
-  if (!props.collections || !props.mocks) return [];
-  
+  if (!Array.isArray(props.collections) || !Array.isArray(props.mocks)) return [];
+
   return props.collections.map(collection => {
     const collectionMocks = props.mocks!.filter(m => (m.collection || 'root') === collection.id);
 
@@ -300,14 +301,15 @@ const collectionsWithGroups = computed((): CollectionWithGroups[] => {
 });
 
 watch(() => props.workspaces, (newWorkspaces) => {
-  if (newWorkspaces.length > 0) {
+  const workspaces = Array.isArray(newWorkspaces) ? newWorkspaces : [];
+  if (workspaces.length > 0) {
     // If selectedWorkspaceId is not set, try to load from localStorage
     if (!selectedWorkspaceId.value) {
       const savedWorkspaceId = typeof window !== 'undefined' ? localStorage.getItem('selectedWorkspaceId') : null;
-      if (savedWorkspaceId && newWorkspaces.find(w => w.id === savedWorkspaceId)) {
+      if (savedWorkspaceId && workspaces.find(w => w.id === savedWorkspaceId)) {
         selectedWorkspaceId.value = savedWorkspaceId;
       } else {
-        selectedWorkspaceId.value = newWorkspaces[0].id;
+        selectedWorkspaceId.value = workspaces[0].id;
       }
     }
   }
@@ -327,7 +329,8 @@ onMounted(() => {
   const hasSavedGroups = typeof window !== 'undefined' && localStorage.getItem('mock-service-expanded-groups');
 
   if (!hasSavedCollections && !hasSavedGroups) {
-    props.collections.forEach(c => {
+    const collections = Array.isArray(props.collections) ? props.collections : [];
+    collections.forEach(c => {
       expandedCollections.value.add(c.id);
       // Also expand all groups within
       collectionsWithGroups.value.forEach(coll => {
@@ -347,16 +350,17 @@ onMounted(() => {
     activeView.value = savedActiveView;
   }
   
-  if (props.workspaces.length > 0) {
+  const workspaces = Array.isArray(props.workspaces) ? props.workspaces : [];
+  if (workspaces.length > 0) {
     // If there's a saved workspace ID that still exists in the workspaces list, use it
-    if (savedWorkspaceId && props.workspaces.find(w => w.id === savedWorkspaceId)) {
+    if (savedWorkspaceId && workspaces.find(w => w.id === savedWorkspaceId)) {
       selectedWorkspaceId.value = savedWorkspaceId;
     } else {
       // Otherwise use the first workspace
-      selectedWorkspaceId.value = props.workspaces[0].id;
+      selectedWorkspaceId.value = workspaces[0].id;
     }
     expandedWorkspaces.value.add(selectedWorkspaceId.value);
-    const currentWs = props.workspaces.find(w => w.id === selectedWorkspaceId.value);
+    const currentWs = workspaces.find(w => w.id === selectedWorkspaceId.value);
     if (currentWs?.projects.length > 0) {
       expandedProjects.value.add(currentWs.projects[0].id);
     }

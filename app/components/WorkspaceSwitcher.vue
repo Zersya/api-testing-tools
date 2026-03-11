@@ -37,7 +37,8 @@ const dropdownRef = ref<HTMLDivElement | null>(null);
 const SUPER_ADMIN_EMAIL = 'admin@mock.com';
 
 const selectedWorkspace = computed(() => {
-  return props.workspaces.find(w => w.id === props.selectedWorkspaceId) || null;
+  const workspaces = Array.isArray(props.workspaces) ? props.workspaces : [];
+  return workspaces.find(w => w.id === props.selectedWorkspaceId) || null;
 });
 
 /**

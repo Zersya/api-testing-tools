@@ -19,10 +19,18 @@
     "version:major": "node scripts/bump-version.js major",
     "version:patch:push": "node scripts/bump-version.js patch --push",
     "version:minor:push": "node scripts/bump-version.js minor --push",
-    "version:major:push": "node scripts/bump-version.js major --push"
+    "version:major:push": "node scripts/bump-version.js major --push",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "tauri:build:universal": "tauri build --target universal-apple-darwin",
+    "tauri:signer:generate": "cargo tauri signer generate",
+    "tauri:signer:sign": "cargo tauri signer sign"
   },
   "dependencies": {
     "@nuxtjs/tailwindcss": "^6.14.0",
+    "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/plugin-http": "^2.5.7",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/pg": "^8.16.0",
     "@types/uuid": "^10.0.0",
@@ -39,6 +47,7 @@
     "vue": "latest"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0",
     "drizzle-kit": "^0.30.1",
     "tsx": "^4.19.2"
   }

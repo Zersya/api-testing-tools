@@ -1034,7 +1034,9 @@ const handleOAuthCallback = async () => {
       }
     }
 
-    const response = await $fetch<{
+    const { useApiClient } = await import('~~/composables/useApiFetch');
+    const api = useApiClient();
+    const response = await api.post<{
       access_token: string;
       refresh_token?: string;
       expires_in: number;
@@ -1042,7 +1044,6 @@ const handleOAuthCallback = async () => {
       error?: string;
       error_description?: string;
     }>(tokenUrl, {
-      method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Accept': 'application/json'
@@ -1095,7 +1096,9 @@ const refreshAccessToken = async () => {
       body.client_secret = oauth2.value.clientSecret;
     }
 
-    const response = await $fetch<{
+    const { useApiClient } = await import('~~/composables/useApiFetch');
+    const api = useApiClient();
+    const response = await api.post<{
       access_token: string;
       refresh_token?: string;
       expires_in: number;
@@ -1103,7 +1106,6 @@ const refreshAccessToken = async () => {
       error?: string;
       error_description?: string;
     }>(oauth2.value.tokenUrl, {
-      method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Accept': 'application/json'
@@ -1153,14 +1155,15 @@ const getClientCredentialsToken = async () => {
       body.scope = oauth2.value.scopes;
     }
 
-    const response = await $fetch<{
+    const { useApiClient } = await import('~~/composables/useApiFetch');
+    const api = useApiClient();
+    const response = await api.post<{
       access_token: string;
       expires_in?: number;
       token_type?: string;
       error?: string;
       error_description?: string;
     }>(oauth2.value.tokenUrl, {
-      method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Accept': 'application/json'
@@ -1225,8 +1228,9 @@ const storeTokensInEnvironment = async () => {
   const expiresVariableName = `OAUTH_TOKEN_EXPIRES_AT`;
 
   try {
-    await $fetch('/api/oauth/store-tokens', {
-      method: 'POST',
+    const { useApiClient } = await import('~~/composables/useApiFetch');
+    const api = useApiClient();
+    await api.post('/api/oauth/store-tokens', {
       body: {
         environmentId: props.environmentId,
         accessTokenKey: tokenVariableName,
@@ -1248,7 +1252,9 @@ const storeTokensInEnvironment = async () => {
 const fetchEnvironmentVariables = async () => {
   if (props.environmentId) {
     try {
-      const variables = await $fetch<Variable[]>(`/api/admin/environments/${props.environmentId}/variables`);
+      const { useApiClient } = await import('~~/composables/useApiFetch');
+      const api = useApiClient();
+      const variables = await api.get<Variable[]>(`/api/admin/environments/${props.environmentId}/variables`);
       environmentVariables.value = variables;
     } catch (error) {
       console.error('Failed to fetch environment variables:', error);
@@ -1954,8 +1960,9 @@ const sendRequest = async () => {
       }
     }
 
-    const result = await $fetch<ProxyResponse | ProxyErrorResponse>('/api/proxy/request', {
-      method: 'POST',
+    const { useApiClient } = await import('~~/composables/useApiFetch');
+    const api = useApiClient();
+    const result = await api.post<ProxyResponse | ProxyErrorResponse>('/api/proxy/request', {
       body: {
         url: requestUrl,
         method: form.value.method,

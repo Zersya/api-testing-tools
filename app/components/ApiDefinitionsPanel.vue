@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import Modal from './Modal.vue';
+import { useApiClient } from '~~/composables/useApiFetch';
+
+const api = useApiClient();
 
 interface ApiDefinition {
   id: string;
@@ -52,7 +55,7 @@ const fetchDefinitions = async () => {
   error.value = null;
   
   try {
-    const response = await $fetch<ApiDefinition[]>('/api/definitions');
+    const response = await api.get<ApiDefinition[]>('/api/definitions');
     definitions.value = response;
   } catch (e: any) {
     error.value = e.message || 'Failed to fetch definitions';
@@ -68,7 +71,7 @@ watch(() => props.refreshTrigger, () => {
 
 const handleViewDocs = async (def: ApiDefinition) => {
   try {
-    const data = await $fetch<any>(`/api/definitions/${def.id}`);
+    const data = await api.get<any>(`/api/definitions/${def.id}`);
     emit('viewDocs', { ...def, ...data });
   } catch (e: any) {
     console.error('Error fetching definition details:', e);
@@ -78,7 +81,7 @@ const handleViewDocs = async (def: ApiDefinition) => {
 
 const handleGenerateMocks = async (def: ApiDefinition) => {
   try {
-    const data = await $fetch<any>(`/api/definitions/${def.id}`);
+    const data = await api.get<any>(`/api/definitions/${def.id}`);
     emit('generateMocks', { ...def, ...data });
   } catch (e: any) {
     console.error('Error fetching definition details:', e);
@@ -95,7 +98,7 @@ const handleDelete = async () => {
   if (!definitionToDelete.value) return;
   
   try {
-    await $fetch(`/api/definitions/${definitionToDelete.value.id}`, { method: 'DELETE' });
+    await api.delete(`/api/definitions/${definitionToDelete.value.id}`);
     definitions.value = definitions.value.filter(d => d.id !== definitionToDelete.value!.id);
     emit('deleteDefinition', definitionToDelete.value);
   } catch (e: any) {
@@ -142,8 +145,7 @@ const togglePublic = async (def: ApiDefinition) => {
   }
   
   try {
-    const updated = await $fetch<ApiDefinition>(`/api/definitions/${def.id}`, {
-      method: 'PUT',
+    const updated = await api.put<ApiDefinition>(`/api/definitions/${def.id}`, {
       body: { isPublic: newIsPublic }
     });
     
@@ -179,8 +181,7 @@ const saveSlug = async (def: ApiDefinition) => {
   }
   
   try {
-    const updated = await $fetch<ApiDefinition>(`/api/definitions/${def.id}`, {
-      method: 'PUT',
+    const updated = await api.put<ApiDefinition>(`/api/definitions/${def.id}`, {
       body: { publicSlug: slug }
     });
     
