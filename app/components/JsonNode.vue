@@ -34,7 +34,10 @@ const isHighlighted = (value: string, query: string) => {
 const highlightText = (text: string, query: string): string => {
   if (!query) return text;
   const regex = new RegExp(`(${escapeRegex(query)})`, 'gi');
-  return text.replace(regex, '<mark class="bg-accent-yellow/60 text-text-primary px-0.5 rounded">$1</mark>');
+  return text.replace(
+    regex,
+    '<mark class="response-search-highlight bg-accent-yellow/60 text-text-primary px-0.5 rounded">$1</mark>'
+  );
 };
 
 const escapeRegex = (str: string): string => {
