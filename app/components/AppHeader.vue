@@ -52,6 +52,8 @@ const emit = defineEmits<{
   exportOpenAPI: [];
   importOpenAPI: [];
   activateEnvironment: [id: string | null];
+  manageEnvironments: [];
+  createEnvironment: [];
   selectWorkspace: [workspaceId: string];
   createWorkspace: [];
   renameWorkspace: [workspace: { id: string; name: string }];
@@ -229,8 +231,8 @@ watch(() => authState.value?.user?.email, async (newEmail) => {
         :environments="environments"
         :active-environment-id="activeEnvironmentId"
         @update:active-environment-id="emit('activateEnvironment', $event)"
-        @manage="navigateTo('/admin/environments')"
-        @create="navigateTo('/admin/environments')"
+        @manage="emit('manageEnvironments')"
+        @create="emit('createEnvironment')"
       />
 
       <!-- Import Button -->

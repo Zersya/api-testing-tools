@@ -77,6 +77,10 @@ const currentUserEmail = computed(() => authData.value?.user?.email || null);
 const selectedWorkspaceId = ref<string | null>(null);
 const selectedProjectId = ref<string | null>(null);
 
+type AdminPanel = 'requests' | 'environments';
+const activeAdminPanel = ref<AdminPanel>('requests');
+const route = useRoute();
+
 // Initialize from localStorage or find first workspace with projects
 const initSelectedWorkspace = () => {
   if (workspaces.value && workspaces.value.length > 0) {
@@ -340,6 +344,319 @@ const activateEnvironment = async (environmentId: string | null) => {
     await refreshEnvironments();
   } catch (e: any) {
     alert('Error activating environment: ' + e.message);
+  }
+};
+
+const environmentSettingsEnvironments = ref<Environment[]>([]);
+const environmentSettingsSecretValues = ref<Record<string, string>>({});
+const isEnvironmentSettingsLoading = ref(false);
+
+const showEnvironmentCreateModal = ref(false);
+const showEnvironmentRenameModal = ref(false);
+const showEnvironmentDeleteConfirm = ref(false);
+const showEnvironmentDuplicateConfirm = ref(false);
+
+const environmentToRename = ref<Environment | null>(null);
+const environmentToDelete = ref<Environment | null>(null);
+const environmentToDuplicate = ref<Environment | null>(null);
+
+const environmentCreateForm = ref({
+  name: ''
+});
+
+const environmentRenameForm = ref({
+  name: ''
+});
+
+const fetchEnvironmentSecretValues = async (envs: Environment[]) => {
+  for (const env of envs) {
+    for (const variable of env.variables) {
+      if (variable.isSecret && variable.value === '••••••••') {
+        try {
+          const actualValue = await $fetch<{ value: string }>(`/api/admin/variables/${variable.id}/value`);
+          environmentSettingsSecretValues.value[variable.id] = actualValue.value;
+        } catch (e) {
+          console.error('Failed to fetch secret value:', e);
+        }
+      } else if (variable.isSecret) {
+        environmentSettingsSecretValues.value[variable.id] = variable.value;
+      }
+    }
+  }
+};
+
+const refreshEnvironmentSettings = async () => {
+  if (!currentProjectId.value) {
+    environmentSettingsEnvironments.value = [];
+    return;
+  }
+
+  try {
+    const data = await $fetch<Environment[]>(`/api/admin/projects/${currentProjectId.value}/environments`);
+    environmentSettingsEnvironments.value = data;
+    await fetchEnvironmentSecretValues(data);
+  } catch (e) {
+    console.error('Failed to fetch environments:', e);
+  }
+};
+
+const refreshEnvironmentSources = async () => {
+  await Promise.all([
+    refreshEnvironmentSettings(),
+    refreshEnvironments()
+  ]);
+};
+
+const openEnvironmentSettings = async (mode: 'manage' | 'create' = 'manage') => {
+  activeAdminPanel.value = 'environments';
+  await refreshEnvironmentSettings();
+
+  if (mode === 'create' && currentProjectId.value) {
+    environmentCreateForm.value = { name: '' };
+    showEnvironmentCreateModal.value = true;
+  }
+};
+
+const closeEnvironmentSettings = async () => {
+  activeAdminPanel.value = 'requests';
+
+  if (route.query.panel === 'environments') {
+    const nextQuery = { ...route.query };
+    delete nextQuery.panel;
+    await navigateTo({ path: route.path, query: nextQuery }, { replace: true });
+  }
+};
+
+watch(
+  () => route.query.panel,
+  async (panel) => {
+    if (panel === 'environments') {
+      await openEnvironmentSettings();
+    }
+  },
+  { immediate: true }
+);
+
+watch(currentProjectId, async (newProjectId) => {
+  if (activeAdminPanel.value !== 'environments') return;
+
+  if (newProjectId) {
+    await refreshEnvironmentSettings();
+  } else {
+    environmentSettingsEnvironments.value = [];
+  }
+});
+
+const openEnvironmentCreateModal = () => {
+  environmentCreateForm.value = { name: '' };
+  showEnvironmentCreateModal.value = true;
+};
+
+const openEnvironmentRenameModal = (environment: Environment) => {
+  environmentToRename.value = environment;
+  environmentRenameForm.value = { name: environment.name };
+  showEnvironmentRenameModal.value = true;
+};
+
+const openEnvironmentDeleteModal = (environment: Environment) => {
+  environmentToDelete.value = environment;
+  showEnvironmentDeleteConfirm.value = true;
+};
+
+const openEnvironmentDuplicateModal = (environment: Environment) => {
+  environmentToDuplicate.value = environment;
+  showEnvironmentDuplicateConfirm.value = true;
+};
+
+const createEnvironmentFromSettings = async () => {
+  if (!environmentCreateForm.value.name.trim() || !currentProjectId.value) {
+    return;
+  }
+
+  try {
+    isEnvironmentSettingsLoading.value = true;
+    await $fetch(`/api/admin/projects/${currentProjectId.value}/environments`, {
+      method: 'POST',
+      body: {
+        name: environmentCreateForm.value.name.trim()
+      }
+    });
+    showEnvironmentCreateModal.value = false;
+    environmentCreateForm.value = { name: '' };
+    await refreshEnvironmentSources();
+  } catch (e: any) {
+    alert('Error creating environment: ' + (e.data?.message || e.statusMessage || e.message));
+  } finally {
+    isEnvironmentSettingsLoading.value = false;
+  }
+};
+
+const renameEnvironmentFromSettings = async () => {
+  if (!environmentToRename.value || !environmentRenameForm.value.name.trim()) {
+    return;
+  }
+
+  try {
+    isEnvironmentSettingsLoading.value = true;
+    await $fetch(`/api/admin/environments/${environmentToRename.value.id}`, {
+      method: 'PUT',
+      body: {
+        name: environmentRenameForm.value.name.trim()
+      }
+    });
+    showEnvironmentRenameModal.value = false;
+    environmentToRename.value = null;
+    environmentRenameForm.value = { name: '' };
+    await refreshEnvironmentSources();
+  } catch (e: any) {
+    alert('Error renaming environment: ' + (e.data?.message || e.message));
+  } finally {
+    isEnvironmentSettingsLoading.value = false;
+  }
+};
+
+const deleteEnvironmentFromSettings = async () => {
+  if (!environmentToDelete.value) {
+    return;
+  }
+
+  try {
+    isEnvironmentSettingsLoading.value = true;
+    await $fetch(`/api/admin/environments/${environmentToDelete.value.id}`, {
+      method: 'DELETE'
+    });
+    showEnvironmentDeleteConfirm.value = false;
+    environmentToDelete.value = null;
+    await refreshEnvironmentSources();
+  } catch (e: any) {
+    alert('Error deleting environment: ' + (e.data?.message || e.message));
+  } finally {
+    isEnvironmentSettingsLoading.value = false;
+  }
+};
+
+const duplicateEnvironmentFromSettings = async () => {
+  if (!environmentToDuplicate.value) {
+    return;
+  }
+
+  try {
+    isEnvironmentSettingsLoading.value = true;
+    await $fetch(`/api/admin/environments/${environmentToDuplicate.value.id}/duplicate`, {
+      method: 'POST'
+    });
+    showEnvironmentDuplicateConfirm.value = false;
+    environmentToDuplicate.value = null;
+    await refreshEnvironmentSources();
+  } catch (e: any) {
+    alert('Error duplicating environment: ' + (e.data?.message || e.message));
+  } finally {
+    isEnvironmentSettingsLoading.value = false;
+  }
+};
+
+const activateEnvironmentFromSettings = async (environment: Environment) => {
+  if (environment.isActive) {
+    return;
+  }
+
+  try {
+    await $fetch(`/api/admin/environments/${environment.id}/activate`, {
+      method: 'PUT'
+    });
+    await refreshEnvironmentSources();
+  } catch (e: any) {
+    alert('Error activating environment: ' + (e.data?.message || e.message));
+  }
+};
+
+const addVariableFromSettings = async (environment: Environment) => {
+  try {
+    await $fetch(`/api/admin/environments/${environment.id}/variables`, {
+      method: 'POST',
+      body: {
+        key: 'NEW_VARIABLE',
+        value: '',
+        isSecret: false
+      }
+    });
+    await refreshEnvironmentSources();
+  } catch (e: any) {
+    alert('Error adding variable: ' + (e.data?.message || e.message));
+  }
+};
+
+const updateVariableFromSettings = async (variable: EnvironmentVariable, key: string, value: string, isSecret: boolean) => {
+  if (isSecret) {
+    environmentSettingsSecretValues.value[variable.id] = value;
+  }
+
+  try {
+    await $fetch(`/api/admin/variables/${variable.id}`, {
+      method: 'PUT',
+      body: {
+        key: key.trim(),
+        value: isSecret ? environmentSettingsSecretValues.value[variable.id] : value,
+        isSecret
+      }
+    });
+    await refreshEnvironmentSources();
+  } catch (e: any) {
+    alert('Error updating variable: ' + (e.data?.message || e.message));
+  }
+};
+
+const toggleSecretFromSettings = (variable: EnvironmentVariable) => {
+  const newIsSecret = !variable.isSecret;
+
+  if (newIsSecret) {
+    variable.isSecret = true;
+    environmentSettingsSecretValues.value[variable.id] = variable.value;
+    variable.value = '••••••••';
+  } else {
+    variable.isSecret = false;
+    if (environmentSettingsSecretValues.value[variable.id]) {
+      variable.value = environmentSettingsSecretValues.value[variable.id];
+    } else {
+      $fetch(`/api/admin/variables/${variable.id}`)
+        .then((data: any) => {
+          environmentSettingsSecretValues.value[variable.id] = data.value;
+          if (!variable.isSecret) {
+            variable.value = data.value;
+          }
+        })
+        .catch((e: any) => {
+          console.error('Failed to fetch secret value:', e);
+        });
+    }
+  }
+
+  $fetch(`/api/admin/variables/${variable.id}`, {
+    method: 'PUT',
+    body: {
+      key: variable.key,
+      value: environmentSettingsSecretValues.value[variable.id] || variable.value,
+      isSecret: newIsSecret
+    }
+  }).catch((e: any) => {
+    variable.isSecret = !newIsSecret;
+    if (newIsSecret) {
+      variable.value = environmentSettingsSecretValues.value[variable.id] || variable.value;
+    } else {
+      variable.value = '••••••••';
+    }
+    alert('Error toggling secret: ' + (e.data?.message || e.message));
+  });
+};
+
+const deleteVariableFromSettings = async (variableId: string) => {
+  try {
+    await $fetch(`/api/admin/variables/${variableId}`, {
+      method: 'DELETE'
+    });
+    await refreshEnvironmentSources();
+  } catch (e: any) {
+    alert('Error deleting variable: ' + (e.data?.message || e.message));
   }
 };
 
@@ -696,6 +1013,7 @@ const sendTestRequest = async () => {
 
 // Actions
 const handleSelectMock = (mock: any) => {
+    activeAdminPanel.value = 'requests';
     selectedMock.value = mock;
     selectedRequest.value = null;
     activeTabKey.value = null;
@@ -846,6 +1164,7 @@ const goToEdit = (id: string) => {
 
 // Request handlers
 const handleSelectRequest = (request: HttpRequest) => {
+  activeAdminPanel.value = 'requests';
   selectedMock.value = null;
   
   // Check if tab already exists for this request
@@ -869,6 +1188,7 @@ const handleSelectRequest = (request: HttpRequest) => {
 
 // Tab handlers
 const handleSelectTab = (tabKey: string) => {
+  activeAdminPanel.value = 'requests';
   const tab = openTabs.value.find(t => t.key === tabKey);
   if (tab) {
     activeTabKey.value = tabKey;
@@ -897,6 +1217,7 @@ const handleCloseTab = (tabKey: string) => {
 };
 
 const handleNewTab = () => {
+  activeAdminPanel.value = 'requests';
   const newRequest: HttpRequest = {
     id: '',
     folderId: '',
@@ -1299,6 +1620,7 @@ const openRenameWorkspace = (workspace: { id: string; name: string }) => {
 };
 
 const handleRestoreRequest = (request: any) => {
+  activeAdminPanel.value = 'requests';
   selectedMock.value = null;
   
   const newRequest: HttpRequest = {
@@ -1823,6 +2145,8 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
       @export-open-a-p-i="exportOpenAPI"
       @import-open-a-p-i="openImportModal"
       @activate-environment="activateEnvironment"
+      @manage-environments="openEnvironmentSettings('manage')"
+      @create-environment="openEnvironmentSettings('create')"
       @select-workspace="handleWorkspaceSelect"
       @create-workspace="openCreateWorkspace"
       @rename-workspace="openRenameWorkspace"
@@ -1895,8 +2219,181 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
           </div>
         </div>
 
+        <!-- Environment Settings Panel -->
+        <div v-show="hasWorkspaces && activeAdminPanel === 'environments'" class="h-full flex flex-col p-6 overflow-hidden">
+          <div class="flex items-center justify-between mb-6 gap-4">
+            <div class="flex items-center gap-3">
+              <button class="btn btn-secondary" @click="closeEnvironmentSettings">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="19" y1="12" x2="5" y2="12"></line>
+                  <polyline points="12 19 5 12 12 5"></polyline>
+                </svg>
+                Back to Requests
+              </button>
+              <div>
+                <h2 class="text-xl font-semibold text-text-primary">Environment Settings</h2>
+                <p class="text-sm text-text-secondary">Manage environment variables without leaving current tabs</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <select
+                v-model="selectedWorkspaceId"
+                @change="selectedProjectId = currentWorkspace?.projects?.[0]?.id || null"
+                class="py-2 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue"
+              >
+                <option v-for="workspace in workspaces || []" :key="workspace.id" :value="workspace.id">
+                  {{ workspace.name }}
+                </option>
+              </select>
+              <select
+                v-if="currentWorkspace?.projects?.length > 0"
+                v-model="selectedProjectId"
+                class="py-2 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue"
+              >
+                <option v-for="project in currentWorkspace?.projects || []" :key="project.id" :value="project.id">
+                  {{ project.name }}
+                </option>
+              </select>
+              <button class="btn btn-primary" @click="openEnvironmentCreateModal" :disabled="!currentProjectId">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                New Environment
+              </button>
+            </div>
+          </div>
+
+          <div v-if="!currentProjectId" class="flex-1 flex items-center justify-center text-text-muted text-sm text-center">
+            Select a workspace and project to manage environments.
+          </div>
+
+          <div v-else-if="environmentSettingsEnvironments.length === 0" class="flex-1 flex flex-col items-center justify-center text-center">
+            <h3 class="text-lg font-semibold text-text-primary mb-2">No environments yet</h3>
+            <p class="text-text-secondary mb-4 max-w-sm">Create your first environment for development, staging, or production variables.</p>
+            <button class="btn btn-primary" @click="openEnvironmentCreateModal">
+              Create Environment
+            </button>
+          </div>
+
+          <div v-else class="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-2 gap-6 pb-4">
+            <div v-for="environment in environmentSettingsEnvironments" :key="environment.id" class="bg-bg-secondary border border-border-default rounded-xl overflow-hidden">
+              <div class="p-4 border-b border-border-default">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-3">
+                    <div class="flex items-center gap-2.5">
+                      <template v-if="environment.isMockEnvironment">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M17.5 19c0-1.7-1.3-3-3-3h-11c-1.7 0-3 1.3-3 3 0 1.7 1.3 3 3 3h11c1.7 0 3-1.3 3-3z"/>
+                          <path d="M17.5 19c0-2.5-2-4.5-4.5-4.5h-7c-2.5 0-4.5 2-4.5 4.5s2 4.5 4.5 4.5h7c2.5 0 4.5-2 4.5-4.5z"/>
+                          <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+                        </svg>
+                      </template>
+                      <template v-else>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" :class="environment.isActive ? 'text-accent-green' : 'text-text-muted'">
+                          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+                        </svg>
+                      </template>
+                      <h3 class="text-sm font-semibold" :class="environment.isMockEnvironment ? 'text-purple-400' : 'text-text-primary'">{{ environment.name }}</h3>
+                    </div>
+                    <span v-if="environment.isMockEnvironment" class="py-0.5 px-2 bg-purple-500/15 text-purple-400 text-[10px] font-semibold uppercase rounded-full">Mock</span>
+                    <span v-else-if="environment.isActive" class="py-0.5 px-2 bg-accent-green/15 text-accent-green text-[10px] font-semibold uppercase rounded-full">Active</span>
+                  </div>
+                  <div class="flex items-center gap-1">
+                    <button v-if="!environment.isActive" class="flex items-center justify-center w-8 h-8 bg-transparent border-none rounded text-text-muted cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-green" @click="activateEnvironmentFromSettings(environment)" title="Activate">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                      </svg>
+                    </button>
+                    <button v-if="!environment.isMockEnvironment" class="flex items-center justify-center w-8 h-8 bg-transparent border-none rounded text-text-muted cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-text-primary" @click="openEnvironmentRenameModal(environment)" title="Rename">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                      </svg>
+                    </button>
+                    <button v-if="!environment.isMockEnvironment" class="flex items-center justify-center w-8 h-8 bg-transparent border-none rounded text-text-muted cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-text-primary" @click="openEnvironmentDuplicateModal(environment)" title="Duplicate">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                      </svg>
+                    </button>
+                    <button v-if="!environment.isMockEnvironment" class="flex items-center justify-center w-8 h-8 bg-transparent border-none rounded text-text-muted cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-red" @click="openEnvironmentDeleteModal(environment)" title="Delete">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="p-4">
+                <div class="flex items-center justify-between mb-3">
+                  <span class="text-xs font-medium text-text-secondary uppercase tracking-wide">{{ environment.variables.length }} Variable{{ environment.variables.length !== 1 ? 's' : '' }}</span>
+                  <button class="flex items-center gap-1 text-xs font-medium text-accent-blue border-none bg-transparent cursor-pointer transition-all duration-fast hover:text-accent-blue/80" @click="addVariableFromSettings(environment)">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="12" y1="5" x2="12" y2="19"></line>
+                      <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                    Add Variable
+                  </button>
+                </div>
+
+                <div v-if="environment.variables.length === 0" class="py-8 text-center">
+                  <p class="text-xs text-text-muted">No variables defined for this environment</p>
+                </div>
+
+                <div v-else class="space-y-2">
+                  <div v-for="variable in environment.variables" :key="variable.id" class="flex items-center gap-2 group">
+                    <input
+                      v-model="variable.key"
+                      @blur="updateVariableFromSettings(variable, variable.key, variable.value, variable.isSecret)"
+                      @keyup.enter="($event.target as HTMLInputElement).blur()"
+                      class="flex-1 py-1.5 px-2 bg-bg-input border border-border-default rounded-md text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(59,130,246,0.2)]"
+                      placeholder="Variable name"
+                    />
+                    <div class="flex-1 flex items-center gap-2">
+                      <input
+                        :key="`input-${variable.id}-${variable.isSecret ? 'secret' : 'text'}`"
+                        v-model="variable.value"
+                        @blur="updateVariableFromSettings(variable, variable.key, variable.value, variable.isSecret)"
+                        @keyup.enter="($event.target as HTMLInputElement).blur()"
+                        :type="variable.isSecret ? 'password' : 'text'"
+                        class="w-full py-1.5 px-2 bg-bg-input border border-border-default rounded-md text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(59,130,246,0.2)]"
+                        placeholder="Variable value"
+                      />
+                      <button
+                        @click="toggleSecretFromSettings(variable)"
+                        :class="[
+                          'flex items-center justify-center w-8 h-8 border-none rounded cursor-pointer transition-all duration-fast',
+                          variable.isSecret ? 'bg-accent-yellow/15 text-accent-yellow hover:bg-accent-yellow/25' : 'bg-bg-hover text-text-muted hover:text-text-primary'
+                        ]"
+                        :title="variable.isSecret ? 'Secret (click to reveal)' : 'Not secret (click to hide)'"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                          <circle cx="12" cy="12" r="3"></circle>
+                        </svg>
+                      </button>
+                    </div>
+                    <button
+                      @click="deleteVariableFromSettings(variable.id)"
+                      class="flex items-center justify-center w-8 h-8 bg-transparent border-none rounded text-text-muted cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-red opacity-0 group-hover:opacity-100"
+                      title="Delete variable"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Empty State -->
-        <div v-else-if="!selectedMock && !selectedRequest && openTabs.length === 0" class="flex flex-col items-center justify-center h-full p-10 text-center">
+        <div v-if="hasWorkspaces && activeAdminPanel === 'requests' && !selectedMock && !selectedRequest && openTabs.length === 0" class="flex flex-col items-center justify-center h-full p-10 text-center">
           <div class="mb-6">
             <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round" class="opacity-30">
               <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
@@ -1925,7 +2422,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
         </div>
 
         <!-- Selected Mock Details -->
-        <div v-if="selectedMock" class="p-5 flex flex-col gap-5 h-[calc(100vh-48px)] overflow-y-auto">
+        <div v-if="activeAdminPanel === 'requests' && selectedMock" class="p-5 flex flex-col gap-5 h-[calc(100vh-48px)] overflow-y-auto">
           <!-- URL Bar -->
           <div class="flex items-center gap-3 p-3 px-4 bg-bg-secondary border border-border-default rounded-lg">
             <MethodBadge :method="selectedMock.method" size="lg" />
@@ -2137,7 +2634,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
         </div>
 
         <!-- Request Tabs Area -->
-        <div v-else-if="openTabs.length > 0" class="flex flex-col flex-1 overflow-hidden">
+        <div v-if="openTabs.length > 0" v-show="activeAdminPanel === 'requests' && !selectedMock" class="flex flex-col flex-1 overflow-hidden">
           <!-- Tabs -->
           <RequestTabs
             :open-tabs="openTabs"
@@ -2208,6 +2705,89 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
       <template #footer>
         <button class="btn btn-secondary" @click="showSettingsModal = false">Cancel</button>
         <button class="btn btn-primary" @click="saveSettings">Save Settings</button>
+      </template>
+    </Modal>
+
+    <!-- Environment Settings Modals -->
+    <Modal :show="showEnvironmentCreateModal" title="Create Environment" @close="showEnvironmentCreateModal = false">
+      <div class="mb-4">
+        <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide mb-1.5">Environment Name</label>
+        <input
+          v-model="environmentCreateForm.name"
+          type="text"
+          placeholder="Production, Staging, Development..."
+          class="w-full py-2.5 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(59,130,246,0.2)]"
+          @keyup.enter="createEnvironmentFromSettings"
+        />
+      </div>
+      <template #footer>
+        <button class="btn btn-secondary" @click="showEnvironmentCreateModal = false" :disabled="isEnvironmentSettingsLoading">Cancel</button>
+        <button class="btn btn-primary" @click="createEnvironmentFromSettings" :disabled="isEnvironmentSettingsLoading || !environmentCreateForm.name.trim()">
+          <svg v-if="isEnvironmentSettingsLoading" class="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+          </svg>
+          {{ isEnvironmentSettingsLoading ? 'Creating...' : 'Create Environment' }}
+        </button>
+      </template>
+    </Modal>
+
+    <Modal :show="showEnvironmentRenameModal" title="Rename Environment" @close="showEnvironmentRenameModal = false">
+      <div class="mb-4">
+        <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide mb-1.5">Environment Name</label>
+        <input
+          v-model="environmentRenameForm.name"
+          type="text"
+          placeholder="Environment name"
+          class="w-full py-2.5 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(59,130,246,0.2)]"
+          @keyup.enter="renameEnvironmentFromSettings"
+        />
+      </div>
+      <template #footer>
+        <button class="btn btn-secondary" @click="showEnvironmentRenameModal = false" :disabled="isEnvironmentSettingsLoading">Cancel</button>
+        <button class="btn btn-primary" @click="renameEnvironmentFromSettings" :disabled="isEnvironmentSettingsLoading || !environmentRenameForm.name.trim()">
+          <svg v-if="isEnvironmentSettingsLoading" class="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+          </svg>
+          {{ isEnvironmentSettingsLoading ? 'Renaming...' : 'Rename Environment' }}
+        </button>
+      </template>
+    </Modal>
+
+    <Modal :show="showEnvironmentDeleteConfirm" title="Delete Environment" @close="showEnvironmentDeleteConfirm = false">
+      <p class="text-text-secondary leading-relaxed">
+        Are you sure you want to delete this environment?
+        <br />
+        <strong class="inline-block mt-2 py-1.5 px-2.5 bg-bg-tertiary rounded text-accent-orange">{{ environmentToDelete?.name }}</strong>
+        <br /><br />
+        <span class="text-accent-red">Warning:</span> This will permanently delete all variables in this environment.
+      </p>
+      <template #footer>
+        <button class="btn btn-secondary" @click="showEnvironmentDeleteConfirm = false" :disabled="isEnvironmentSettingsLoading">Cancel</button>
+        <button class="btn btn-danger" @click="deleteEnvironmentFromSettings" :disabled="isEnvironmentSettingsLoading">
+          <svg v-if="isEnvironmentSettingsLoading" class="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+          </svg>
+          {{ isEnvironmentSettingsLoading ? 'Deleting...' : 'Delete Environment' }}
+        </button>
+      </template>
+    </Modal>
+
+    <Modal :show="showEnvironmentDuplicateConfirm" title="Duplicate Environment" @close="showEnvironmentDuplicateConfirm = false">
+      <p class="text-text-secondary leading-relaxed">
+        Are you sure you want to duplicate this environment?
+        <br />
+        <strong class="inline-block mt-2 py-1.5 px-2.5 bg-bg-tertiary rounded text-accent-orange">{{ environmentToDuplicate?.name }}</strong>
+        <br /><br />
+        This will create a copy of the environment with all its variables.
+      </p>
+      <template #footer>
+        <button class="btn btn-secondary" @click="showEnvironmentDuplicateConfirm = false" :disabled="isEnvironmentSettingsLoading">Cancel</button>
+        <button class="btn btn-primary" @click="duplicateEnvironmentFromSettings" :disabled="isEnvironmentSettingsLoading">
+          <svg v-if="isEnvironmentSettingsLoading" class="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+          </svg>
+          {{ isEnvironmentSettingsLoading ? 'Duplicating...' : 'Duplicate Environment' }}
+        </button>
       </template>
     </Modal>
 
