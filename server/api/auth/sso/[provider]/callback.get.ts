@@ -226,6 +226,7 @@ export default defineEventHandler(async (event) => {
   // Create JWT - always use the global JWT secret for consistency
   const runtimeConfig = useRuntimeConfig();
   const jwtSecret = runtimeConfig.jwtSecret;
+  const AUTH_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 5; // 5 days
 
   const jwtPayload = {
     email: normalizedUserInfo.email,
@@ -237,7 +238,7 @@ export default defineEventHandler(async (event) => {
   };
 
   const token = jwt.sign(jwtPayload, jwtSecret, {
-    expiresIn: tokenResponse.expires_in || 3600
+    expiresIn: AUTH_SESSION_MAX_AGE_SECONDS
   });
 
   // Set cookies
@@ -245,7 +246,7 @@ export default defineEventHandler(async (event) => {
     httpOnly: true,
     secure: runtimeConfig.nodeEnv === 'production',
     sameSite: 'lax',
-    maxAge: tokenResponse.expires_in || 3600
+    maxAge: AUTH_SESSION_MAX_AGE_SECONDS
   });
 
   const userInfoCookie = Buffer.from(JSON.stringify(normalizedUserInfo)).toString('base64');
@@ -253,7 +254,7 @@ export default defineEventHandler(async (event) => {
     httpOnly: false,
     secure: runtimeConfig.nodeEnv === 'production',
     sameSite: 'lax',
-    maxAge: tokenResponse.expires_in || 3600
+    maxAge: AUTH_SESSION_MAX_AGE_SECONDS
   });
 
   // Get redirect URL from session data
