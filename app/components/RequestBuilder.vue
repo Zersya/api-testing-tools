@@ -35,6 +35,13 @@ interface BodyParam {
   type: 'text' | 'file';
 }
 
+interface PersistedBodyParam {
+  key: string;
+  value: string;
+  enabled: boolean;
+  type: 'text' | 'file';
+}
+
 interface PathVariable {
   id: string;
   key: string;
@@ -89,6 +96,26 @@ interface ProxyErrorResponse {
   };
 }
 
+interface RequestDraftSnapshot {
+  method: string;
+  url: string;
+  headers: Record<string, string> | null;
+  body: Record<string, unknown> | string | null;
+  auth: {
+    type: string;
+    credentials?: Record<string, string>;
+  } | null;
+  mockConfig?: import('../../server/db/schema/savedRequest').MockConfig | null;
+  preScript?: string;
+  postScript?: string;
+  pathVariables?: import('../../server/db/schema/savedRequest').RequestPathVariables | null;
+  bodyFormat?: BodyFormat;
+  jsonBody?: string;
+  rawBody?: string;
+  rawContentType?: string;
+  formDataParams?: PersistedBodyParam[];
+}
+
 interface Props {
   request: HttpRequest;
   workspaceId?: string;
@@ -105,7 +132,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   saveRequest: [request: HttpRequest];
   saveAsRequest: [request: HttpRequest];
-  unsavedChanges: [request: HttpRequest, hasUnsavedChanges: boolean];
+  unsavedChanges: [request: HttpRequest, hasUnsavedChanges: boolean, draft: RequestDraftSnapshot];
 }>();
 
 type TabType = 'params' | 'headers' | 'body' | 'auth' | 'preScript' | 'postScript' | 'mock' | 'examples' | 'response';
@@ -424,6 +451,38 @@ const loadRequestData = (request: HttpRequest) => {
   binaryFile.value = null;
   bodyFormat.value = 'none';
   
+  // Load ALL body state from request if it exists
+  const persistedBodyFormat = (request as HttpRequest & RequestDraftSnapshot).bodyFormat;
+  if (persistedBodyFormat && BODY_FORMATS.includes(persistedBodyFormat)) {
+    bodyFormat.value = persistedBodyFormat;
+  }
+
+  const persistedJsonBody = (request as HttpRequest & RequestDraftSnapshot).jsonBody;
+  if (typeof persistedJsonBody === 'string') {
+    jsonBody.value = persistedJsonBody;
+  }
+
+  const persistedRawBody = (request as HttpRequest & RequestDraftSnapshot).rawBody;
+  if (typeof persistedRawBody === 'string') {
+    rawBody.value = persistedRawBody;
+  }
+
+  const persistedRawContentType = (request as HttpRequest & RequestDraftSnapshot).rawContentType;
+  if (typeof persistedRawContentType === 'string' && persistedRawContentType) {
+    rawContentType.value = persistedRawContentType;
+  }
+
+  const persistedFormDataParams = (request as HttpRequest & RequestDraftSnapshot).formDataParams;
+  if (Array.isArray(persistedFormDataParams)) {
+    formDataParams.value = persistedFormDataParams.map(param => ({
+      id: crypto.randomUUID(),
+      key: param.key || '',
+      value: param.value || '',
+      enabled: param.enabled !== false,
+      type: param.type === 'file' ? 'file' : 'text'
+    }));
+  }
+
   // Then set body from request if it exists
   if (request.body !== null && request.body !== undefined) {
     try {
@@ -730,6 +789,61 @@ const buildPathVariablesRecord = (): import('../../server/db/schema/savedRequest
     }
   });
   return pathVarsRecord;
+};
+
+const buildDraftSnapshot = (): RequestDraftSnapshot => {
+  const builtBody = buildBody();
+  const normalizedBody = builtBody instanceof FormData || builtBody instanceof File
+    ? null
+    : (builtBody ?? null);
+
+  const currentAuth = {
+    type: authType.value,
+    credentials: authType.value === 'api-key' ? {
+      key: apiKey.value.key,
+      value: apiKey.value.value,
+      addTo: apiKey.value.addTo
+    } : authType.value === 'bearer' ? { token: bearerToken.value }
+      : authType.value === 'basic' ? {
+        username: basicAuth.value.username,
+        password: basicAuth.value.password
+      } : authType.value === 'oauth2' ? {
+        authUrl: oauth2.value.authUrl,
+        tokenUrl: oauth2.value.tokenUrl,
+        clientId: oauth2.value.clientId,
+        clientSecret: oauth2.value.clientSecret,
+        scopes: oauth2.value.scopes,
+        callbackUrl: oauth2.value.callbackUrl,
+        accessToken: oauth2.value.accessToken,
+        refreshToken: oauth2.value.refreshToken,
+        expiresAt: oauth2.value.expiresAt,
+        tokenType: oauth2.value.tokenType,
+        grantType: oauth2.value.grantType,
+        PKCE: oauth2.value.PKCE
+      } : undefined
+  } || null;
+
+  return {
+    method: form.value.method,
+    url: form.value.url,
+    headers: buildHeadersRecord(),
+    body: normalizedBody,
+    auth: currentAuth,
+    mockConfig: mockConfig.value,
+    preScript: preScript.value,
+    postScript: postScript.value,
+    pathVariables: buildPathVariablesRecord(),
+    bodyFormat: bodyFormat.value,
+    jsonBody: jsonBody.value,
+    rawBody: rawBody.value,
+    rawContentType: rawContentType.value,
+    formDataParams: formDataParams.value.map(param => ({
+      key: param.key,
+      value: param.value,
+      enabled: param.enabled,
+      type: param.type
+    }))
+  };
 };
 
 const addFormDataParam = () => {
@@ -1887,7 +2001,7 @@ watch(bodyFormat, (newFormat) => {
 });
 
 watch(hasUnsavedChanges, (newValue) => {
-  emit('unsavedChanges', props.request, newValue);
+  emit('unsavedChanges', props.request, newValue, buildDraftSnapshot());
 });
 
 onMounted(() => {

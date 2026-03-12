@@ -1,7 +1,8 @@
 <script setup lang="ts">
 interface HttpRequest {
   id: string;
-  folderId: string;
+  folderId: string | null;
+  collectionId?: string | null;
   name: string;
   method: string;
   url: string;
@@ -11,6 +12,26 @@ interface HttpRequest {
     type: string;
     credentials?: Record<string, string>;
   } | null;
+  mockConfig?: {
+    isEnabled: boolean;
+    statusCode: number;
+    delay: number;
+    responseBody: Record<string, unknown> | string | null;
+    responseHeaders: Record<string, string>;
+  } | null;
+  preScript?: string | null;
+  postScript?: string | null;
+  pathVariables?: Record<string, { value: string; description?: string }> | null;
+  bodyFormat?: 'none' | 'json' | 'form-data' | 'urlencoded' | 'raw' | 'binary';
+  jsonBody?: string;
+  rawBody?: string;
+  rawContentType?: string;
+  formDataParams?: Array<{
+    key: string;
+    value: string;
+    enabled: boolean;
+    type: 'text' | 'file';
+  }>;
   order: number;
   createdAt: Date;
   updatedAt: Date;
