@@ -173,7 +173,102 @@ const currentProjectId = computed(() => selectedProjectId.value);
 
 const hasWorkspaces = computed(() => workspaces.value && workspaces.value.length > 0);
 
-const normalizeRequestForTab = (request: Partial<HttpRequest>): HttpRequest => ({
+const REQUEST_BODY_FORMATS = ['none', 'json', 'form-data', 'urlencoded', 'raw', 'binary'] as const;
+type RequestBodyFormat = typeof REQUEST_BODY_FORMATS[number];
+
+const POSTMAN_BODY_FORMAT_META_KEY = '__mockServiceBodyFormat';
+const POSTMAN_FORM_DATA_PARAMS_META_KEY = '__mockServiceFormDataParams';
+
+const isRequestBodyRecord = (value: unknown): value is Record<string, unknown> => {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+};
+
+const isRequestBodyFormat = (value: unknown): value is RequestBodyFormat => {
+  return typeof value === 'string' && REQUEST_BODY_FORMATS.includes(value as RequestBodyFormat);
+};
+
+interface NormalizedImportedBodyPayload {
+  body: HttpRequest['body'];
+  bodyFormat?: HttpRequest['bodyFormat'];
+  rawBody?: string;
+  rawContentType?: string;
+  formDataParams?: NonNullable<HttpRequest['formDataParams']>;
+}
+
+const normalizeImportedBodyPayload = (body: HttpRequest['body']): NormalizedImportedBodyPayload => {
+  if (!isRequestBodyRecord(body)) {
+    return { body };
+  }
+
+  const bodyFormatValue = body[POSTMAN_BODY_FORMAT_META_KEY];
+  if (!isRequestBodyFormat(bodyFormatValue)) {
+    return { body };
+  }
+
+  if (bodyFormatValue === 'form-data' || bodyFormatValue === 'urlencoded') {
+    const rawParams = body[POSTMAN_FORM_DATA_PARAMS_META_KEY];
+    const formDataParams = Array.isArray(rawParams)
+      ? rawParams
+          .filter((param): param is Record<string, unknown> => isRequestBodyRecord(param))
+          .map(param => ({
+            key: typeof param.key === 'string' ? param.key : '',
+            value: typeof param.value === 'string' ? param.value : '',
+            enabled: param.enabled !== false,
+            type: param.type === 'file' ? 'file' as const : 'text' as const
+          }))
+      : [];
+
+    return {
+      body: null,
+      bodyFormat: bodyFormatValue,
+      formDataParams
+    };
+  }
+
+  if (bodyFormatValue === 'raw') {
+    const rawBodyValue = body.body;
+    let rawBody = '';
+
+    if (typeof rawBodyValue === 'string') {
+      rawBody = rawBodyValue;
+    } else if (rawBodyValue !== null && rawBodyValue !== undefined) {
+      try {
+        rawBody = JSON.stringify(rawBodyValue);
+      } catch {
+        rawBody = String(rawBodyValue);
+      }
+    }
+
+    return {
+      body: rawBody,
+      bodyFormat: 'raw',
+      rawBody,
+      rawContentType: typeof body.rawContentType === 'string' && body.rawContentType
+        ? body.rawContentType
+        : undefined
+    };
+  }
+
+  if (bodyFormatValue === 'none') {
+    return {
+      body: null,
+      bodyFormat: 'none'
+    };
+  }
+
+  return {
+    body,
+    bodyFormat: bodyFormatValue
+  };
+};
+
+const normalizeRequestForTab = (request: Partial<HttpRequest>): HttpRequest => {
+  const normalizedBody = request.body === undefined
+    ? null
+    : request.body as Record<string, unknown> | string | null;
+  const importedBodyPayload = normalizeImportedBodyPayload(normalizedBody);
+
+  return {
   id: typeof request.id === 'string' ? request.id : '',
   folderId: typeof request.folderId === 'string' || request.folderId === null ? request.folderId : '',
   collectionId: typeof request.collectionId === 'string' || request.collectionId === null ? request.collectionId : null,
@@ -183,7 +278,7 @@ const normalizeRequestForTab = (request: Partial<HttpRequest>): HttpRequest => (
   headers: request.headers && typeof request.headers === 'object' && !Array.isArray(request.headers)
     ? request.headers as Record<string, string>
     : null,
-  body: request.body === undefined ? null : request.body as Record<string, unknown> | string | null,
+  body: importedBodyPayload.body,
   auth: request.auth && typeof request.auth === 'object'
     ? request.auth as HttpRequest['auth']
     : null,
@@ -197,10 +292,10 @@ const normalizeRequestForTab = (request: Partial<HttpRequest>): HttpRequest => (
     : null,
   bodyFormat: request.bodyFormat === 'json' || request.bodyFormat === 'raw' || request.bodyFormat === 'form-data' || request.bodyFormat === 'urlencoded' || request.bodyFormat === 'binary' || request.bodyFormat === 'none'
     ? request.bodyFormat
-    : undefined,
+    : importedBodyPayload.bodyFormat,
   jsonBody: typeof request.jsonBody === 'string' ? request.jsonBody : '',
-  rawBody: typeof request.rawBody === 'string' ? request.rawBody : '',
-  rawContentType: typeof request.rawContentType === 'string' ? request.rawContentType : undefined,
+  rawBody: typeof request.rawBody === 'string' ? request.rawBody : (importedBodyPayload.rawBody ?? ''),
+  rawContentType: typeof request.rawContentType === 'string' ? request.rawContentType : importedBodyPayload.rawContentType,
   formDataParams: Array.isArray(request.formDataParams)
     ? request.formDataParams.map((param: any) => ({
         key: typeof param?.key === 'string' ? param.key : '',
@@ -208,11 +303,12 @@ const normalizeRequestForTab = (request: Partial<HttpRequest>): HttpRequest => (
         enabled: param?.enabled !== false,
         type: param?.type === 'file' ? 'file' : 'text'
       }))
-    : undefined,
+    : importedBodyPayload.formDataParams,
   order: typeof request.order === 'number' ? request.order : 0,
   createdAt: request.createdAt ? new Date(request.createdAt) : new Date(),
   updatedAt: request.updatedAt ? new Date(request.updatedAt) : new Date()
-});
+};
+};
 
 const normalizeOpenTab = (tab: Partial<OpenTab> | null | undefined): OpenTab | null => {
   if (!tab || typeof tab !== 'object' || typeof tab.key !== 'string' || !tab.key) {
