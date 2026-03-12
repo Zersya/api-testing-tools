@@ -31,6 +31,7 @@ import {
   parsePostmanEnvironment,
   isPostmanCollection,
   isPostmanEnvironment,
+  type ParsedPostmanBodyParam,
   type ParsedPostmanFolder,
   type ParsedPostmanRequest,
   type ParsedPostmanEnvironment,

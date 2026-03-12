@@ -80,7 +80,7 @@ export interface PostmanFormDataParam {
   key: string;
   value?: string;
   type?: string;
-  src?: string;
+  src?: string | string[];
   disabled?: boolean;
   description?: string | PostmanDescription;
 }
@@ -190,6 +190,15 @@ export interface ParsedPostmanFolder {
   order: number;
 }
 
+export type ParsedRequestBodyFormat = 'none' | 'json' | 'form-data' | 'urlencoded' | 'raw' | 'binary';
+
+export interface ParsedPostmanBodyParam {
+  key: string;
+  value: string;
+  enabled: boolean;
+  type: 'text' | 'file';
+}
+
 export interface ParsedPostmanResponseExample {
   name: string;
   statusCode: number;
@@ -208,8 +217,9 @@ export interface ParsedPostmanRequest {
   queryParams: Array<{ key: string; value: string; description?: string }>;
   pathVariables: Array<{ key: string; value: string; description?: string }>;
   body: RequestBody;
-  bodyMode?: string;
+  bodyMode?: ParsedRequestBodyFormat;
   bodyOptions?: { language?: string };
+  formDataParams?: ParsedPostmanBodyParam[];
   auth: RequestAuth;
   order: number;
   responseExamples: ParsedPostmanResponseExample[];
@@ -492,6 +502,142 @@ function parsePostmanItem(
   };
 }
 
+function hasHeaderIgnoreCase(headers: RequestHeaders, headerName: string): boolean {
+  const normalizedHeaderName = headerName.toLowerCase();
+  return Object.keys(headers).some(key => key.toLowerCase() === normalizedHeaderName);
+}
+
+function inferRawBodyContentType(language?: string): string | null {
+  if (!language) {
+    return null;
+  }
+
+  switch (language.toLowerCase()) {
+    case 'json':
+      return 'application/json';
+    case 'xml':
+      return 'application/xml';
+    case 'html':
+      return 'text/html';
+    case 'javascript':
+      return 'application/javascript';
+    case 'text':
+      return 'text/plain';
+    default:
+      return null;
+  }
+}
+
+const BODY_FORMAT_META_KEY = '__mockServiceBodyFormat';
+const FORM_DATA_PARAMS_META_KEY = '__mockServiceFormDataParams';
+
+function normalizeBodyMode(mode?: PostmanBody['mode']): ParsedRequestBodyFormat | undefined {
+  if (!mode || mode === 'none') {
+    return mode === 'none' ? 'none' : undefined;
+  }
+
+  if (mode === 'formdata') {
+    return 'form-data';
+  }
+
+  if (mode === 'urlencoded' || mode === 'raw') {
+    return mode;
+  }
+
+  if (mode === 'file') {
+    return 'binary';
+  }
+
+  if (mode === 'graphql') {
+    return 'json';
+  }
+
+  return undefined;
+}
+
+function extractFormDataFileValue(param: PostmanFormDataParam): string {
+  if (typeof param.value === 'string' && param.value) {
+    return param.value;
+  }
+
+  const source = Array.isArray(param.src)
+    ? param.src.find((entry): entry is string => typeof entry === 'string' && entry.length > 0)
+    : param.src;
+
+  if (!source) {
+    return '';
+  }
+
+  const sourceValue = String(source);
+  const segments = sourceValue.split(/[\\/]/);
+  return segments[segments.length - 1] || sourceValue;
+}
+
+function parsePostmanBodyParams(body: PostmanBody | undefined): ParsedPostmanBodyParam[] {
+  if (!body) {
+    return [];
+  }
+
+  if (body.mode === 'urlencoded' && Array.isArray(body.urlencoded)) {
+    return body.urlencoded
+      .filter(param => param.key && !param.disabled)
+      .map(param => ({
+        key: param.key,
+        value: param.value || '',
+        enabled: true,
+        type: 'text' as const
+      }));
+  }
+
+  if (body.mode === 'formdata' && Array.isArray(body.formdata)) {
+    return body.formdata
+      .filter(param => param.key && !param.disabled)
+      .map(param => {
+        const isFile = param.type === 'file';
+
+        return {
+          key: param.key,
+          value: isFile ? extractFormDataFileValue(param) : (param.value || ''),
+          enabled: true,
+          type: isFile ? 'file' as const : 'text' as const
+        };
+      });
+  }
+
+  return [];
+}
+
+function buildPersistedBody(
+  bodyMode: ParsedRequestBodyFormat | 'graphql' | undefined,
+  parsedBody: RequestBody,
+  formDataParams: ParsedPostmanBodyParam[],
+  headers: RequestHeaders
+): RequestBody {
+  if (!bodyMode || bodyMode === 'none') {
+    return parsedBody;
+  }
+
+  if (bodyMode === 'form-data' || bodyMode === 'urlencoded') {
+    return {
+      [BODY_FORMAT_META_KEY]: bodyMode,
+      [FORM_DATA_PARAMS_META_KEY]: formDataParams,
+      body: null
+    } as RequestBody;
+  }
+
+  if (bodyMode === 'raw') {
+    const rawContentType = headers['Content-Type'] || headers['content-type'];
+
+    return {
+      [BODY_FORMAT_META_KEY]: 'raw',
+      ...(rawContentType ? { rawContentType } : {}),
+      body: typeof parsedBody === 'string' ? parsedBody : String(parsedBody ?? '')
+    } as RequestBody;
+  }
+
+  return parsedBody;
+}
+
 /**
  * Parse a Postman request
  */
@@ -557,8 +703,18 @@ function parsePostmanRequest(
 
   // Parse body
   const body = parsePostmanBody(request.body);
-  const bodyMode = request.body?.mode;
+  const bodyMode = normalizeBodyMode(request.body?.mode);
   const bodyOptions = request.body?.options?.raw;
+  const formDataParams = parsePostmanBodyParams(request.body);
+
+  if (bodyMode === 'raw') {
+    const inferredContentType = inferRawBodyContentType(bodyOptions?.language);
+    if (inferredContentType && !hasHeaderIgnoreCase(headers, 'Content-Type')) {
+      headers['Content-Type'] = inferredContentType;
+    }
+  }
+
+  const persistedBody = buildPersistedBody(bodyMode, body, formDataParams, headers);
 
   // Parse auth (item-level auth takes precedence over request-level)
   const auth = item.auth ? parsePostmanAuth(item.auth) : 
@@ -627,9 +783,10 @@ function parsePostmanRequest(
     headers,
     queryParams,
     pathVariables,
-    body,
+    body: persistedBody,
     bodyMode,
     bodyOptions,
+    formDataParams,
     auth,
     order,
     responseExamples,
@@ -703,16 +860,7 @@ function parsePostmanBody(body: PostmanBody | undefined): RequestBody {
 
   switch (body.mode) {
     case 'raw':
-      // Try to parse as JSON
-      if (body.raw) {
-        try {
-          return JSON.parse(body.raw);
-        } catch {
-          // Return as string if not valid JSON
-          return body.raw;
-        }
-      }
-      return null;
+      return typeof body.raw === 'string' ? body.raw : '';
 
     case 'urlencoded':
       if (body.urlencoded && Array.isArray(body.urlencoded)) {
@@ -730,22 +878,34 @@ function parsePostmanBody(body: PostmanBody | undefined): RequestBody {
       if (body.formdata && Array.isArray(body.formdata)) {
         const formData: Record<string, string> = {};
         for (const param of body.formdata) {
-          if (param.key && !param.disabled && param.type !== 'file') {
-            formData[param.key] = param.value || '';
+          if (param.key && !param.disabled) {
+            formData[param.key] = param.type === 'file'
+              ? extractFormDataFileValue(param)
+              : (param.value || '');
           }
         }
         return formData;
       }
       return null;
 
-    case 'graphql':
-      if (body.graphql) {
-        return {
-          query: body.graphql.query || '',
-          variables: body.graphql.variables ? JSON.parse(body.graphql.variables) : undefined
-        };
+    case 'graphql': {
+      const graphqlBody: Record<string, unknown> = {
+        query: body.graphql?.query || ''
+      };
+
+      if (typeof body.graphql?.variables === 'string' && body.graphql.variables.trim()) {
+        try {
+          graphqlBody.variables = JSON.parse(body.graphql.variables);
+        } catch {
+          graphqlBody.variables = body.graphql.variables;
+        }
       }
-      return null;
+
+      return graphqlBody;
+    }
+
+    case 'file':
+      return extractFormDataFileValue({ key: 'file', src: body.file?.src, type: 'file' });
 
     default:
       return null;
