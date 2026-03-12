@@ -15,6 +15,7 @@ import type { HttpMethod, RequestData, ResponseData } from '../../db/schema/requ
 import type { MockConfig } from '../../db/schema/savedRequest';
 import { eq, inArray, sql, and } from 'drizzle-orm';
 import { executePreScript, executePostScript, type ScriptLogEntry } from '../../services/script-runner';
+import { getMagicVariableValue } from '../../utils/magic-variables';
 
 interface EnvironmentVariable {
   id: string;
@@ -186,65 +187,66 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
           console.log('[Proxy] Variables found:', environmentVariablesList.length);
           console.log('[Proxy] Variable keys:', environmentVariablesList.map(v => v.key));
 
-          if (environmentVariablesList && environmentVariablesList.length > 0) {
-            const variables: Record<string, string> = {};
-            environmentVariablesList.forEach((v: EnvironmentVariable) => {
-              variables[v.key] = v.value;
-            });
+          const variables: Record<string, string> = {};
+          environmentVariablesList.forEach((v: EnvironmentVariable) => {
+            variables[v.key] = v.value;
+          });
 
-            const substituteWithLimit = (input: string, maxIterations: number = 10): string => {
-              let result = input;
-              let iterations = 0;
-              // Match both {{...}} and URL-encoded %7B%7B...%7D%7D
-              const variablePattern = /(\{\{|%7B%7B)([^{}%]+)(\}\}|%7D%7D)/g;
+          const substituteWithLimit = (input: string, maxIterations: number = 10): string => {
+            let result = input;
+            let iterations = 0;
+            // Match both {{...}} and URL-encoded %7B%7B...%7D%7D
+            const variablePattern = /(\{\{|%7B%7B)([^{}%]+)(\}\}|%7D%7D)/g;
 
-              let match;
-              while ((match = variablePattern.exec(result)) !== null && iterations < maxIterations) {
-                const trimmedName = match[2].trim();
-                console.log(`[Proxy] Substituting {{${trimmedName}}}:`, variables.hasOwnProperty(trimmedName) ? 'FOUND' : 'NOT FOUND');
-                if (variables.hasOwnProperty(trimmedName)) {
-                  result = result.replace(match[0], variables[trimmedName]);
-                  variablePattern.lastIndex = 0;
-                  iterations++;
-                }
+            let match;
+            while ((match = variablePattern.exec(result)) !== null && iterations < maxIterations) {
+              const trimmedName = match[2].trim();
+              let replacement: string | undefined = variables[trimmedName];
+              if (replacement === undefined) {
+                const magicValue = getMagicVariableValue(trimmedName);
+                if (magicValue !== null) replacement = magicValue;
               }
-
-              if (iterations >= maxIterations) {
-                variableWarnings.push(`Variable substitution limit reached (possible circular reference)`);
-              }
-
-              return result;
-            };
-
-            const originalUrl = body.url;
-            resolvedUrl = substituteWithLimit(body.url);
-            console.log('[Proxy] URL substitution:', { original: originalUrl, resolved: resolvedUrl });
-            
-            if (resolvedUrl !== originalUrl) {
-              resolvedValues = { ...resolvedValues, url: resolvedUrl };
-            }
-
-            for (const [key, value] of Object.entries(resolvedHeaders)) {
-              if (typeof value === 'string' && value.includes('{{')) {
-                resolvedHeaders[key] = substituteWithLimit(value);
+              if (replacement !== undefined) {
+                console.log(`[Proxy] Substituting {{${trimmedName}}}:`, variables.hasOwnProperty(trimmedName) ? 'ENV' : 'MAGIC');
+                result = result.replace(match[0], replacement);
+                variablePattern.lastIndex = 0;
+                iterations++;
               }
             }
 
-            if (resolvedBody && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
-              if (typeof resolvedBody === 'string') {
-                resolvedBody = substituteWithLimit(resolvedBody);
-              } else {
-                const bodyStr = JSON.stringify(resolvedBody);
-                const substitutedBody = substituteWithLimit(bodyStr);
-                try {
-                  resolvedBody = JSON.parse(substitutedBody);
-                } catch {
-                  resolvedBody = substitutedBody;
-                }
+            if (iterations >= maxIterations) {
+              variableWarnings.push(`Variable substitution limit reached (possible circular reference)`);
+            }
+
+            return result;
+          };
+
+          const originalUrl = body.url;
+          resolvedUrl = substituteWithLimit(body.url);
+          console.log('[Proxy] URL substitution:', { original: originalUrl, resolved: resolvedUrl });
+
+          if (resolvedUrl !== originalUrl) {
+            resolvedValues = { ...resolvedValues, url: resolvedUrl };
+          }
+
+          for (const [key, value] of Object.entries(resolvedHeaders)) {
+            if (typeof value === 'string' && value.includes('{{')) {
+              resolvedHeaders[key] = substituteWithLimit(value);
+            }
+          }
+
+          if (resolvedBody && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+            if (typeof resolvedBody === 'string') {
+              resolvedBody = substituteWithLimit(resolvedBody);
+            } else {
+              const bodyStr = JSON.stringify(resolvedBody);
+              const substitutedBody = substituteWithLimit(bodyStr);
+              try {
+                resolvedBody = JSON.parse(substitutedBody);
+              } catch {
+                resolvedBody = substitutedBody;
               }
             }
-          } else {
-            console.log('[Proxy] WARNING: No variables found in environment');
           }
         } else {
           console.log('[Proxy] WARNING: Environment not found');

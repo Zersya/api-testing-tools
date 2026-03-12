@@ -1,6 +1,7 @@
 import { db } from '../db';
 import { environmentVariables, projects, collections } from '../db/schema';
 import { eq } from 'drizzle-orm';
+import { getMagicVariableValue } from './magic-variables';
 
 export interface VariableSubstitutionResult {
   value: string;
@@ -41,6 +42,12 @@ export function substituteVariables(
 
     if (variableMap.has(name)) {
       return variableMap.get(name)!;
+    }
+
+    const magicValue = getMagicVariableValue(name);
+    if (magicValue !== null) {
+      variableMap.set(name, magicValue);
+      return magicValue;
     }
 
     seenVariables.add(name);

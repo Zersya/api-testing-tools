@@ -9,6 +9,7 @@ import { db } from '../db';
 import { environmentVariables } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { createContext, Script, runInContext } from 'vm';
+import { getMagicVariableValue } from '../utils/magic-variables';
 
 // Script execution timeout in milliseconds
 const SCRIPT_TIMEOUT = 5000;
@@ -293,15 +294,27 @@ function createPmContext(params: {
 }) {
   const { envVars, context, response, phase, onLog, onEnvironmentChange, onContextModify } = params;
 
+  // Substitute {{var}} and {{$magic}} in a string (used by environment.set and variables.replaceIn)
+  const substituteInTemplate = (template: string): string => {
+    return template.replace(/\{\{([^}]+)\}\}/g, (match, key) => {
+      const trimmedKey = key.trim();
+      if (envVars[trimmedKey] !== undefined) return envVars[trimmedKey];
+      const magicValue = getMagicVariableValue(trimmedKey);
+      return magicValue !== null ? magicValue : match;
+    });
+  };
+
   return {
-    // Environment variable access
+    // Environment variable access (values containing {{$randomFirstName}} etc. are resolved before storing)
     environment: {
       get: (key: string): string | undefined => {
         return envVars[key];
       },
       set: (key: string, value: string): void => {
-        envVars[key] = value;
-        onEnvironmentChange(key, value, 'set');
+        const str = typeof value === 'string' ? value : String(value);
+        const resolved = substituteInTemplate(str);
+        envVars[key] = resolved;
+        onEnvironmentChange(key, resolved, 'set');
       },
       unset: (key: string): void => {
         delete envVars[key];
@@ -378,14 +391,9 @@ function createPmContext(params: {
       }
     } : undefined,
 
-    // Variable substitution
+    // Variable substitution (env vars first, then magic variables)
     variables: {
-      replaceIn: (template: string): string => {
-        return template.replace(/\{\{([^}]+)\}\}/g, (match, key) => {
-          const trimmedKey = key.trim();
-          return envVars[trimmedKey] !== undefined ? envVars[trimmedKey] : match;
-        });
-      }
+      replaceIn: (template: string): string => substituteInTemplate(template),
     },
 
     // Console logging

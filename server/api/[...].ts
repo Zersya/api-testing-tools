@@ -1,5 +1,6 @@
 import { db, schema } from '../db';
 import { eq, and, or, isNull } from 'drizzle-orm';
+import { substituteVariables } from '../utils/variable-substitution';
 
 interface Collection {
     id: string;
@@ -108,7 +109,7 @@ export default defineEventHandler(async (event) => {
             }
 
             setResponseStatus(event, mock.status);
-            
+
             // Parse response if it's a string (JSON stored in database)
             let responseData = mock.response;
             if (typeof mock.response === 'string') {
@@ -119,8 +120,18 @@ export default defineEventHandler(async (event) => {
                     responseData = mock.response;
                 }
             }
-            
-            return responseData;
+
+            // Substitute magic variables (e.g. {{$randomFirstName}}) in response body
+            const serialized =
+                typeof responseData === 'string'
+                    ? responseData
+                    : JSON.stringify(responseData);
+            const { value: substituted } = substituteVariables(serialized, {});
+            try {
+                return JSON.parse(substituted) as unknown;
+            } catch {
+                return substituted;
+            }
         }
     }
 
