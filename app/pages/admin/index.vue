@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { watch } from 'vue';
+import { debounce } from 'perfect-debounce';
 import RequestBuilder from '~/components/RequestBuilder.vue';
 import CodeExamples from '~/components/CodeExamples.vue';
 import SaveRequestDialog from '~/components/SaveRequestDialog.vue';
@@ -51,10 +52,50 @@ interface HttpRequest {
     responseBody: Record<string, unknown> | string | null;
     responseHeaders: Record<string, string>;
   } | null;
+  preScript?: string | null;
+  postScript?: string | null;
+  pathVariables?: Record<string, { value: string; description?: string }> | null;
+  bodyFormat?: 'none' | 'json' | 'form-data' | 'urlencoded' | 'raw' | 'binary';
+  jsonBody?: string;
+  rawBody?: string;
+  rawContentType?: string;
+  formDataParams?: Array<{
+    key: string;
+    value: string;
+    enabled: boolean;
+    type: 'text' | 'file';
+  }>;
   order: number;
   createdAt: Date;
   updatedAt: Date;
 }
+
+interface PersistedTabSession {
+  tabs: OpenTab[];
+  activeTabKey: string | null;
+}
+
+interface RequestDraftSnapshot {
+  method: string;
+  url: string;
+  headers: Record<string, string> | null;
+  body: Record<string, unknown> | string | null;
+  auth: {
+    type: string;
+    credentials?: Record<string, string>;
+  } | null;
+  mockConfig?: HttpRequest['mockConfig'];
+  preScript?: string | null;
+  postScript?: string | null;
+  pathVariables?: HttpRequest['pathVariables'];
+  bodyFormat?: HttpRequest['bodyFormat'];
+  jsonBody?: string;
+  rawBody?: string;
+  rawContentType?: string;
+  formDataParams?: HttpRequest['formDataParams'];
+}
+
+const REQUEST_TABS_SETTINGS_KEY = 'requestTabsSession';
 
 const { data: mocks, refresh: refreshMocks, error } = await useFetch<Mock[]>('/api/admin/mocks');
 const { data: collections, refresh: refreshCollections } = await useFetch<Collection[]>('/api/admin/collections');
@@ -131,6 +172,94 @@ const currentWorkspaceId = computed(() => selectedWorkspaceId.value);
 const currentProjectId = computed(() => selectedProjectId.value);
 
 const hasWorkspaces = computed(() => workspaces.value && workspaces.value.length > 0);
+
+const normalizeRequestForTab = (request: Partial<HttpRequest>): HttpRequest => ({
+  id: typeof request.id === 'string' ? request.id : '',
+  folderId: typeof request.folderId === 'string' || request.folderId === null ? request.folderId : '',
+  collectionId: typeof request.collectionId === 'string' || request.collectionId === null ? request.collectionId : null,
+  name: typeof request.name === 'string' && request.name.trim().length > 0 ? request.name : 'Untitled Request',
+  method: typeof request.method === 'string' ? request.method : 'GET',
+  url: typeof request.url === 'string' ? request.url : '',
+  headers: request.headers && typeof request.headers === 'object' && !Array.isArray(request.headers)
+    ? request.headers as Record<string, string>
+    : null,
+  body: request.body === undefined ? null : request.body as Record<string, unknown> | string | null,
+  auth: request.auth && typeof request.auth === 'object'
+    ? request.auth as HttpRequest['auth']
+    : null,
+  mockConfig: request.mockConfig && typeof request.mockConfig === 'object'
+    ? request.mockConfig as NonNullable<HttpRequest['mockConfig']>
+    : null,
+  preScript: typeof request.preScript === 'string' ? request.preScript : '',
+  postScript: typeof request.postScript === 'string' ? request.postScript : '',
+  pathVariables: request.pathVariables && typeof request.pathVariables === 'object' && !Array.isArray(request.pathVariables)
+    ? request.pathVariables as NonNullable<HttpRequest['pathVariables']>
+    : null,
+  bodyFormat: request.bodyFormat === 'json' || request.bodyFormat === 'raw' || request.bodyFormat === 'form-data' || request.bodyFormat === 'urlencoded' || request.bodyFormat === 'binary' || request.bodyFormat === 'none'
+    ? request.bodyFormat
+    : undefined,
+  jsonBody: typeof request.jsonBody === 'string' ? request.jsonBody : '',
+  rawBody: typeof request.rawBody === 'string' ? request.rawBody : '',
+  rawContentType: typeof request.rawContentType === 'string' ? request.rawContentType : undefined,
+  formDataParams: Array.isArray(request.formDataParams)
+    ? request.formDataParams.map((param: any) => ({
+        key: typeof param?.key === 'string' ? param.key : '',
+        value: typeof param?.value === 'string' ? param.value : '',
+        enabled: param?.enabled !== false,
+        type: param?.type === 'file' ? 'file' : 'text'
+      }))
+    : undefined,
+  order: typeof request.order === 'number' ? request.order : 0,
+  createdAt: request.createdAt ? new Date(request.createdAt) : new Date(),
+  updatedAt: request.updatedAt ? new Date(request.updatedAt) : new Date()
+});
+
+const normalizeOpenTab = (tab: Partial<OpenTab> | null | undefined): OpenTab | null => {
+  if (!tab || typeof tab !== 'object' || typeof tab.key !== 'string' || !tab.key) {
+    return null;
+  }
+
+  return {
+    key: tab.key,
+    hasUnsavedChanges: Boolean(tab.hasUnsavedChanges),
+    request: normalizeRequestForTab((tab as OpenTab).request || {})
+  };
+};
+
+const serializeOpenTabs = (): PersistedTabSession => ({
+  tabs: openTabs.value.map(tab => ({
+    key: tab.key,
+    hasUnsavedChanges: tab.hasUnsavedChanges,
+    request: {
+      ...tab.request,
+      createdAt: tab.request.createdAt instanceof Date ? tab.request.createdAt.toISOString() : tab.request.createdAt,
+      updatedAt: tab.request.updatedAt instanceof Date ? tab.request.updatedAt.toISOString() : tab.request.updatedAt
+    }
+  })) as OpenTab[],
+  activeTabKey: activeTabKey.value
+});
+
+const hydrateOpenTabs = (session: PersistedTabSession | null | undefined) => {
+  if (!session || !Array.isArray(session.tabs)) {
+    return;
+  }
+
+  const normalizedTabs = session.tabs
+    .map(tab => normalizeOpenTab(tab))
+    .filter((tab): tab is OpenTab => Boolean(tab));
+
+  openTabs.value = normalizedTabs;
+
+  const requestedActiveKey = typeof session.activeTabKey === 'string'
+    ? session.activeTabKey
+    : null;
+  const activeTab = requestedActiveKey
+    ? normalizedTabs.find(tab => tab.key === requestedActiveKey)
+    : normalizedTabs[0] || null;
+
+  activeTabKey.value = activeTab?.key || null;
+  selectedRequest.value = activeTab?.request || null;
+};
 
 interface EnvironmentVariable {
   id: string;
@@ -651,7 +780,7 @@ const findCollectionByFolderId = (folderId: string): { collectionId: string; fol
       for (const collection of project.collections) {
         const findInFolder = (folders: any[]): string | null => {
           for (const folder of folders) {
-            if (folder.id === folderId) return folder.id;
+            if (folder.id === folderId) return collection.id;
             if (folder.children?.length) {
               const found = findInFolder(folder.children);
               if (found) return found;
@@ -659,18 +788,107 @@ const findCollectionByFolderId = (folderId: string): { collectionId: string; fol
           }
           return null;
         };
-        const found = findInFolder(collection.folders);
-        if (found) {
-          return { collectionId: collection.id, folderId: found };
-        }
+        const foundCollectionId = findInFolder(collection.folders);
+        if (foundCollectionId) return { collectionId: foundCollectionId, folderId };
       }
     }
   }
   return null;
 };
 
+const syncWorkspaceSelectionForRequest = (request: Partial<HttpRequest> | null | undefined) => {
+  if (!request || !workspaces.value?.length) {
+    return;
+  }
+
+  const requestId = typeof request.id === 'string' ? request.id : '';
+  const requestFolderId = typeof request.folderId === 'string' ? request.folderId : null;
+  const requestCollectionId = typeof request.collectionId === 'string' ? request.collectionId : null;
+
+  for (const workspace of workspaces.value) {
+    for (const project of workspace.projects) {
+      const matchingCollection = project.collections.find((collection: any) => {
+        if (requestCollectionId && collection.id === requestCollectionId) {
+          return true;
+        }
+
+        if (requestFolderId) {
+          const containsFolder = (folders: any[]): boolean => folders.some((folder: any) => {
+            if (folder.id === requestFolderId) {
+              return true;
+            }
+
+            return Array.isArray(folder.children) && containsFolder(folder.children);
+          });
+
+          if (containsFolder(collection.folders || [])) {
+            return true;
+          }
+        }
+
+        if (requestId) {
+          if (collection.requests?.some((savedRequest: any) => savedRequest.id === requestId)) {
+            return true;
+          }
+
+          const containsRequestInFolders = (folders: any[]): boolean => folders.some((folder: any) => {
+            if (folder.requests?.some((savedRequest: any) => savedRequest.id === requestId)) {
+              return true;
+            }
+
+            return Array.isArray(folder.children) && containsRequestInFolders(folder.children);
+          });
+
+          if (containsRequestInFolders(collection.folders || [])) {
+            return true;
+          }
+        }
+
+        return false;
+      });
+
+      if (matchingCollection) {
+        selectedWorkspaceId.value = workspace.id;
+        selectedProjectId.value = project.id;
+        return;
+      }
+    }
+  }
+};
+
+const buildPersistedRequestFromDraft = (request: HttpRequest, draft?: RequestDraftSnapshot): HttpRequest => {
+  const normalizedRequest = normalizeRequestForTab(request);
+
+  if (!draft) {
+    return normalizedRequest;
+  }
+
+  return normalizeRequestForTab({
+    ...normalizedRequest,
+    method: draft.method,
+    url: draft.url,
+    headers: draft.headers ?? null,
+    body: draft.body ?? null,
+    auth: draft.auth ?? null,
+    mockConfig: draft.mockConfig ?? null,
+    preScript: draft.preScript ?? '',
+    postScript: draft.postScript ?? '',
+    pathVariables: draft.pathVariables ?? null,
+    bodyFormat: draft.bodyFormat,
+    jsonBody: draft.jsonBody ?? '',
+    rawBody: draft.rawBody ?? '',
+    rawContentType: draft.rawContentType,
+    formDataParams: draft.formDataParams?.map(param => ({
+      key: param.key,
+      value: param.value,
+      enabled: param.enabled !== false,
+      type: param.type === 'file' ? 'file' : 'text'
+    }))
+  });
+};
+
 if (error.value && error.value.statusCode === 401) {
-    await navigateTo('/login');
+  await navigateTo('/login');
 }
 
 // Modals
@@ -727,6 +945,133 @@ const selectedCollectionForNewMock = ref<string | null>(null);
 // Tabs state
 const openTabs = ref<OpenTab[]>([]);
 const activeTabKey = ref<string | null>(null);
+const isHydratingRequestTabs = ref(false);
+const hasHydratedRequestTabs = ref(false);
+const lastPersistedTabsSignature = ref('');
+
+const getActiveOpenTab = () => {
+  if (!activeTabKey.value) {
+    return null;
+  }
+
+  return openTabs.value.find(tab => tab.key === activeTabKey.value) || null;
+};
+
+const syncSelectedRequestWithActiveTab = () => {
+  const activeTab = getActiveOpenTab();
+  selectedRequest.value = activeTab?.request || null;
+};
+
+const saveRequestTabsSession = async (session: PersistedTabSession, keepalive = false) => {
+  if (keepalive && typeof window !== 'undefined') {
+    await fetch(`/api/admin/settings?key=${REQUEST_TABS_SETTINGS_KEY}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ session }),
+      keepalive: true,
+      credentials: 'include'
+    });
+    return;
+  }
+
+  await $fetch('/api/admin/settings', {
+    method: 'POST',
+    query: { key: REQUEST_TABS_SETTINGS_KEY },
+    body: { session }
+  });
+};
+
+const persistRequestTabsNow = async (keepalive = false) => {
+  if (isHydratingRequestTabs.value || !hasHydratedRequestTabs.value) {
+    return;
+  }
+
+  const session = serializeOpenTabs();
+  const signature = JSON.stringify(session);
+
+  if (signature === lastPersistedTabsSignature.value) {
+    return;
+  }
+
+  try {
+    await saveRequestTabsSession(session, keepalive);
+    lastPersistedTabsSignature.value = signature;
+  } catch (error) {
+    console.error('Failed to persist request tabs session:', error);
+  }
+};
+
+const persistRequestTabsDebounced = debounce(async () => {
+  await persistRequestTabsNow(false);
+}, 300);
+
+const queuePersistRequestTabs = () => {
+  if (isHydratingRequestTabs.value || !hasHydratedRequestTabs.value) {
+    return;
+  }
+
+  persistRequestTabsDebounced();
+};
+
+const loadPersistedRequestTabs = async () => {
+  isHydratingRequestTabs.value = true;
+
+  try {
+    const data = await $fetch<{ session?: PersistedTabSession }>('/api/admin/settings', {
+      query: { key: REQUEST_TABS_SETTINGS_KEY }
+    });
+
+    hydrateOpenTabs(data.session);
+
+    const activeTab = getActiveOpenTab();
+    if (activeTab) {
+      syncWorkspaceSelectionForRequest(activeTab.request);
+    }
+
+    lastPersistedTabsSignature.value = JSON.stringify(serializeOpenTabs());
+  } catch (error) {
+    console.error('Failed to hydrate request tabs session:', error);
+  } finally {
+    isHydratingRequestTabs.value = false;
+    hasHydratedRequestTabs.value = true;
+    syncSelectedRequestWithActiveTab();
+  }
+};
+
+const handleWindowVisibilityChange = () => {
+  if (document.visibilityState === 'hidden') {
+    persistRequestTabsDebounced.cancel();
+    void persistRequestTabsNow(true);
+  }
+};
+
+const handleWindowBeforeUnload = () => {
+  persistRequestTabsDebounced.cancel();
+  void persistRequestTabsNow(true);
+};
+
+watch([openTabs, activeTabKey], () => {
+  if (isHydratingRequestTabs.value) {
+    return;
+  }
+
+  syncSelectedRequestWithActiveTab();
+  queuePersistRequestTabs();
+}, { deep: true });
+
+onMounted(async () => {
+  await loadPersistedRequestTabs();
+  window.addEventListener('beforeunload', handleWindowBeforeUnload);
+  document.addEventListener('visibilitychange', handleWindowVisibilityChange);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('beforeunload', handleWindowBeforeUnload);
+  document.removeEventListener('visibilitychange', handleWindowVisibilityChange);
+  persistRequestTabsDebounced.cancel();
+});
 
 // Helper to create a new tab key
 const createTabKey = () => `tab-${crypto.randomUUID()}`;
@@ -1122,10 +1467,14 @@ const goToEdit = (id: string) => {
 const handleSelectRequest = (request: HttpRequest) => {
   activeAdminPanel.value = 'requests';
   selectedMock.value = null;
+
+  syncWorkspaceSelectionForRequest(request);
+  const normalizedRequest = normalizeRequestForTab(request);
   
   // Check if tab already exists for this request
-  const existingTab = openTabs.value.find(tab => tab.request.id === request.id);
+  const existingTab = openTabs.value.find(tab => tab.request.id === normalizedRequest.id);
   if (existingTab) {
+    existingTab.request = normalizeRequestForTab(existingTab.request);
     activeTabKey.value = existingTab.key;
     selectedRequest.value = existingTab.request;
   } else {
@@ -1133,7 +1482,7 @@ const handleSelectRequest = (request: HttpRequest) => {
     const newTabKey = createTabKey();
     const newTab: OpenTab = {
       key: newTabKey,
-      request: { ...request },
+      request: normalizedRequest,
       hasUnsavedChanges: false
     };
     openTabs.value.push(newTab);
@@ -1147,6 +1496,7 @@ const handleSelectTab = (tabKey: string) => {
   activeAdminPanel.value = 'requests';
   const tab = openTabs.value.find(t => t.key === tabKey);
   if (tab) {
+    syncWorkspaceSelectionForRequest(tab.request);
     activeTabKey.value = tabKey;
     selectedRequest.value = tab.request;
     selectedMock.value = null;
@@ -1177,12 +1527,18 @@ const handleNewTab = () => {
   const newRequest: HttpRequest = {
     id: '',
     folderId: '',
+    collectionId: null,
     name: 'Untitled Request',
     method: 'GET',
     url: '',
     headers: null,
     body: null,
     auth: null,
+    bodyFormat: 'none',
+    jsonBody: '',
+    rawBody: '',
+    rawContentType: 'text/plain',
+    formDataParams: [],
     order: 0,
     createdAt: new Date(),
     updatedAt: new Date()
@@ -1204,20 +1560,31 @@ const handleReorderTabs = (fromIndex: number, toIndex: number) => {
   openTabs.value.splice(toIndex, 0, tab);
 };
 
-const updateTabUnsavedStatus = (request: HttpRequest, hasUnsavedChanges: boolean) => {
+const updateTabUnsavedStatus = (
+  request: HttpRequest,
+  hasUnsavedChanges: boolean,
+  draft?: RequestDraftSnapshot
+) => {
   const tab = openTabs.value.find(t => t.key === activeTabKey.value);
-  if (tab) {
-  // Match either by ID (for saved requests) or by active tab (for new requests)
-    const isMatchingRequest = request.id 
-      ? tab.request.id === request.id 
-      : true;
-    
-    if (isMatchingRequest) {
-      tab.hasUnsavedChanges = hasUnsavedChanges;
-      if (!hasUnsavedChanges) {
-        tab.request = { ...request };
-      }
-    }
+  if (!tab) {
+    return;
+  }
+
+  const isMatchingRequest = request.id
+    ? tab.request.id === request.id
+    : true;
+
+  if (!isMatchingRequest) {
+    return;
+  }
+
+  const nextRequest = buildPersistedRequestFromDraft(request, draft);
+
+  tab.hasUnsavedChanges = hasUnsavedChanges;
+  tab.request = nextRequest;
+
+  if (activeTabKey.value === tab.key) {
+    selectedRequest.value = nextRequest;
   }
 };
 
@@ -1248,14 +1615,16 @@ const handleSaveRequest = async (request: any) => {
         method: 'PUT',
         body
       });
+
+      const normalizedRequest = normalizeRequestForTab(request);
       
       // Update selectedRequest if it matches
       if (selectedRequest.value && selectedRequest.value.id === request.id) {
-        selectedRequest.value = { ...request };
+        selectedRequest.value = normalizedRequest;
       }
       
       // Reset unsaved flag on the tab
-      updateTabUnsavedStatus(request, false);
+      updateTabUnsavedStatus(normalizedRequest, false);
       
       // Refresh workspaces to update the tree with latest data
       await refreshWorkspaces();
@@ -1386,9 +1755,11 @@ const handleSave = async (data: any) => {
       if (activeTabKey.value) {
         const tab = openTabs.value.find(t => t.key === activeTabKey.value);
         if (tab) {
-          tab.request = newRequest;
+          const normalizedNewRequest = normalizeRequestForTab(newRequest);
+          tab.request = normalizedNewRequest;
           tab.hasUnsavedChanges = false;
-          selectedRequest.value = newRequest;
+          selectedRequest.value = normalizedNewRequest;
+          syncWorkspaceSelectionForRequest(normalizedNewRequest);
         }
       }
     } else {
@@ -1411,7 +1782,7 @@ const handleSave = async (data: any) => {
 
       // Also update selectedRequest if it matches
       if (selectedRequest.value && selectedRequest.value.id === requestToSave.value.id) {
-        selectedRequest.value = {
+        const normalizedUpdatedRequest = normalizeRequestForTab({
           ...selectedRequest.value,
           name: data.name,
           method: requestToSave.value.method,
@@ -1423,7 +1794,9 @@ const handleSave = async (data: any) => {
           preScript: requestToSave.value.preScript,
           postScript: requestToSave.value.postScript,
           pathVariables: requestToSave.value.pathVariables
-        };
+        });
+
+        selectedRequest.value = normalizedUpdatedRequest;
       }
       
       // Reset unsaved flag on the tab
@@ -1440,6 +1813,9 @@ const handleSave = async (data: any) => {
 
 const handleSaveAs = async (data: any) => {
   if (!requestToSaveAs.value) return;
+
+  const originalRequest = requestToSaveAs.value;
+  const sourceTabKey = activeTabKey.value;
 
   try {
     // Check if we need to create a folder first
@@ -1467,11 +1843,11 @@ const handleSaveAs = async (data: any) => {
         method: 'POST',
         body: {
           name: data.name,
-          method: requestToSaveAs.value.method,
-          url: requestToSaveAs.value.url,
-          headers: requestToSaveAs.value.headers,
-          body: requestToSaveAs.value.body,
-          auth: requestToSaveAs.value.auth
+          method: originalRequest.method,
+          url: originalRequest.url,
+          headers: originalRequest.headers,
+          body: originalRequest.body,
+          auth: originalRequest.auth
         }
       });
     } else if (data.collectionId) {
@@ -1480,11 +1856,11 @@ const handleSaveAs = async (data: any) => {
         method: 'POST',
         body: {
           name: data.name,
-          method: requestToSaveAs.value.method,
-          url: requestToSaveAs.value.url,
-          headers: requestToSaveAs.value.headers,
-          body: requestToSaveAs.value.body,
-          auth: requestToSaveAs.value.auth
+          method: originalRequest.method,
+          url: originalRequest.url,
+          headers: originalRequest.headers,
+          body: originalRequest.body,
+          auth: originalRequest.auth
         }
       });
     } else {
@@ -1496,17 +1872,16 @@ const handleSaveAs = async (data: any) => {
     requestToSaveAs.value = null;
     await refreshWorkspaces();
 
-    // Select the newly created request (this creates a new tab)
-    await handleSelectRequest(newRequest);
-    
-    // Reset unsaved flag on the original tab's request
-    if (activeTabKey.value) {
-      const tab = openTabs.value.find(t => t.key === activeTabKey.value);
-      if (tab) {
-        tab.hasUnsavedChanges = false;
-        tab.request = { ...requestToSaveAs.value };
+    if (sourceTabKey) {
+      const sourceTab = openTabs.value.find(t => t.key === sourceTabKey);
+      if (sourceTab) {
+        sourceTab.hasUnsavedChanges = false;
+        sourceTab.request = normalizeRequestForTab(originalRequest);
       }
     }
+
+    // Select the newly created request (this creates a new tab)
+    await handleSelectRequest(newRequest);
   } catch (e: any) {
     alert('Error saving request as: ' + (e.data?.message || e.message));
   }
