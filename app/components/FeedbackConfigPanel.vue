@@ -1,135 +1,156 @@
 <template>
-  <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+  <div class="bg-bg-secondary rounded-lg border border-border-default overflow-hidden">
     <!-- Header -->
-    <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
-      <div class="flex items-center justify-between">
+    <div class="px-4 py-3 border-b border-border-default bg-bg-header flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-accent-orange">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
         <div>
-          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Feedback Configuration</h2>
-          <p class="text-sm text-gray-500 dark:text-gray-400">Configure when and how users see the feedback form</p>
+          <h2 class="text-[14px] font-semibold text-text-primary">Feedback Configuration</h2>
+          <p class="text-[11px] text-text-muted">Configure when and how users see the feedback form</p>
         </div>
-        <div class="flex items-center gap-2">
-          <span class="text-sm text-gray-500 dark:text-gray-400">Status:</span>
-          <span 
-            class="px-2 py-1 text-xs font-medium rounded-full"
-            :class="isActive ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'"
-          >
-            {{ isActive ? 'Active' : 'Inactive' }}
-          </span>
-        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-[11px] text-text-muted">Status:</span>
+        <span 
+          class="px-2 py-0.5 text-[10px] font-medium rounded-full border"
+          :class="isActive 
+            ? 'bg-accent-green/10 text-accent-green border-accent-green/30' 
+            : 'bg-bg-tertiary text-text-muted border-border-default'"
+        >
+          {{ isActive ? 'Active' : 'Inactive' }}
+        </span>
       </div>
     </div>
 
     <!-- Form -->
-    <div class="p-6 space-y-6">
+    <div class="p-4 space-y-5">
       <!-- Enable/Disable -->
-      <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg">
+      <div class="flex items-center justify-between p-3 bg-bg-tertiary rounded-md border border-border-default">
         <div>
-          <h3 class="font-medium text-gray-900 dark:text-white">Enable Feedback Collection</h3>
-          <p class="text-sm text-gray-500 dark:text-gray-400">Turn on to show feedback form to users</p>
+          <h3 class="text-[13px] font-medium text-text-primary">Enable Feedback Collection</h3>
+          <p class="text-[11px] text-text-muted">Turn on to show feedback form to users</p>
         </div>
         <button
           @click="toggleEnabled"
-          class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
-          :class="config.isEnabled ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-700'"
+          class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors"
+          :class="config.isEnabled ? 'bg-accent-orange' : 'bg-bg-hover'"
         >
           <span
-            class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
-            :class="config.isEnabled ? 'translate-x-6' : 'translate-x-1'"
+            class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
+            :class="config.isEnabled ? 'translate-x-5' : 'translate-x-1'"
           />
         </button>
       </div>
 
       <!-- Time Window -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div class="space-y-2">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+        <div class="space-y-1.5">
+          <label class="block text-[11px] font-medium text-text-secondary uppercase tracking-wide">
             Show From
           </label>
           <input
             v-model="config.shownFrom"
             type="datetime-local"
-            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+            class="w-full px-2.5 py-1.5 text-[13px] bg-bg-tertiary border border-border-default rounded-md focus:ring-1 focus:ring-accent-orange focus:border-accent-orange text-text-primary placeholder-text-muted transition-all"
           />
-          <p class="text-xs text-gray-500">Leave empty to start immediately</p>
+          <p class="text-[10px] text-text-muted">Leave empty to start immediately</p>
         </div>
 
-        <div class="space-y-2">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Show Until <span class="text-red-500">*</span>
+        <div class="space-y-1.5">
+          <label class="block text-[11px] font-medium text-text-secondary uppercase tracking-wide">
+            Show Until <span class="text-accent-red">*</span>
           </label>
           <input
             v-model="config.shownUntil"
             type="datetime-local"
             required
-            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+            class="w-full px-2.5 py-1.5 text-[13px] bg-bg-tertiary border border-border-default rounded-md focus:ring-1 focus:ring-accent-orange focus:border-accent-orange text-text-primary placeholder-text-muted transition-all"
           />
-          <p class="text-xs text-gray-500">Form will be hidden after this time</p>
+          <p class="text-[10px] text-text-muted">Form will be hidden after this time</p>
         </div>
       </div>
 
       <!-- Form Content -->
-      <div class="space-y-4">
-        <h3 class="font-medium text-gray-900 dark:text-white">Form Content</h3>
+      <div class="space-y-3">
+        <h3 class="text-[13px] font-medium text-text-primary flex items-center gap-2">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-text-muted">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          </svg>
+          Form Content
+        </h3>
 
-        <div class="space-y-2">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Title</label>
+        <div class="space-y-1.5">
+          <label class="block text-[11px] font-medium text-text-secondary uppercase tracking-wide">Title</label>
           <input
             v-model="config.title"
             type="text"
-            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+            class="w-full px-2.5 py-1.5 text-[13px] bg-bg-tertiary border border-border-default rounded-md focus:ring-1 focus:ring-accent-orange focus:border-accent-orange text-text-primary placeholder-text-muted transition-all"
             placeholder="We value your feedback"
           />
         </div>
 
-        <div class="space-y-2">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Description</label>
+        <div class="space-y-1.5">
+          <label class="block text-[11px] font-medium text-text-secondary uppercase tracking-wide">Description</label>
           <textarea
             v-model="config.description"
             rows="2"
-            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+            class="w-full px-2.5 py-1.5 text-[13px] bg-bg-tertiary border border-border-default rounded-md focus:ring-1 focus:ring-accent-orange focus:border-accent-orange text-text-primary placeholder-text-muted transition-all resize-none"
             placeholder="Help us improve by sharing your thoughts"
           />
         </div>
       </div>
 
       <!-- Questions Builder -->
-      <div class="space-y-4">
+      <div class="space-y-3">
         <div class="flex items-center justify-between">
-          <h3 class="font-medium text-gray-900 dark:text-white">Custom Questions</h3>
+          <h3 class="text-[13px] font-medium text-text-primary flex items-center gap-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-text-muted">
+              <path d="M9 11l3 3L22 4"/>
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+            </svg>
+            Custom Questions
+          </h3>
           <button
             @click="addQuestion"
-            class="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-1"
+            class="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium bg-accent-orange text-white rounded-md hover:bg-accent-orange-hover transition-colors"
           >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 4v16m8-8H4" />
             </svg>
             Add Question
           </button>
         </div>
 
-        <div v-if="config.questions.length === 0" class="p-4 text-center text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50 rounded-lg">
-          No custom questions. A default rating and comment form will be shown.
+        <div v-if="config.questions.length === 0" class="p-4 text-center text-text-muted bg-bg-tertiary rounded-md border border-border-default border-dashed">
+          <svg class="mx-auto mb-2 opacity-50" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M9 11l3 3L22 4"/>
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+          </svg>
+          <p class="text-[12px]">No custom questions. A default rating and comment form will be shown.</p>
         </div>
 
-        <div v-else class="space-y-3">
+        <div v-else class="space-y-2">
           <div
             v-for="(question, index) in config.questions"
             :key="question.id"
-            class="p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900/30"
+            class="p-3 border border-border-default rounded-md bg-bg-tertiary"
           >
-            <div class="flex items-start gap-3">
-              <span class="mt-2 text-sm font-medium text-gray-500">{{ index + 1 }}.</span>
-              <div class="flex-1 space-y-3">
-                <div class="grid grid-cols-2 gap-3">
+            <div class="flex items-start gap-2">
+              <span class="mt-1.5 text-[11px] font-medium text-text-muted w-4">{{ index + 1 }}.</span>
+              <div class="flex-1 space-y-2">
+                <div class="grid grid-cols-2 gap-2">
                   <input
                     v-model="question.label"
                     type="text"
                     placeholder="Question label"
-                    class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    class="px-2.5 py-1.5 text-[12px] bg-bg-secondary border border-border-default rounded focus:ring-1 focus:ring-accent-orange focus:border-accent-orange text-text-primary placeholder-text-muted"
                   />
                   <select
                     v-model="question.type"
-                    class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    class="px-2.5 py-1.5 text-[12px] bg-bg-secondary border border-border-default rounded focus:ring-1 focus:ring-accent-orange focus:border-accent-orange text-text-primary"
                   >
                     <option value="rating">Rating (1-5)</option>
                     <option value="text">Text</option>
@@ -139,31 +160,31 @@
                 </div>
 
                 <!-- Options for choice types -->
-                <div v-if="question.type === 'single_choice' || question.type === 'multiple_choice'" class="space-y-2">
+                <div v-if="question.type === 'single_choice' || question.type === 'multiple_choice'" class="space-y-1.5">
                   <div class="flex items-center gap-2">
-                    <span class="text-sm text-gray-600 dark:text-gray-400">Options:</span>
+                    <span class="text-[11px] text-text-muted">Options:</span>
                     <button
                       @click="addOption(question)"
-                      class="text-sm text-indigo-600 hover:text-indigo-700"
+                      class="text-[11px] text-accent-orange hover:text-accent-orange-hover"
                     >
                       + Add Option
                     </button>
                   </div>
-                  <div class="flex flex-wrap gap-2">
+                  <div class="flex flex-wrap gap-1.5">
                     <div
                       v-for="(option, optIndex) in question.options"
                       :key="optIndex"
-                      class="flex items-center gap-1 px-2 py-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded"
+                      class="flex items-center gap-1 px-2 py-1 bg-bg-secondary border border-border-default rounded text-[11px]"
                     >
                       <input
                         v-model="question.options[optIndex]"
                         type="text"
-                        class="bg-transparent text-sm w-24"
+                        class="bg-transparent text-text-primary w-20 focus:outline-none"
                         placeholder="Option"
                       />
                       <button
                         @click="removeOption(question, optIndex)"
-                        class="text-gray-400 hover:text-red-500"
+                        class="text-text-muted hover:text-accent-red"
                       >
                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -173,18 +194,19 @@
                   </div>
                 </div>
 
-                <div class="flex items-center gap-4">
-                  <label class="flex items-center gap-2 text-sm">
+                <div class="flex items-center gap-3 pt-1">
+                  <label class="flex items-center gap-1.5 text-[11px] text-text-secondary cursor-pointer">
                     <input
                       v-model="question.required"
                       type="checkbox"
-                      class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      class="w-3.5 h-3.5 rounded border-border-default text-accent-orange focus:ring-accent-orange"
                     />
                     Required
                   </label>
+                  
                   <button
                     @click="removeQuestion(index)"
-                    class="text-sm text-red-600 hover:text-red-700"
+                    class="text-[11px] text-text-muted hover:text-accent-red"
                   >
                     Remove
                   </button>
@@ -196,27 +218,30 @@
       </div>
 
       <!-- Error/Success Messages -->
-      <div v-if="error" class="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-        <p class="text-sm text-red-600 dark:text-red-400">{{ error }}</p>
+      <div v-if="error" class="p-2.5 bg-accent-red/10 border border-accent-red/30 rounded-md">
+        <p class="text-[12px] text-accent-red">{{ error }}</p>
       </div>
 
-      <div v-if="success" class="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-        <p class="text-sm text-green-600 dark:text-green-400">{{ success }}</p>
+      <div v-if="success" class="p-2.5 bg-accent-green/10 border border-accent-green/30 rounded-md">
+        <p class="text-[12px] text-accent-green">{{ success }}</p>
       </div>
 
       <!-- Actions -->
-      <div class="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+      <div class="flex gap-2 pt-2 border-t border-border-default">
         <button
           @click="saveConfig"
           :disabled="isSaving"
-          class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors flex items-center gap-2"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent-orange text-white rounded-md text-[12px] font-medium hover:bg-accent-orange-hover disabled:opacity-50 transition-colors"
         >
-          <span v-if="isSaving" class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          <svg v-if="isSaving" class="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+          </svg>
           {{ isSaving ? 'Saving...' : 'Save Configuration' }}
         </button>
+        
         <button
           @click="resetConfig"
-          class="px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          class="px-3 py-1.5 text-text-secondary bg-bg-tertiary border border-border-default rounded-md text-[12px] font-medium hover:bg-bg-hover hover:text-text-primary transition-colors"
         >
           Reset
         </button>
