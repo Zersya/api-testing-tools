@@ -2,6 +2,8 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import RequestBuilder from '~/components/RequestBuilder.vue';
 import SuperAdminInviteModal from '~/components/SuperAdminInviteModal.vue';
+import FeedbackConfigPanel from '~/components/FeedbackConfigPanel.vue';
+import FeedbackAnalytics from '~/components/FeedbackAnalytics.vue';
 
 // Types
 interface RequestItem {
@@ -138,6 +140,9 @@ const expandedWorkspaces = ref<Set<string>>(new Set());
 const expandedProjects = ref<Set<string>>(new Set());
 const expandedCollections = ref<Set<string>>(new Set());
 const expandedFolders = ref<Set<string>>(new Set());
+
+// Active tab state
+const activeTab = ref<'workspaces' | 'feedback'>('workspaces');
 
 // Tooltip state
 const tooltipVisible = ref(false);
@@ -529,8 +534,32 @@ const collapseAll = () => {
       </div>
     </div>
 
-    <!-- Main Content -->
-    <div class="flex-1 flex overflow-hidden">
+    <!-- Tabs -->
+    <div class="px-4 border-b border-border-default bg-bg-secondary">
+      <nav class="flex gap-6">
+        <button
+          @click="activeTab = 'workspaces'"
+          class="pb-3 text-[13px] font-medium border-b-2 transition-colors"
+          :class="activeTab === 'workspaces'
+            ? 'border-accent-blue text-accent-blue'
+            : 'border-transparent text-text-secondary hover:text-text-primary'"
+        >
+          Workspaces
+        </button>
+        <button
+          @click="activeTab = 'feedback'"
+          class="pb-3 text-[13px] font-medium border-b-2 transition-colors"
+          :class="activeTab === 'feedback'
+            ? 'border-accent-blue text-accent-blue'
+            : 'border-transparent text-text-secondary hover:text-text-primary'"
+        >
+          Feedback
+        </button>
+      </nav>
+    </div>
+
+    <!-- Workspaces Tab -->
+    <div v-if="activeTab === 'workspaces'" class="flex-1 flex overflow-hidden">
       <!-- Left Panel - Tree View -->
       <div class="w-[450px] flex flex-col bg-bg-sidebar border-r border-border-default overflow-hidden">
         <!-- Loading State -->
@@ -891,6 +920,14 @@ const collapseAll = () => {
             />
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Feedback Tab -->
+    <div v-else-if="activeTab === 'feedback'" class="flex-1 overflow-hidden overflow-y-auto p-6">
+      <div class="max-w-6xl mx-auto space-y-6">
+        <FeedbackConfigPanel />
+        <FeedbackAnalytics />
       </div>
     </div>
 

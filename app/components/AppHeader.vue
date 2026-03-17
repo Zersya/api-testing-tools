@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import EnvironmentSwitcher from './EnvironmentSwitcher.vue';
 import WorkspaceSwitcher from './WorkspaceSwitcher.vue';
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, inject } from 'vue';
+import { useFeedback } from '../composables/useFeedback';
 
 interface Workspace {
   id: string;
@@ -98,6 +99,10 @@ const checkSuperAdmin = async () => {
     isSuperAdmin.value = false;
   }
 };
+
+// Feedback feature
+const { shouldShowFeedback } = useFeedback();
+const openFeedbackModal = inject<() => void>('openFeedbackModal');
 
 const checkAuth = async () => {
   try {
@@ -286,6 +291,19 @@ watch(() => authState.value?.user?.email, async (newEmail) => {
           <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
         </svg>
         <span>Super Admin</span>
+      </button>
+
+      <!-- Feedback Button -->
+      <button
+        v-if="shouldShowFeedback"
+        @click="openFeedbackModal?.()"
+        class="inline-flex items-center gap-1.5 py-1.5 px-2.5 bg-indigo-600 text-white rounded-md cursor-pointer text-[13px] font-medium transition-all duration-fast hover:bg-indigo-700"
+        title="Give Feedback"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+        <span>Feedback</span>
       </button>
 
       <!-- User Menu -->
