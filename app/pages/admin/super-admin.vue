@@ -535,7 +535,7 @@ const collapseAll = () => {
     </div>
 
     <!-- Tabs -->
-    <div class="px-4 border-b border-border-default bg-bg-secondary">
+    <div class="px-4 pt-3 border-b border-border-default bg-bg-secondary">
       <nav class="flex gap-6">
         <button
           @click="activeTab = 'workspaces'"
