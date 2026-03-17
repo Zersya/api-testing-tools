@@ -3,8 +3,11 @@ import jwt from 'jsonwebtoken';
 export default defineEventHandler((event) => {
     const path = event.path;
 
-    // Protect admin and shared-workspace API routes
-    if (path.startsWith('/api/admin') || path.startsWith('/api/shared-workspace')) {
+    // Protect admin, shared-workspace, and feedback submit API routes
+    // Note: /api/feedback/status is public and excluded
+    if (path.startsWith('/api/admin') || 
+        path.startsWith('/api/shared-workspace') || 
+        (path.startsWith('/api/feedback') && !path.includes('/status'))) {
         const token = getCookie(event, 'auth_token');
         const config = useRuntimeConfig();
 
