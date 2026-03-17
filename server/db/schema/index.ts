@@ -13,3 +13,4 @@ export * from './apiDefinition';
 export * from './requestHistory';
 export * from './mocks';
 export * from './settings';
+export * from './feedback';
