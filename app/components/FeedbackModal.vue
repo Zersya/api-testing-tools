@@ -9,33 +9,38 @@
         <Transition name="scale">
           <div 
             v-if="modelValue" 
-            class="w-full max-w-lg bg-white dark:bg-gray-900 rounded-xl shadow-2xl overflow-hidden"
+            class="w-full max-w-lg bg-bg-secondary rounded-lg shadow-2xl overflow-hidden border border-border-default"
           >
             <!-- Header -->
-            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-indigo-500 to-purple-600">
+            <div class="px-4 py-3 border-b border-border-default bg-bg-header">
               <div class="flex items-center justify-between">
-                <h2 class="text-xl font-bold text-white">
-                  {{ config?.title || 'We value your feedback' }}
-                </h2>
+                <div class="flex items-center gap-2">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-accent-orange">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                  </svg>
+                  <h2 class="text-[15px] font-semibold text-text-primary">
+                    {{ config?.title || 'We value your feedback' }}
+                  </h2>
+                </div>
                 <button 
                   @click="close"
-                  class="text-white/80 hover:text-white transition-colors"
+                  class="text-text-muted hover:text-text-primary transition-colors"
                 >
-                  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               </div>
-              <p v-if="config?.description" class="mt-1 text-white/80 text-sm">
+              <p v-if="config?.description" class="mt-1 text-[12px] text-text-secondary">
                 {{ config.description }}
               </p>
-              <p v-if="remainingTime" class="mt-1 text-white/60 text-xs">
+              <p v-if="remainingTime" class="mt-1 text-[11px] text-text-muted">
                 {{ remainingTime }}
               </p>
             </div>
 
             <!-- Form -->
-            <div class="p-6 max-h-[60vh] overflow-y-auto">
+            <div class="p-4 max-h-[60vh] overflow-y-auto">
               <form @submit.prevent="submit">
                 <!-- Dynamic Questions -->
                 <div v-if="config?.questions?.length" class="space-y-4">
@@ -44,23 +49,23 @@
                     :key="question.id"
                     class="space-y-2"
                   >
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <label class="block text-[11px] font-medium text-text-secondary uppercase tracking-wide">
                       {{ question.label }}
-                      <span v-if="question.required" class="text-red-500">*</span>
+                      <span v-if="question.required" class="text-accent-red">*</span>
                     </label>
 
                     <!-- Rating Type -->
-                    <div v-if="question.type === 'rating'" class="flex gap-2">
+                    <div v-if="question.type === 'rating'" class="flex gap-1.5">
                       <button
                         v-for="n in (question.maxRating || 5)"
                         :key="n"
                         type="button"
                         @click="setRating(question.id, n)"
-                        class="w-10 h-10 rounded-lg transition-all duration-200 flex items-center justify-center text-lg"
+                        class="w-9 h-9 rounded-md transition-all duration-200 flex items-center justify-center text-[14px] font-medium border"
                         :class="[
                           responses[question.id] === n
-                            ? 'bg-indigo-500 text-white scale-110'
-                            : 'bg-gray-100 dark:bg-gray-800 text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                            ? 'bg-accent-orange text-white border-accent-orange scale-105'
+                            : 'bg-bg-tertiary text-text-secondary border-border-default hover:border-accent-orange/50'
                         ]"
                       >
                         {{ n }}
@@ -73,42 +78,42 @@
                       v-model="responses[question.id]"
                       :required="question.required"
                       rows="3"
-                      class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                      class="w-full px-2.5 py-2 text-[13px] bg-bg-tertiary border border-border-default rounded-md focus:ring-1 focus:ring-accent-orange focus:border-accent-orange text-text-primary placeholder-text-muted transition-all resize-none"
                       :placeholder="'Enter your response...'"
                     />
 
                     <!-- Single Choice -->
-                    <div v-else-if="question.type === 'single_choice'" class="space-y-2">
+                    <div v-else-if="question.type === 'single_choice'" class="space-y-1.5">
                       <label
                         v-for="option in question.options"
                         :key="option"
-                        class="flex items-center gap-2 cursor-pointer"
+                        class="flex items-center gap-2 cursor-pointer p-2 rounded-md hover:bg-bg-hover transition-colors"
                       >
                         <input
                           v-model="responses[question.id]"
                           :value="option"
                           :required="question.required"
                           type="radio"
-                          class="w-4 h-4 text-indigo-600 focus:ring-indigo-500"
+                          class="w-4 h-4 text-accent-orange focus:ring-accent-orange border-border-default bg-bg-tertiary"
                         />
-                        <span class="text-gray-700 dark:text-gray-300">{{ option }}</span>
+                        <span class="text-[13px] text-text-primary">{{ option }}</span>
                       </label>
                     </div>
 
                     <!-- Multiple Choice -->
-                    <div v-else-if="question.type === 'multiple_choice'" class="space-y-2">
+                    <div v-else-if="question.type === 'multiple_choice'" class="space-y-1.5">
                       <label
                         v-for="option in question.options"
                         :key="option"
-                        class="flex items-center gap-2 cursor-pointer"
+                        class="flex items-center gap-2 cursor-pointer p-2 rounded-md hover:bg-bg-hover transition-colors"
                       >
                         <input
                           v-model="responses[question.id]"
                           :value="option"
                           type="checkbox"
-                          class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+                          class="w-4 h-4 text-accent-orange rounded focus:ring-accent-orange border-border-default bg-bg-tertiary"
                         />
-                        <span class="text-gray-700 dark:text-gray-300">{{ option }}</span>
+                        <span class="text-[13px] text-text-primary">{{ option }}</span>
                       </label>
                     </div>
                   </div>
@@ -117,20 +122,20 @@
                 <!-- Default Rating (if no questions) -->
                 <div v-else class="space-y-4">
                   <div class="space-y-2">
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <label class="block text-[11px] font-medium text-text-secondary uppercase tracking-wide">
                       How would you rate your experience?
                     </label>
-                    <div class="flex gap-2">
+                    <div class="flex gap-1.5">
                       <button
                         v-for="n in 5"
                         :key="n"
                         type="button"
                         @click="overallRating = n"
-                        class="w-10 h-10 rounded-lg transition-all duration-200 flex items-center justify-center text-lg"
+                        class="w-9 h-9 rounded-md transition-all duration-200 flex items-center justify-center text-[14px] font-medium border"
                         :class="[
                           overallRating === n
-                            ? 'bg-indigo-500 text-white scale-110'
-                            : 'bg-gray-100 dark:bg-gray-800 text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                            ? 'bg-accent-orange text-white border-accent-orange scale-105'
+                            : 'bg-bg-tertiary text-text-secondary border-border-default hover:border-accent-orange/50'
                         ]"
                       >
                         {{ n }}
@@ -139,38 +144,40 @@
                   </div>
 
                   <div class="space-y-2">
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <label class="block text-[11px] font-medium text-text-secondary uppercase tracking-wide">
                       Additional comments (optional)
                     </label>
                     <textarea
                       v-model="comment"
                       rows="3"
-                      class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                      class="w-full px-2.5 py-2 text-[13px] bg-bg-tertiary border border-border-default rounded-md focus:ring-1 focus:ring-accent-orange focus:border-accent-orange text-text-primary placeholder-text-muted transition-all resize-none"
                       placeholder="Tell us more about your experience..."
                     />
                   </div>
                 </div>
 
                 <!-- Error Message -->
-                <div v-if="error" class="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                  <p class="text-sm text-red-600 dark:text-red-400">{{ error }}</p>
+                <div v-if="error" class="mt-4 p-2.5 bg-accent-red/10 border border-accent-red/30 rounded-md">
+                  <p class="text-[12px] text-accent-red">{{ error }}</p>
                 </div>
 
                 <!-- Actions -->
-                <div class="mt-6 flex gap-3">
+                <div class="mt-5 flex gap-2">
                   <button
                     type="button"
                     @click="close"
-                    class="flex-1 px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                    class="flex-1 px-4 py-2 text-text-secondary bg-bg-tertiary border border-border-default rounded-md hover:bg-bg-hover hover:text-text-primary transition-colors text-[13px] font-medium"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     :disabled="isSubmitting || !isValid"
-                    class="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                    class="flex-1 px-4 py-2 bg-accent-orange text-white rounded-md hover:bg-accent-orange-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 text-[13px] font-medium"
                   >
-                    <span v-if="isSubmitting" class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <svg v-if="isSubmitting" class="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                    </svg>
                     {{ isSubmitting ? 'Submitting...' : 'Submit Feedback' }}
                   </button>
                 </div>
@@ -291,7 +298,7 @@ watch(() => props.modelValue, (newValue) => {
 <style scoped>
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 0.3s ease;
+  transition: opacity 0.2s ease;
 }
 
 .fade-enter-from,
@@ -301,7 +308,7 @@ watch(() => props.modelValue, (newValue) => {
 
 .scale-enter-active,
 .scale-leave-active {
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .scale-enter-from,
