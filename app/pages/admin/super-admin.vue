@@ -285,25 +285,12 @@ const getSelectedEnvironment = (): Environment | null => {
   return envs.find(e => e.id === selectedEnvironmentId.value) || null;
 };
 
-const activateEnvironment = async (env: Environment) => {
-  try {
-    await $fetch(`/api/admin/super/environments/${env.id}/activate`, { method: 'PUT' });
-    
-    selectedEnvironmentId.value = env.id;
-    showEnvironmentDropdown.value = false;
-    
-    for (const workspace of workspaces.value) {
-      const project = workspace.projects.find(p => p.id === env.projectId);
-      if (project) {
-        project.environments.forEach(e => {
-          e.isActive = e.id === env.id;
-        });
-        break;
-      }
-    }
-  } catch (error) {
-    console.error('Failed to activate environment:', error);
-  }
+const activateEnvironment = (env: Environment) => {
+  // Just update local state for preview - don't persist to DB
+  // This allows Super Admin to preview requests with different environments
+  // without affecting the workspace owner's active environment
+  selectedEnvironmentId.value = env.id;
+  showEnvironmentDropdown.value = false;
 };
 
 // Close dropdown when clicking outside
