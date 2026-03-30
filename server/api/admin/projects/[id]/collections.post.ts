@@ -2,6 +2,7 @@ import { db } from '../../../../db';
 import { projects, collections } from '../../../../db/schema';
 import { eq } from 'drizzle-orm';
 import { getAccessibleWorkspaceIds } from '../../../../utils/permissions';
+import { trackResourceAction } from '../../../../services/analytics';
 
 interface CreateCollectionBody {
   name: string;
@@ -128,6 +129,17 @@ export default defineEventHandler(async (event) => {
         authConfig
       })
       .returning())[0];
+
+    // Track analytics
+    trackResourceAction({
+      userId: user.id,
+      userEmail: user.email,
+      workspaceId: user.workspaceId || 'personal',
+      action: 'create',
+      resourceType: 'collection',
+      resourceId: newCollection.id,
+      resourceName: trimmedName,
+    });
 
     return newCollection;
   } catch (error: any) {

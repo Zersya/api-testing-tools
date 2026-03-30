@@ -5,6 +5,7 @@ import VariableInput from './VariableInput.vue';
 import VariableTextarea from './VariableTextarea.vue';
 import RequestExampleManager from './RequestExampleManager.vue';
 import MockConfiguration from './MockConfiguration.vue';
+import { useAnalytics } from '~/composables/useAnalytics';
 
 interface Variable {
   id: string;
@@ -254,6 +255,8 @@ const preScript = ref('');
 const postScript = ref('');
 const scriptLogs = ref<Array<{ phase: 'pre' | 'post'; type: 'log' | 'error' | 'warn'; message: string; timestamp: number }>>([]);
 const activeScriptTab = ref<'console' | 'preScript' | 'postScript'>('console');
+
+const { trackRequestExecution } = useAnalytics();
 
 const parseUrlQuery = (url: string) => {
   try {
@@ -2089,6 +2092,22 @@ const sendRequest = async () => {
     if (responseViewType.value === 'pretty') {
       expandAll();
     }
+
+    // Track request execution for analytics
+    const isSuccess = 'success' in result && result.success;
+    const statusCode = 'status' in result ? result.status : undefined;
+    const responseTimeMs = result.timing?.durationMs;
+    
+    trackRequestExecution({
+      method: form.value.method,
+      url: requestUrl,
+      statusCode,
+      responseTimeMs,
+      success: isSuccess,
+      requestId: props.request.id || undefined,
+      requestName: props.request.name,
+      workspaceId: props.workspaceId,
+    });
   } catch (error: any) {
     response.value = {
       success: false,
@@ -2102,6 +2121,16 @@ const sendRequest = async () => {
         durationMs: 0
       }
     };
+
+    // Track failed request execution for analytics
+    trackRequestExecution({
+      method: form.value.method,
+      url: form.value.url,
+      success: false,
+      requestId: props.request.id || undefined,
+      requestName: props.request.name,
+      workspaceId: props.workspaceId,
+    });
   } finally {
     isLoading.value = false;
   }

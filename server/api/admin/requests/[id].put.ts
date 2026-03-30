@@ -1,6 +1,7 @@
 import { db } from '../../../db';
 import { savedRequests, type HttpMethod, type RequestHeaders, type RequestBody, type RequestAuth, type MockConfig, type RequestPathVariables } from '../../../db/schema';
 import { eq, sql } from 'drizzle-orm';
+import { trackResourceAction } from '../../../services/analytics';
 
 interface UpdateRequestBody {
   name?: string;
@@ -204,6 +205,20 @@ export default defineEventHandler(async (event) => {
       .returning())[0];
     
     console.log('[Request PUT] Updated request mockConfig:', updatedRequest.mockConfig);
+
+    // Track analytics
+    const user = event.context.user;
+    if (user?.id) {
+      trackResourceAction({
+        userId: user.id,
+        userEmail: user.email,
+        workspaceId: user.workspaceId || 'personal',
+        action: 'update',
+        resourceType: 'request',
+        resourceId: updatedRequest.id,
+        resourceName: updatedRequest.name,
+      });
+    }
 
     return updatedRequest;
   } catch (error: any) {

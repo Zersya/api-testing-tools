@@ -1,6 +1,7 @@
 import { db } from '../../../../db';
 import { folders, savedRequests, type HttpMethod, type RequestHeaders, type RequestBody, type RequestAuth, type RequestPathVariables } from '../../../../db/schema';
 import { eq } from 'drizzle-orm';
+import { trackResourceAction } from '../../../../services/analytics';
 
 interface CreateRequestBody {
   name: string;
@@ -141,6 +142,20 @@ export default defineEventHandler(async (event) => {
         order
       })
       .returning())[0];
+
+    // Track analytics
+    const user = event.context.user;
+    if (user?.id) {
+      trackResourceAction({
+        userId: user.id,
+        userEmail: user.email,
+        workspaceId: user.workspaceId || 'personal',
+        action: 'create',
+        resourceType: 'request',
+        resourceId: newRequest.id,
+        resourceName: trimmedName,
+      });
+    }
 
     return newRequest;
   } catch (error: any) {

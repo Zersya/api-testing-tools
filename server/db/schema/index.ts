@@ -14,3 +14,4 @@ export * from './requestHistory';
 export * from './mocks';
 export * from './settings';
 export * from './feedback';
+export * from './usageAnalytics';
