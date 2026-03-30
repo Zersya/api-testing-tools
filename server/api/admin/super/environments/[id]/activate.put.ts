@@ -1,7 +1,7 @@
-import { db } from '../../../../db';
-import { environments } from '../../../../db/schema';
+import { db } from '../../../../../../db';
+import { environments } from '../../../../../../db/schema';
 import { eq } from 'drizzle-orm';
-import { isSuperAdmin } from '../../../../utils/permissions';
+import { isSuperAdmin } from '../../../../../../utils/permissions';
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id');
