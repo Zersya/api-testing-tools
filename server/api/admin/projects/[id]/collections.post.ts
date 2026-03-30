@@ -2,7 +2,7 @@ import { db } from '../../../../db';
 import { projects, collections } from '../../../../db/schema';
 import { eq } from 'drizzle-orm';
 import { getAccessibleWorkspaceIds } from '../../../../utils/permissions';
-import { trackResourceAction } from '../../../../services/analytics';
+import { trackResourceAction } from '../../../../services/usageTracking';
 
 interface CreateCollectionBody {
   name: string;

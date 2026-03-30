@@ -43,7 +43,7 @@ export async function aggregateOldEvents(): Promise<void> {
     const cutoffDate = getDateDaysAgo(DETAILED_RETENTION_DAYS);
     const cutoffTimestamp = new Date(cutoffDate);
 
-    console.log(`[Analytics Aggregation] Aggregating events older than ${cutoffDate}`);
+    console.log(`[Usage Aggregation] Aggregating events older than ${cutoffDate}`);
 
     const oldEvents = await db
       .select()
@@ -51,11 +51,11 @@ export async function aggregateOldEvents(): Promise<void> {
       .where(lt(usageEvents.timestamp, cutoffTimestamp));
 
     if (oldEvents.length === 0) {
-      console.log('[Analytics Aggregation] No old events to aggregate');
+      console.log('[Usage Aggregation] No old events to aggregate');
       return;
     }
 
-    console.log(`[Analytics Aggregation] Found ${oldEvents.length} events to aggregate`);
+    console.log(`[Usage Aggregation] Found ${oldEvents.length} events to aggregate`);
 
     const aggregationMap = new Map<string, {
       date: string;
@@ -189,9 +189,9 @@ export async function aggregateOldEvents(): Promise<void> {
       }
     }
 
-    console.log(`[Analytics Aggregation] Aggregated ${aggregationMap.size} daily stat records`);
+    console.log(`[Usage Aggregation] Aggregated ${aggregationMap.size} daily stat records`);
   } catch (error) {
-    console.error('[Analytics Aggregation] Error aggregating events:', error);
+    console.error('[Usage Aggregation] Error aggregating events:', error);
     throw error;
   }
 }
@@ -201,22 +201,22 @@ export async function cleanupAggregatedEvents(): Promise<void> {
     const cutoffDate = getDateDaysAgo(DETAILED_RETENTION_DAYS);
     const cutoffTimestamp = new Date(cutoffDate);
 
-    console.log(`[Analytics Cleanup] Deleting events older than ${cutoffDate}`);
+    console.log(`[Usage Cleanup] Deleting events older than ${cutoffDate}`);
 
     const result = await db
       .delete(usageEvents)
       .where(lt(usageEvents.timestamp, cutoffTimestamp));
 
-    console.log(`[Analytics Cleanup] Deleted old events`);
+    console.log(`[Usage Cleanup] Deleted old events`);
   } catch (error) {
-    console.error('[Analytics Cleanup] Error cleaning up events:', error);
+    console.error('[Usage Cleanup] Error cleaning up events:', error);
     throw error;
   }
 }
 
 export async function runAggregationAndCleanup(): Promise<void> {
-  console.log('[Analytics] Starting aggregation and cleanup process...');
+  console.log('[Usage] Starting aggregation and cleanup process...');
   await aggregateOldEvents();
   await cleanupAggregatedEvents();
-  console.log('[Analytics] Aggregation and cleanup completed');
+  console.log('[Usage] Aggregation and cleanup completed');
 }

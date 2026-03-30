@@ -5,7 +5,7 @@ import VariableInput from './VariableInput.vue';
 import VariableTextarea from './VariableTextarea.vue';
 import RequestExampleManager from './RequestExampleManager.vue';
 import MockConfiguration from './MockConfiguration.vue';
-import { useAnalytics } from '~/composables/useAnalytics';
+import { useUsageTracking } from '~/composables/useUsageTracking';
 
 interface Variable {
   id: string;
@@ -256,7 +256,7 @@ const postScript = ref('');
 const scriptLogs = ref<Array<{ phase: 'pre' | 'post'; type: 'log' | 'error' | 'warn'; message: string; timestamp: number }>>([]);
 const activeScriptTab = ref<'console' | 'preScript' | 'postScript'>('console');
 
-const { trackRequestExecution } = useAnalytics();
+const { trackRequestExecution } = useUsageTracking();
 
 const parseUrlQuery = (url: string) => {
   try {
