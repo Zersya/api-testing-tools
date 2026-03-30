@@ -401,7 +401,7 @@ const clearEventFilters = () => {
     <header class="h-12 bg-bg-header border-b border-border-default flex items-center justify-between px-4 flex-shrink-0">
       <div class="flex items-center gap-4">
         <button
-          @click="navigateTo('/admin')"
+          @click="navigateTo('/admin/super-admin')"
           class="inline-flex items-center gap-1.5 py-1.5 px-2.5 text-text-secondary hover:text-text-primary transition-colors text-[13px] font-medium"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
