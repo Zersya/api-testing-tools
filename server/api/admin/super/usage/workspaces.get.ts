@@ -146,7 +146,7 @@ export default defineEventHandler(async (event) => {
       total: workspacesList.length,
     };
   } catch (error: any) {
-    console.error('[Analytics Workspaces] Error:', error);
+    console.error('[Usage Workspaces] Error:', error);
 
     if (error.statusCode) {
       throw error;
@@ -154,7 +154,7 @@ export default defineEventHandler(async (event) => {
 
     throw createError({
       statusCode: 500,
-      statusMessage: 'Failed to fetch workspace analytics'
+      statusMessage: 'Failed to fetch workspace usage'
     });
   }
 });

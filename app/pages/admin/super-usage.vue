@@ -138,7 +138,7 @@ const getStartDate = (days: number): string => {
 const fetchOverview = async () => {
   try {
     const days = dateRange.value === '7d' ? 7 : dateRange.value === '30d' ? 30 : 90;
-    const response = await $fetch<OverviewStats>('/api/admin/super/analytics/overview', {
+    const response = await $fetch<OverviewStats>('/api/admin/super/usage/overview', {
       query: {
         startDate: getStartDate(days),
         endDate: new Date().toISOString(),
@@ -153,7 +153,7 @@ const fetchOverview = async () => {
 const fetchUsers = async () => {
   try {
     const days = dateRange.value === '7d' ? 7 : dateRange.value === '30d' ? 30 : 90;
-    const response = await $fetch<{ users: UserStat[]; total: number; limit: number; offset: number }>('/api/admin/super/analytics/users', {
+    const response = await $fetch<{ users: UserStat[]; total: number; limit: number; offset: number }>('/api/admin/super/usage/users', {
       query: {
         startDate: getStartDate(days),
         endDate: new Date().toISOString(),
@@ -171,7 +171,7 @@ const fetchUsers = async () => {
 const fetchWorkspaces = async () => {
   try {
     const days = dateRange.value === '7d' ? 7 : dateRange.value === '30d' ? 30 : 90;
-    const response = await $fetch<{ workspaces: WorkspaceStat[]; total: number }>('/api/admin/super/analytics/workspaces', {
+    const response = await $fetch<{ workspaces: WorkspaceStat[]; total: number }>('/api/admin/super/usage/workspaces', {
       query: {
         startDate: getStartDate(days),
         endDate: new Date().toISOString(),
@@ -197,7 +197,7 @@ const fetchEvents = async () => {
     if (eventFilters.value.eventType) query.eventType = eventFilters.value.eventType;
     if (eventFilters.value.resourceType) query.resourceType = eventFilters.value.resourceType;
     
-    const response = await $fetch<{ events: UsageEvent[]; total: number; filters: any }>('/api/admin/super/analytics/events', {
+    const response = await $fetch<{ events: UsageEvent[]; total: number; filters: any }>('/api/admin/super/usage/events', {
       query,
     });
     eventsList.value = response.events;
@@ -210,7 +210,7 @@ const fetchEvents = async () => {
 const fetchTrends = async () => {
   try {
     const days = dateRange.value === '7d' ? 7 : dateRange.value === '30d' ? 30 : 90;
-    const response = await $fetch<{ trends: TrendData[] }>('/api/admin/super/analytics/trends', {
+    const response = await $fetch<{ trends: TrendData[] }>('/api/admin/super/usage/trends', {
       query: {
         startDate: getStartDate(days),
         endDate: new Date().toISOString(),
@@ -417,7 +417,7 @@ const clearEventFilters = () => {
             <path d="M3 3v18h18"/>
             <path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/>
           </svg>
-          <span class="text-[15px] font-semibold text-text-primary">Usage Analytics</span>
+          <span class="text-[15px] font-semibold text-text-primary">Usage Statistics</span>
         </div>
       </div>
 
