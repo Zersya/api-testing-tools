@@ -1,4 +1,4 @@
-import { trackUsageEventsBatch, type UsageEventInput } from '../../../services/analytics';
+import { trackUsageEventsBatch, type UsageEventInput } from '../../../services/usageTracking';
 
 export default defineEventHandler(async (event) => {
   const user = event.context.user;
