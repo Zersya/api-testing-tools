@@ -285,6 +285,27 @@ const getSelectedEnvironment = (): Environment | null => {
   return envs.find(e => e.id === selectedEnvironmentId.value) || null;
 };
 
+const activateEnvironment = async (env: Environment) => {
+  try {
+    await $fetch(`/api/admin/super/environments/${env.id}/activate`, { method: 'PUT' });
+    
+    selectedEnvironmentId.value = env.id;
+    showEnvironmentDropdown.value = false;
+    
+    for (const workspace of workspaces.value) {
+      const project = workspace.projects.find(p => p.id === env.projectId);
+      if (project) {
+        project.environments.forEach(e => {
+          e.isActive = e.id === env.id;
+        });
+        break;
+      }
+    }
+  } catch (error) {
+    console.error('Failed to activate environment:', error);
+  }
+};
+
 // Close dropdown when clicking outside
 const closeEnvironmentDropdown = (e: MouseEvent) => {
   const target = e.target as HTMLElement;
@@ -870,7 +891,7 @@ const collapseAll = () => {
                     <button
                       v-for="env in getAvailableEnvironments()"
                       :key="env.id"
-                      @click="selectedEnvironmentId = env.id; showEnvironmentDropdown = false"
+                      @click="activateEnvironment(env)"
                       :class="[
                         'w-full flex items-center gap-2 px-3 py-2 text-left text-[13px] transition-colors',
                         selectedEnvironmentId === env.id ? 'bg-accent-blue/10 text-accent-blue' : 'text-text-primary hover:bg-bg-hover'
