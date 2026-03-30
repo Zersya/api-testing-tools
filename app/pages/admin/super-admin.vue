@@ -555,6 +555,12 @@ const collapseAll = () => {
         >
           Feedback
         </button>
+        <button
+          @click="navigateTo('/admin/super-analytics')"
+          class="pb-3 text-[13px] font-medium border-b-2 transition-colors border-transparent text-text-secondary hover:text-text-primary"
+        >
+          Analytics
+        </button>
       </nav>
     </div>
 
