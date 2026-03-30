@@ -66,7 +66,7 @@ export async function trackUsageEvent(event: UsageEventInput): Promise<void> {
 
       await db.insert(usageEvents).values(newEvent);
     } catch (error) {
-      console.error('[Analytics] Failed to track event:', error);
+      console.error('[Usage] Failed to track event:', error);
     }
   });
 }
@@ -94,7 +94,7 @@ export async function trackUsageEventsBatch(events: UsageEventInput[]): Promise<
 
       await db.insert(usageEvents).values(newEvents);
     } catch (error) {
-      console.error('[Analytics] Failed to track batch events:', error);
+      console.error('[Usage] Failed to track batch events:', error);
     }
   });
 }

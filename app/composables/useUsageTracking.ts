@@ -38,18 +38,18 @@ function getEventType(action: 'create' | 'update' | 'delete', resourceType: Reso
   return `${resourceType}_${action}` as UsageEventType;
 }
 
-export function useAnalytics() {
+export function useUsageTracking() {
   const pendingEvents = ref<UsageEventInput[]>([]);
   const isTracking = ref(false);
 
   const trackEvent = async (event: UsageEventInput) => {
     try {
-      await $fetch('/api/admin/analytics/track', {
+      await $fetch('/api/admin/usage/track', {
         method: 'POST',
         body: event
       });
     } catch (error) {
-      console.warn('[Analytics] Failed to track event:', error);
+      console.warn('[Usage] Failed to track event:', error);
     }
   };
 
@@ -61,12 +61,12 @@ export function useAnalytics() {
     if (events.length === 0) return;
 
     try {
-      await $fetch('/api/admin/analytics/track-batch', {
+      await $fetch('/api/admin/usage/track-batch', {
         method: 'POST',
         body: { events }
       });
     } catch (error) {
-      console.warn('[Analytics] Failed to track batch:', error);
+      console.warn('[Usage] Failed to track batch:', error);
     }
   };
 

@@ -1,7 +1,7 @@
 import { db } from '../../../db';
 import { savedRequests, type HttpMethod, type RequestHeaders, type RequestBody, type RequestAuth, type MockConfig, type RequestPathVariables } from '../../../db/schema';
 import { eq, sql } from 'drizzle-orm';
-import { trackResourceAction } from '../../../services/analytics';
+import { trackResourceAction } from '../../../services/usageTracking';
 
 interface UpdateRequestBody {
   name?: string;

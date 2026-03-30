@@ -210,7 +210,7 @@ export default defineEventHandler(async (event) => {
       offset,
     };
   } catch (error: any) {
-    console.error('[Analytics Users] Error:', error);
+    console.error('[Usage Users] Error:', error);
 
     if (error.statusCode) {
       throw error;
@@ -218,7 +218,7 @@ export default defineEventHandler(async (event) => {
 
     throw createError({
       statusCode: 500,
-      statusMessage: 'Failed to fetch user analytics'
+      statusMessage: 'Failed to fetch user usage'
     });
   }
 });
