@@ -11,6 +11,7 @@ interface Variable {
 interface Props {
   modelValue: string;
   variables?: Variable[];
+  pathVariables?: string[]; // Array of path variable names (e.g., ['id', 'userId'])
   placeholder?: string;
   type?: 'text' | 'password';
   disabled?: boolean;
@@ -34,6 +35,7 @@ const cursorPosition = ref(0);
 const isComposing = ref(false);
 
 const VARIABLE_PATTERN = /\{\{([^{}]+)\}\}/g;
+const PATH_VARIABLE_PATTERN = /:(\w+)/g; // Matches :variableName
 
 const escapeHtml = (text: string): string => {
   const div = document.createElement('div');
@@ -44,31 +46,85 @@ const escapeHtml = (text: string): string => {
 const highlightedContent = computed(() => {
   if (!props.modelValue) return '';
 
-  let result = '';
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
+  // Collect all matches from both patterns with their positions
+  const matches: Array<{
+    startIndex: number;
+    endIndex: number;
+    fullMatch: string;
+    content: string;
+    type: 'env' | 'path';
+  }> = [];
 
+  // Find environment variable matches {{variable}}
+  let match: RegExpExecArray | null;
   while ((match = VARIABLE_PATTERN.exec(props.modelValue)) !== null) {
     const [fullMatch, variableName] = match;
-    const startIndex = match.index;
-    const endIndex = startIndex + fullMatch.length;
-
-    result += escapeHtml(props.modelValue.slice(lastIndex, startIndex));
-
-    const trimmedName = variableName.trim();
-    const variable = props.variables?.find(v => v.key === trimmedName);
-    const isDefined = !!variable;
-    
-    const colorClass = isDefined ? 'var-defined' : 'var-undefined';
-    const titleAttr = variable 
-      ? (variable.isSecret ? '••••••••' : escapeHtml(variable.value))
-      : 'Undefined variable';
-    
-    result += `<span class="${colorClass}" title="${titleAttr}">${escapeHtml(fullMatch)}</span>`;
-
-    lastIndex = endIndex;
+    matches.push({
+      startIndex: match.index,
+      endIndex: match.index + fullMatch.length,
+      fullMatch,
+      content: variableName.trim(),
+      type: 'env'
+    });
   }
 
+  // Find path variable matches :variable
+  while ((match = PATH_VARIABLE_PATTERN.exec(props.modelValue)) !== null) {
+    const [fullMatch, variableName] = match;
+    matches.push({
+      startIndex: match.index,
+      endIndex: match.index + fullMatch.length,
+      fullMatch,
+      content: variableName,
+      type: 'path'
+    });
+  }
+
+  // Sort matches by start index
+  matches.sort((a, b) => a.startIndex - b.startIndex);
+
+  // Remove overlapping matches (prefer environment variables if they overlap)
+  const filteredMatches: typeof matches = [];
+  for (const m of matches) {
+    const lastMatch = filteredMatches[filteredMatches.length - 1];
+    if (!lastMatch || m.startIndex >= lastMatch.endIndex) {
+      filteredMatches.push(m);
+    }
+  }
+
+  // Build the highlighted HTML
+  let result = '';
+  let lastIndex = 0;
+
+  for (const m of filteredMatches) {
+    // Add text before this match
+    result += escapeHtml(props.modelValue.slice(lastIndex, m.startIndex));
+
+    if (m.type === 'env') {
+      // Environment variable highlighting
+      const variable = props.variables?.find(v => v.key === m.content);
+      const isDefined = !!variable;
+      const colorClass = isDefined ? 'var-defined' : 'var-undefined';
+      const titleAttr = variable
+        ? (variable.isSecret ? '••••••••' : escapeHtml(variable.value))
+        : 'Undefined variable';
+
+      result += `<span class="${colorClass}" title="${titleAttr}">${escapeHtml(m.fullMatch)}</span>`;
+    } else {
+      // Path variable highlighting
+      const isDefined = props.pathVariables?.includes(m.content);
+      const colorClass = isDefined ? 'path-var-defined' : 'path-var-undefined';
+      const titleAttr = isDefined
+        ? `Path variable: ${escapeHtml(m.content)}`
+        : `Undefined path variable: ${escapeHtml(m.content)}`;
+
+      result += `<span class="${colorClass}" title="${titleAttr}">${escapeHtml(m.fullMatch)}</span>`;
+    }
+
+    lastIndex = m.endIndex;
+  }
+
+  // Add remaining text
   result += escapeHtml(props.modelValue.slice(lastIndex));
 
   return result;
@@ -338,6 +394,16 @@ onMounted(() => {
 }
 
 .variable-editor :deep(.var-undefined) {
+  color: var(--accent-orange);
+  font-weight: 500;
+}
+
+.variable-editor :deep(.path-var-defined) {
+  color: var(--accent-green);
+  font-weight: 500;
+}
+
+.variable-editor :deep(.path-var-undefined) {
   color: var(--accent-orange);
   font-weight: 500;
 }
