@@ -634,6 +634,16 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
       try {
         console.log('[Proxy] Executing post-script');
 
+        // Calculate response size in bytes
+        let responseSize = 0;
+        if (responseBody) {
+          if (typeof responseBody === 'string') {
+            responseSize = Buffer.byteLength(responseBody, 'utf8');
+          } else if (typeof responseBody === 'object') {
+            responseSize = Buffer.byteLength(JSON.stringify(responseBody), 'utf8');
+          }
+        }
+
         const postResult = await executePostScript({
           code: savedRequest.postScript,
           context: {
@@ -648,7 +658,9 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
             headers: responseHeaders,
             body: responseBody
           },
-          environmentId: body.environmentId
+          environmentId: body.environmentId,
+          responseTimeMs: endTime - startTime,
+          responseSize: responseSize
         });
 
         scriptLogs.push(...postResult.logs);

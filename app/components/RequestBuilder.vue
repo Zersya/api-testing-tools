@@ -1601,7 +1601,11 @@ const insertSnippet = (type: 'pre' | 'post', snippet: string) => {
     'env-get': `const value = pm.environment.get("key");`,
     'env-set': `pm.environment.set("key", "value");`,
     'request': `// Access request properties\npm.request.headers["X-Custom"] = "value";`,
+    'console': `console.log("message", value);`,
+    'response-code': `if (pm.response.code === 200) {\n  console.log("Success!");\n}`,
     'response-json': `const json = pm.response.json();`,
+    'response-time': `console.log("Response time:", pm.response.responseTime + "ms");`,
+    'response-size': `console.log("Response size:", pm.response.size + " bytes");`,
     'status': `const status = pm.response.status;`
   };
 
@@ -3060,7 +3064,7 @@ defineExpose({
             <textarea
               v-model="preScript"
               class="w-full h-full p-4 bg-bg-input text-text-primary font-mono text-sm resize-none border-none focus:outline-none"
-              placeholder="// Pre-request script&#10;// Example: Set a dynamic header&#10;const timestamp = new Date().toISOString();&#10;pm.request.headers['X-Timestamp'] = timestamp;&#10;pm.console.log('Timestamp set:', timestamp);"
+              placeholder="// Pre-request script&#10;// Example: Set a dynamic header&#10;const timestamp = new Date().toISOString();&#10;pm.request.headers['X-Timestamp'] = timestamp;&#10;console.log('Timestamp set:', timestamp);&#10;&#10;// Or use pm.console.log('Timestamp set:', timestamp);"
               spellcheck="false"
             ></textarea>
           </div>
@@ -3069,6 +3073,7 @@ defineExpose({
             <code class="text-xs px-1.5 py-0.5 bg-bg-tertiary rounded text-accent-blue cursor-pointer hover:bg-bg-hover" @click="insertSnippet('pre', 'env-get')">pm.environment.get()</code>
             <code class="text-xs px-1.5 py-0.5 bg-bg-tertiary rounded text-accent-blue cursor-pointer hover:bg-bg-hover" @click="insertSnippet('pre', 'env-set')">pm.environment.set()</code>
             <code class="text-xs px-1.5 py-0.5 bg-bg-tertiary rounded text-accent-blue cursor-pointer hover:bg-bg-hover" @click="insertSnippet('pre', 'request')">pm.request</code>
+            <code class="text-xs px-1.5 py-0.5 bg-bg-tertiary rounded text-accent-blue cursor-pointer hover:bg-bg-hover" @click="insertSnippet('pre', 'console')">console.log()</code>
           </div>
         </div>
 
@@ -3083,15 +3088,17 @@ defineExpose({
             <textarea
               v-model="postScript"
               class="w-full h-full p-4 bg-bg-input text-text-primary font-mono text-sm resize-none border-none focus:outline-none"
-              placeholder="// Post-response script&#10;// Example: Extract token from response&#10;const json = pm.response.json();&#10;if (json.access_token) {&#10;  pm.environment.set('access_token', json.access_token);&#10;  pm.console.log('Token saved to environment');&#10;}"
+              placeholder="// Post-response script&#10;// Example: Check status code and extract token&#10;if (pm.response.code == 200) {&#10;  const json = pm.response.json();&#10;  if (json.access_token) {&#10;    pm.environment.set('access_token', json.access_token);&#10;    console.log('Token saved:', json.access_token);&#10;    console.log('Response time:', pm.response.responseTime + 'ms');&#10;  }&#10;}"
               spellcheck="false"
             ></textarea>
           </div>
           <div class="p-2 border-t border-border-default bg-bg-secondary flex items-center gap-2">
             <span class="text-xs text-text-muted">Available:</span>
+            <code class="text-xs px-1.5 py-0.5 bg-bg-tertiary rounded text-accent-blue cursor-pointer hover:bg-bg-hover" @click="insertSnippet('post', 'response-code')">pm.response.code</code>
             <code class="text-xs px-1.5 py-0.5 bg-bg-tertiary rounded text-accent-blue cursor-pointer hover:bg-bg-hover" @click="insertSnippet('post', 'response-json')">pm.response.json()</code>
+            <code class="text-xs px-1.5 py-0.5 bg-bg-tertiary rounded text-accent-blue cursor-pointer hover:bg-bg-hover" @click="insertSnippet('post', 'response-time')">pm.response.responseTime</code>
+            <code class="text-xs px-1.5 py-0.5 bg-bg-tertiary rounded text-accent-blue cursor-pointer hover:bg-bg-hover" @click="insertSnippet('post', 'response-size')">pm.response.size</code>
             <code class="text-xs px-1.5 py-0.5 bg-bg-tertiary rounded text-accent-blue cursor-pointer hover:bg-bg-hover" @click="insertSnippet('post', 'env-set')">pm.environment.set()</code>
-            <code class="text-xs px-1.5 py-0.5 bg-bg-tertiary rounded text-accent-blue cursor-pointer hover:bg-bg-hover" @click="insertSnippet('post', 'status')">pm.response.status</code>
           </div>
         </div>
 
