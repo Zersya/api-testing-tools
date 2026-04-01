@@ -13,6 +13,10 @@ import KeyboardShortcutsHelpModal from '~/components/KeyboardShortcutsHelpModal.
 import RenameWorkspaceModal from '~/components/RenameWorkspaceModal.vue';
 import ShareWorkspaceModal from '~/components/ShareWorkspaceModal.vue';
 import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
+import { useExampleData } from '~/composables/useExampleData';
+
+const { normalizeExampleData } = useExampleData();
+
 interface Collection {
   id: string;
   name: string;
@@ -2129,9 +2133,10 @@ const getPreviewForEndpoint = (method: string, path: string) => {
       const responseObj = responses[successKey];
       if (responseObj?.content?.['application/json']) {
         const mediaType = responseObj.content['application/json'];
-        responseData = mediaType.example || 
+        const rawExample = mediaType.example || 
           (mediaType.examples ? Object.values(mediaType.examples)[0]?.value : {}) || 
           (mediaType.schema ? generateMockDataFromSchema(mediaType.schema) : {});
+        responseData = normalizeExampleData(rawExample);
       }
     }
   } else {
@@ -2141,9 +2146,10 @@ const getPreviewForEndpoint = (method: string, path: string) => {
       const responseObj = responses[errorKey];
       if (responseObj?.content?.['application/json']) {
         const mediaType = responseObj.content['application/json'];
-        responseData = mediaType.example || 
+        const rawExample = mediaType.example || 
           (mediaType.examples ? Object.values(mediaType.examples)[0]?.value : {}) || 
           (mediaType.schema ? generateMockDataFromSchema(mediaType.schema) : {});
+        responseData = normalizeExampleData(rawExample);
       }
     }
   }
