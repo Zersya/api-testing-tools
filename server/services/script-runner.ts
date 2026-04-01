@@ -29,6 +29,8 @@ export interface ScriptExecutionResponse {
   statusText: string;
   headers: Record<string, string>;
   body: any;
+  responseTimeMs?: number;
+  responseSize?: number;
 }
 
 export interface ScriptLogEntry {
@@ -84,15 +86,19 @@ export async function executePostScript(params: {
   context: ScriptExecutionContext;
   response: ScriptExecutionResponse;
   environmentId: string;
+  responseTimeMs?: number;
+  responseSize?: number;
 }): Promise<ScriptExecutionResult> {
-  const { code, context, response, environmentId } = params;
+  const { code, context, response, environmentId, responseTimeMs, responseSize } = params;
 
   return executeScript({
     code,
     context,
     environmentId,
     phase: 'post',
-    response
+    response,
+    responseTimeMs,
+    responseSize
   });
 }
 
@@ -155,8 +161,10 @@ async function executeScript(params: {
   environmentId: string;
   phase: 'pre' | 'post';
   response?: ScriptExecutionResponse;
+  responseTimeMs?: number;
+  responseSize?: number;
 }): Promise<ScriptExecutionResult> {
-  const { code, context, environmentId, phase, response } = params;
+  const { code, context, environmentId, phase, response, responseTimeMs, responseSize } = params;
 
   const logs: ScriptLogEntry[] = [];
   const errors: string[] = [];
@@ -194,6 +202,8 @@ async function executeScript(params: {
       context: modifiedContext,
       response,
       phase,
+      responseTimeMs,
+      responseSize,
       onLog: (type, message) => {
         if (logs.length < MAX_LOG_ENTRIES) {
           logs.push({
@@ -288,11 +298,13 @@ function createPmContext(params: {
   context: ScriptExecutionContext;
   response?: ScriptExecutionResponse;
   phase: 'pre' | 'post';
+  responseTimeMs?: number;
+  responseSize?: number;
   onLog: (type: 'log' | 'error' | 'warn', message: string) => void;
   onEnvironmentChange: (key: string, value: string, action: 'set' | 'unset') => void;
   onContextModify: (key: string, value: any) => void;
 }) {
-  const { envVars, context, response, phase, onLog, onEnvironmentChange, onContextModify } = params;
+  const { envVars, context, response, phase, responseTimeMs, responseSize, onLog, onEnvironmentChange, onContextModify } = params;
 
   // Substitute {{var}} and {{$magic}} in a string (used by environment.set and variables.replaceIn)
   const substituteInTemplate = (template: string): string => {
@@ -358,6 +370,9 @@ function createPmContext(params: {
 
     // Response access (only in post-script)
     response: response ? {
+      get code(): number {
+        return response.status;
+      },
       get status(): number {
         return response.status;
       },
@@ -369,6 +384,12 @@ function createPmContext(params: {
       },
       get body(): any {
         return response.body;
+      },
+      get responseTime(): number | undefined {
+        return responseTimeMs;
+      },
+      get size(): number | undefined {
+        return responseSize;
       },
       json: (): any => {
         if (typeof response.body === 'string') {
