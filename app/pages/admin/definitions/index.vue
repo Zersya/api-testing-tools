@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import MethodBadge from '~/components/MethodBadge.vue';
+import { useExampleData } from '~/composables/useExampleData';
+
+const { normalizeExampleData } = useExampleData();
 
 const { data: definitions, refresh } = await useFetch('/api/definitions');
 const { data: collections } = await useFetch('/api/admin/collections');
@@ -51,24 +54,6 @@ const toggleEndpoint = (method: string, path: string) => {
     } else {
         selectedEndpoints.value.push(key);
     }
-};
-
-// Helper function to normalize example data
-const normalizeExampleData = (data: any): any => {
-  // If data is a placeholder string like "JSON:", return empty object
-  if (typeof data === 'string') {
-    if (data.trim() === 'JSON:' || data.trim() === 'JSON' || data.trim() === '') {
-      return {};
-    }
-    // Try to parse as JSON
-    try {
-      return JSON.parse(data);
-    } catch {
-      // If not valid JSON, return as string wrapped in object
-      return { value: data };
-    }
-  }
-  return data;
 };
 
 const getPreviewForEndpoint = (method: string, path: string) => {
