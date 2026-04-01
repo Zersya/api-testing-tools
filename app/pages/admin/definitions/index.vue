@@ -53,6 +53,24 @@ const toggleEndpoint = (method: string, path: string) => {
     }
 };
 
+// Helper function to normalize example data
+const normalizeExampleData = (data: any): any => {
+  // If data is a placeholder string like "JSON:", return empty object
+  if (typeof data === 'string') {
+    if (data.trim() === 'JSON:' || data.trim() === 'JSON' || data.trim() === '') {
+      return {};
+    }
+    // Try to parse as JSON
+    try {
+      return JSON.parse(data);
+    } catch {
+      // If not valid JSON, return as string wrapped in object
+      return { value: data };
+    }
+  }
+  return data;
+};
+
 const getPreviewForEndpoint = (method: string, path: string) => {
   if (!selectedDefinition.value?.parsedInfo) return null;
   
@@ -73,9 +91,10 @@ const getPreviewForEndpoint = (method: string, path: string) => {
       const responseObj = responses[successKey];
       if (responseObj?.content?.['application/json']) {
         const mediaType = responseObj.content['application/json'];
-        responseData = mediaType.example || 
+        const rawExample = mediaType.example || 
           (mediaType.examples ? Object.values(mediaType.examples)[0]?.value : {}) || 
           (mediaType.schema ? generateMockDataFromSchema(mediaType.schema) : {});
+        responseData = normalizeExampleData(rawExample);
       }
     }
   } else {
@@ -85,9 +104,10 @@ const getPreviewForEndpoint = (method: string, path: string) => {
       const responseObj = responses[errorKey];
       if (responseObj?.content?.['application/json']) {
         const mediaType = responseObj.content['application/json'];
-        responseData = mediaType.example || 
+        const rawExample = mediaType.example || 
           (mediaType.examples ? Object.values(mediaType.examples)[0]?.value : {}) || 
           (mediaType.schema ? generateMockDataFromSchema(mediaType.schema) : {});
+        responseData = normalizeExampleData(rawExample);
       }
     }
   }
