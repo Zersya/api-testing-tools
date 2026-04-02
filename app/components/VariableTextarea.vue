@@ -1,76 +1,80 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue'
+import { highlightJSONC } from '~/utils/jsonc'
 
 interface Variable {
-  id: string;
-  key: string;
-  value: string;
-  isSecret: boolean;
+  id: string
+  key: string
+  value: string
+  isSecret: boolean
 }
 
 interface Props {
-  modelValue: string;
-  variables?: Variable[];
-  placeholder?: string;
-  rows?: number;
-  disabled?: boolean;
+  modelValue: string
+  variables?: Variable[]
+  placeholder?: string
+  rows?: number
+  disabled?: boolean
+  enableJsonc?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   rows: 3,
-  disabled: false
-});
+  disabled: false,
+  enableJsonc: false
+})
 
 const emit = defineEmits<{
-  'update:modelValue': [value: string];
-}>();
+  'update:modelValue': [value: string]
+}>()
 
-const editorRef = ref<HTMLElement | null>(null);
+const editorRef = ref<HTMLElement | null>(null)
 
-const VARIABLE_PATTERN = /\{\{([^{}]+)\}\}/g;
+const VARIABLE_PATTERN = /\{\{([^{}]+)\}\}/g
 
 const escapeHtml = (text: string): string => {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-};
+  const div = document.createElement('div')
+  div.textContent = text
+  return div.innerHTML
+}
 
 const highlightedContent = computed(() => {
-  if (!props.modelValue) return '';
+  if (!props.modelValue) return ''
 
-  let result = '';
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = VARIABLE_PATTERN.exec(props.modelValue)) !== null) {
-    const [fullMatch, variableName] = match;
-    const startIndex = match.index;
-    const endIndex = startIndex + fullMatch.length;
-
-    result += escapeHtml(props.modelValue.slice(lastIndex, startIndex));
-
-    const trimmedName = variableName.trim();
-    const variable = props.variables?.find(v => v.key === trimmedName);
-    const isDefined = !!variable;
+  let content = props.modelValue
+  
+  if (props.enableJsonc) {
+    content = highlightJSONC(content)
+  } else {
+    content = escapeHtml(content)
+  }
+  
+  if (!props.variables || props.variables.length === 0) {
+    if (props.modelValue.endsWith('\n')) {
+      content += '\n'
+    }
+    return content
+  }
+  
+  const result = content.replace(VARIABLE_PATTERN, (fullMatch: string, variableName: string) => {
+    const trimmedName = variableName.trim()
+    const variable = props.variables?.find(v => v.key === trimmedName)
+    const isDefined = !!variable
     
-    const colorClass = isDefined ? 'var-defined' : 'var-undefined';
+    const colorClass = isDefined ? 'var-defined' : 'var-undefined'
     const titleAttr = variable 
       ? (variable.isSecret ? '••••••••' : escapeHtml(variable.value))
-      : 'Undefined variable';
+      : 'Undefined variable'
     
-    result += `<span class="${colorClass}" title="${titleAttr}">${escapeHtml(fullMatch)}</span>`;
-
-    lastIndex = endIndex;
-  }
-
-  result += escapeHtml(props.modelValue.slice(lastIndex));
-
+    return `<span class="${colorClass}" title="${titleAttr}">${escapeHtml(fullMatch)}</span>`
+  })
+  
   if (props.modelValue.endsWith('\n')) {
-    result += '\n';
+    return result + '\n'
   }
-
-  return result;
-});
+  
+  return result
+})
 
 const getEditorText = (): string => {
   if (!editorRef.value) return '';
