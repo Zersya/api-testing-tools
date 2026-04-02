@@ -1902,11 +1902,15 @@ watch(activeView, (newView) => {
               @click.stop="handleContextAction('copy-prompt')"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
-                <path d="M12 3v18m-6.364-6.364l12.728-12.728m0 12.728L5.636 5.636"/>
-                <path d="M7 17L17 7"/>
-                <path d="M7 7h10v10"/>
+                <rect x="6" y="4" width="12" height="8" rx="2"/>
+                <path d="M9 8v.01"/>
+                <path d="M15 8v.01"/>
+                <path d="M12 2v2"/>
+                <path d="M8 12v8"/>
+                <path d="M16 12v8"/>
+                <rect x="4" y="12" width="16" height="8" rx="2"/>
               </svg>
-              Copy Prompt for Agent
+              Copy Prompt for Agent FE
             </button>
             <div class="border-t border-border-default my-1"></div>
             <button
