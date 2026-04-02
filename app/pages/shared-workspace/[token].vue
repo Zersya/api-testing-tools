@@ -460,6 +460,7 @@ const goBack = () => {
               ref="requestBuilderRef"
               :request="selectedRequest"
               :environment-id="currentEnvironmentId"
+              :collection-id="currentCollectionId"
               :read-only="isReadOnly"
               @save-request="handleRequestSave"
             />

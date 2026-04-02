@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, timestamp, boolean, index } from 'drizzle-orm/pg-core';
 import { savedRequests } from './savedRequest';
 
 /**
@@ -27,7 +27,9 @@ export const requestExamples = pgTable('request_examples', {
   updatedAt: timestamp('updated_at')
     .notNull()
     .defaultNow()
-});
+}, (table) => ({
+  requestIdx: index('idx_examples_request').on(table.requestId)
+}));
 
 export type RequestExample = typeof requestExamples.$inferSelect;
 export type NewRequestExample = typeof requestExamples.$inferInsert;

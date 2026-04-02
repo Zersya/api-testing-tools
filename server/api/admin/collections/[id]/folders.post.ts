@@ -1,6 +1,7 @@
 import { db } from '../../../../db';
 import { collections, folders } from '../../../../db/schema';
 import { eq, and, isNull } from 'drizzle-orm';
+import { cache, CacheKeys } from '../../../../utils/cache';
 
 interface CreateFolderBody {
   name: string;
@@ -156,6 +157,12 @@ export default defineEventHandler(async (event) => {
         statusCode: 500,
         statusMessage: 'Failed to create folder - no data returned from database'
       });
+    }
+
+    // Invalidate cache for the user
+    const user = event.context.user;
+    if (user?.id) {
+      cache.delete(CacheKeys.workspaceTree(user.id));
     }
 
     return insertResult[0];

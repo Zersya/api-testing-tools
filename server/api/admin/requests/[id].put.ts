@@ -2,6 +2,7 @@ import { db } from '../../../db';
 import { savedRequests, type HttpMethod, type RequestHeaders, type RequestBody, type RequestAuth, type MockConfig, type RequestPathVariables } from '../../../db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { trackResourceAction } from '../../../services/usageTracking';
+import { cache, CacheKeys } from '../../../utils/cache';
 
 interface UpdateRequestBody {
   name?: string;
@@ -10,6 +11,7 @@ interface UpdateRequestBody {
   headers?: RequestHeaders;
   body?: RequestBody;
   auth?: RequestAuth;
+  inheritAuth?: number;
   mockConfig?: MockConfig;
   preScript?: string;
   postScript?: string;
@@ -65,6 +67,7 @@ export default defineEventHandler(async (event) => {
       headers: RequestHeaders | null;
       body: RequestBody;
       auth: RequestAuth;
+      inheritAuth: number;
       mockConfig: MockConfig;
       preScript: string | null;
       postScript: string | null;
@@ -158,6 +161,11 @@ export default defineEventHandler(async (event) => {
       updateData.auth = body.auth;
     }
 
+    // Set inheritAuth (can be 0 or 1)
+    if (body.inheritAuth !== undefined) {
+      updateData.inheritAuth = body.inheritAuth ? 1 : 0;
+    }
+
     // Set mockConfig (can be null or object)
     if (body.mockConfig !== undefined) {
       console.log('[Request PUT] Setting mockConfig:', body.mockConfig);
@@ -218,6 +226,9 @@ export default defineEventHandler(async (event) => {
         resourceId: updatedRequest.id,
         resourceName: updatedRequest.name,
       });
+      
+      // Invalidate cache for this user
+      cache.delete(CacheKeys.workspaceTree(user.id));
     }
 
     return updatedRequest;
