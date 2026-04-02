@@ -357,7 +357,12 @@ const extractPathVariablesFromUrl = (url: string): string[] => {
   while ((match = pathVariablePattern.exec(url)) !== null) {
     matches.push(match[1]);
   }
-  return [...new Set(matches)]; // Remove duplicates
+  const uniqueMatches = [...new Set(matches)]; // Remove duplicates
+  // DEBUG: Log detected variables
+  if (matches.length > 0) {
+    console.log('[DEBUG] extractPathVariablesFromUrl - URL:', url, 'detected:', uniqueMatches);
+  }
+  return uniqueMatches;
 };
 
 const addPathVariable = (key: string) => {
@@ -389,11 +394,16 @@ const updatePathVariable = (id: string, field: keyof PathVariable, value: string
 
 const resolvePathVariables = (url: string): string => {
   let resolvedUrl = url;
+  // DEBUG: Log path variables being applied
+  console.log('[DEBUG] resolvePathVariables - input URL:', url);
+  console.log('[DEBUG] resolvePathVariables - pathVariables array:', pathVariables.value);
   pathVariables.value.forEach(variable => {
     if (variable.enabled && variable.key) {
       // Replace only :key syntax (not {{environmentVariables}})
       const pattern = new RegExp(`:${variable.key}(?![a-zA-Z0-9_])`, 'g');
+      console.log('[DEBUG] Checking pattern:', pattern, 'for key:', variable.key, 'with value:', variable.value);
       resolvedUrl = resolvedUrl.replace(pattern, variable.value);
+      console.log('[DEBUG] After replacement:', resolvedUrl);
     }
   });
   return resolvedUrl;
