@@ -12,6 +12,7 @@ import ResponseComparison from '~/components/ResponseComparison.vue';
 import KeyboardShortcutsHelpModal from '~/components/KeyboardShortcutsHelpModal.vue';
 import RenameWorkspaceModal from '~/components/RenameWorkspaceModal.vue';
 import ShareWorkspaceModal from '~/components/ShareWorkspaceModal.vue';
+import VariableInput from '~/components/VariableInput.vue';
 import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
 import { useExampleData } from '~/composables/useExampleData';
 
@@ -1759,6 +1760,7 @@ const handleSaveRequest = async (request: any) => {
       headers: request.headers,
       body: request.body,
       auth: request.auth,
+      inheritAuth: request.inheritAuth,
       mockConfig: request.mockConfig,
       preScript: request.preScript,
       postScript: request.postScript,
@@ -1897,6 +1899,7 @@ const handleSave = async (data: any) => {
             headers: requestToSave.value.headers,
             body: requestToSave.value.body,
             auth: requestToSave.value.auth,
+            inheritAuth: requestToSave.value.inheritAuth,
             mockConfig: requestToSave.value.mockConfig,
             preScript: requestToSave.value.preScript,
             postScript: requestToSave.value.postScript,
@@ -1930,6 +1933,7 @@ const handleSave = async (data: any) => {
           headers: requestToSave.value.headers,
           body: requestToSave.value.body,
           auth: requestToSave.value.auth,
+          inheritAuth: requestToSave.value.inheritAuth,
           mockConfig: requestToSave.value.mockConfig,
           preScript: requestToSave.value.preScript,
           postScript: requestToSave.value.postScript,
@@ -1947,6 +1951,7 @@ const handleSave = async (data: any) => {
           headers: requestToSave.value.headers,
           body: requestToSave.value.body,
           auth: requestToSave.value.auth,
+          inheritAuth: requestToSave.value.inheritAuth,
           mockConfig: requestToSave.value.mockConfig,
           preScript: requestToSave.value.preScript,
           postScript: requestToSave.value.postScript,
@@ -2004,7 +2009,8 @@ const handleSaveAs = async (data: any) => {
           url: originalRequest.url,
           headers: originalRequest.headers,
           body: originalRequest.body,
-          auth: originalRequest.auth
+          auth: originalRequest.auth,
+          inheritAuth: originalRequest.inheritAuth
         }
       });
     } else if (data.collectionId) {
@@ -2017,7 +2023,8 @@ const handleSaveAs = async (data: any) => {
           url: originalRequest.url,
           headers: originalRequest.headers,
           body: originalRequest.body,
-          auth: originalRequest.auth
+          auth: originalRequest.auth,
+          inheritAuth: originalRequest.inheritAuth
         }
       });
     } else {
@@ -2290,9 +2297,20 @@ const openCreateCollection = (projectId?: string) => {
     showCollectionModal.value = true;
 };
 
-const openEditCollection = (collection: Collection) => {
+const openEditCollection = async (collection: Collection) => {
     collectionModalMode.value = 'edit';
-    const authConfig = (collection as any).authConfig;
+    
+    // Fetch fresh auth config from API to ensure we have latest data
+    let authConfig: any = null;
+    try {
+        const authData = await $fetch(`/api/admin/collections/${collection.id}/auth`);
+        authConfig = authData.authConfig;
+    } catch (error) {
+        console.error('Failed to fetch collection auth:', error);
+        // Fallback to tree data if API fails
+        authConfig = (collection as any).authConfig;
+    }
+    
     collectionForm.value = {
         id: collection.id,
         name: collection.name,
@@ -2327,11 +2345,10 @@ const saveCollection = async () => {
                 }
             });
         } else {
-            // Update collection basic info
-            await $fetch('/api/admin/collections', {
+            // Update collection basic info using the proper database endpoint
+            await $fetch(`/api/admin/collections/${collectionForm.value.id}`, {
                 method: 'PUT',
                 body: {
-                    id: collectionForm.value.id,
                     name: collectionForm.value.name,
                     description: collectionForm.value.description,
                     color: collectionForm.value.color
@@ -2339,11 +2356,11 @@ const saveCollection = async () => {
             });
             
             // Update collection auth if configured
+            const authPayload: any = {};
+            
             if (collectionForm.value.authType) {
-                const authPayload: any = {
-                    type: collectionForm.value.authType,
-                    credentials: {}
-                };
+                authPayload.type = collectionForm.value.authType;
+                authPayload.credentials = {};
                 
                 if (collectionForm.value.authType === 'basic') {
                     authPayload.credentials = {
@@ -2365,11 +2382,19 @@ const saveCollection = async () => {
                         accessToken: collectionForm.value.authConfig.accessToken
                     };
                 }
-                
-                await $fetch(`/api/admin/collections/${collectionForm.value.id}/auth`, {
-                    method: 'POST',
-                    body: { authConfig: authPayload }
-                });
+            } else {
+                authPayload.type = 'none';
+                authPayload.credentials = {};
+            }
+            
+            await $fetch(`/api/admin/collections/${collectionForm.value.id}/auth`, {
+                method: 'POST',
+                body: { authConfig: authPayload }
+            });
+            
+            // Refresh collection auth in the RequestBuilder if it's showing a request from this collection
+            if (requestBuilderRef.value && activeCollectionId.value === collectionForm.value.id) {
+                requestBuilderRef.value.refreshCollectionAuth();
             }
         }
         showCollectionModal.value = false;
@@ -3477,19 +3502,21 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
           <div v-if="collectionForm.authType === 'basic'" class="space-y-2 p-3 bg-bg-tertiary rounded border border-border-default">
             <div>
               <label class="text-xs text-text-muted">Username</label>
-              <input 
+              <VariableInput 
                 v-model="collectionForm.authConfig.username" 
-                class="w-full py-2 px-3 bg-bg-input border border-border-default rounded text-text-primary text-sm focus:outline-none focus:border-accent-blue mt-1"
+                :variables="activeEnvironment?.variables || []"
                 placeholder="username"
+                class="w-full mt-1"
               />
             </div>
             <div>
               <label class="text-xs text-text-muted">Password</label>
-              <input 
+              <VariableInput 
                 v-model="collectionForm.authConfig.password" 
+                :variables="activeEnvironment?.variables || []"
                 type="password"
-                class="w-full py-2 px-3 bg-bg-input border border-border-default rounded text-text-primary text-sm focus:outline-none focus:border-accent-blue mt-1"
                 placeholder="password"
+                class="w-full mt-1"
               />
             </div>
           </div>
@@ -3497,11 +3524,12 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
           <!-- Bearer Token -->
           <div v-if="collectionForm.authType === 'bearer'" class="p-3 bg-bg-tertiary rounded border border-border-default">
             <label class="text-xs text-text-muted">Token</label>
-            <input 
+            <VariableInput 
               v-model="collectionForm.authConfig.token" 
+              :variables="activeEnvironment?.variables || []"
               type="password"
-              class="w-full py-2 px-3 bg-bg-input border border-border-default rounded text-text-primary text-sm focus:outline-none focus:border-accent-blue mt-1"
               placeholder="Bearer token"
+              class="w-full mt-1"
             />
           </div>
 
@@ -3509,19 +3537,21 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
           <div v-if="collectionForm.authType === 'api-key'" class="space-y-2 p-3 bg-bg-tertiary rounded border border-border-default">
             <div>
               <label class="text-xs text-text-muted">Key Name</label>
-              <input 
+              <VariableInput 
                 v-model="collectionForm.authConfig.key" 
-                class="w-full py-2 px-3 bg-bg-input border border-border-default rounded text-text-primary text-sm focus:outline-none focus:border-accent-blue mt-1"
+                :variables="activeEnvironment?.variables || []"
                 placeholder="X-API-Key"
+                class="w-full mt-1"
               />
             </div>
             <div>
               <label class="text-xs text-text-muted">Value</label>
-              <input 
+              <VariableInput 
                 v-model="collectionForm.authConfig.value" 
+                :variables="activeEnvironment?.variables || []"
                 type="password"
-                class="w-full py-2 px-3 bg-bg-input border border-border-default rounded text-text-primary text-sm focus:outline-none focus:border-accent-blue mt-1"
                 placeholder="API key value"
+                class="w-full mt-1"
               />
             </div>
             <div class="flex gap-2 mt-2">
@@ -3546,11 +3576,12 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
           <div v-if="collectionForm.authType === 'oauth2'" class="space-y-2 p-3 bg-bg-tertiary rounded border border-border-default">
             <div>
               <label class="text-xs text-text-muted">Access Token</label>
-              <input 
+              <VariableInput 
                 v-model="collectionForm.authConfig.accessToken" 
+                :variables="activeEnvironment?.variables || []"
                 type="password"
-                class="w-full py-2 px-3 bg-bg-input border border-border-default rounded text-text-primary text-sm focus:outline-none focus:border-accent-blue mt-1"
                 placeholder="OAuth access token"
+                class="w-full mt-1"
               />
             </div>
             <div class="text-[10px] text-text-muted">
