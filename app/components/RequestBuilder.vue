@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, watch } from 'vue';
+import { debounce } from 'perfect-debounce';
 import JsonNode from './JsonNode.vue';
 import VariableInput from './VariableInput.vue';
 import VariableTextarea from './VariableTextarea.vue';
@@ -655,16 +656,39 @@ watch(() => props.tabKey, () => {
 }, { immediate: true });
 
 // Watch for state changes and emit them for persistence
+// Using identity watchers (not deep) to avoid frequent large JSON serializations
+// - response: watch identity changes (new response object)
+// - activeTab: watch value changes directly
+// - scriptLogs: watch identity changes (new array reference when logs are replaced)
+// Using debounce to batch rapid changes (e.g., response + scriptLogs update together)
+const emitStateChange = debounce((state: {
+  response: any;
+  activeTab: TabType;
+  scriptLogs: any[];
+}) => {
+  emit('stateChange', state);
+}, 100);
+
 watch(
-  [response, () => activeTab.value, scriptLogs],
-  ([newResponse, newActiveTab, newScriptLogs]) => {
-    emit('stateChange', {
-      response: newResponse,
-      activeTab: newActiveTab,
-      scriptLogs: newScriptLogs
-    });
-  },
-  { deep: true }
+  () => ({
+    response: response.value,
+    activeTab: activeTab.value,
+    scriptLogs: scriptLogs.value
+  }),
+  (newState, oldState) => {
+    // Only emit if something actually changed (identity check)
+    if (
+      newState.response !== oldState?.response ||
+      newState.activeTab !== oldState?.activeTab ||
+      newState.scriptLogs !== oldState?.scriptLogs
+    ) {
+      emitStateChange({
+        response: newState.response,
+        activeTab: newState.activeTab,
+        scriptLogs: newState.scriptLogs
+      });
+    }
+  }
 );
 
 const updateUrlFromParams = () => {
