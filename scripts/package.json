@@ -1,0 +1,23 @@
+{
+  "name": "mock-api-local-proxy",
+  "version": "1.0.0",
+  "description": "Local proxy for testing local APIs with Mock API Service",
+  "main": "local-proxy.js",
+  "bin": {
+    "mock-api-local-proxy": "./local-proxy.js"
+  },
+  "scripts": {
+    "start": "node local-proxy.js"
+  },
+  "keywords": [
+    "mock-api",
+    "proxy",
+    "local-development",
+    "api-testing"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
