@@ -65,7 +65,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // Check if user can edit this workspace (owner or edit permission)
-    const canEdit = await canEditWorkspace(user.id, project.workspaceId);
+    const canEdit = await canEditWorkspace(user.id, project.workspaceId, user.email);
     if (!canEdit) {
       throw createError({
         statusCode: 403,

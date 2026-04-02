@@ -243,8 +243,8 @@ export async function canAccessWorkspace(userId: string, workspaceId: string): P
 /**
  * Check if user can edit a workspace (owner or edit permission)
  */
-export async function canEditWorkspace(userId: string, workspaceId: string): Promise<boolean> {
-  const permission = await getWorkspacePermission(userId, workspaceId);
+export async function canEditWorkspace(userId: string, workspaceId: string, userEmail?: string): Promise<boolean> {
+  const permission = await getWorkspacePermission(userId, workspaceId, userEmail);
   return permission === 'owner' || permission === 'edit';
 }
 
