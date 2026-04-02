@@ -41,6 +41,60 @@ export interface OpenTab {
   request: HttpRequest;
   hasUnsavedChanges: boolean;
   key: string;
+  // UI state persistence fields
+  response?: ProxyResponse | ProxyErrorResponse | null;
+  activeBuilderTab?: TabType;
+  scriptLogs?: Array<{ phase: 'pre' | 'post'; type: 'log' | 'error' | 'warn'; message: string; timestamp: number }>;
+  draftSnapshot?: RequestDraftSnapshot;
+}
+
+type TabType = 'params' | 'headers' | 'body' | 'auth' | 'preScript' | 'postScript' | 'mock' | 'examples' | 'response';
+
+interface ProxyResponse {
+  success: boolean;
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  body: any;
+  timing: {
+    startTime: string;
+    endTime: string;
+    durationMs: number;
+  };
+}
+
+interface ProxyErrorResponse {
+  success: false;
+  error: {
+    message: string;
+    code: string;
+    cause?: string;
+  };
+  timing: {
+    startTime: string;
+    endTime: string;
+    durationMs: number;
+  };
+}
+
+interface RequestDraftSnapshot {
+  method: string;
+  url: string;
+  headers: Record<string, string> | null;
+  body: Record<string, unknown> | string | null;
+  auth: {
+    type: string;
+    credentials?: Record<string, string>;
+  } | null;
+  mockConfig?: HttpRequest['mockConfig'];
+  preScript?: string | null;
+  postScript?: string | null;
+  pathVariables?: HttpRequest['pathVariables'];
+  bodyFormat?: HttpRequest['bodyFormat'];
+  jsonBody?: string;
+  rawBody?: string;
+  rawContentType?: string;
+  formDataParams?: HttpRequest['formDataParams'];
 }
 
 interface Props {

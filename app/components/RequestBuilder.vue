@@ -97,6 +97,10 @@ interface ProxyErrorResponse {
   };
 }
 
+type TabType = 'params' | 'headers' | 'body' | 'auth' | 'preScript' | 'postScript' | 'mock' | 'examples' | 'response';
+type BodyFormat = 'none' | 'json' | 'form-data' | 'urlencoded' | 'raw' | 'binary';
+type ResponseViewType = 'pretty' | 'preview' | 'raw' | 'headers' | 'cookies' | 'imagePreview' | 'console';
+
 interface RequestDraftSnapshot {
   method: string;
   url: string;
@@ -124,6 +128,10 @@ interface Props {
   collectionId?: string;
   projectId?: string;
   readOnly?: boolean;
+  // Initial state props for persistence
+  initialResponse?: ProxyResponse | ProxyErrorResponse | null;
+  initialActiveTab?: TabType;
+  initialScriptLogs?: Array<{ phase: 'pre' | 'post'; type: 'log' | 'error' | 'warn'; message: string; timestamp: number }>;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -134,11 +142,9 @@ const emit = defineEmits<{
   saveRequest: [request: HttpRequest];
   saveAsRequest: [request: HttpRequest];
   unsavedChanges: [request: HttpRequest, hasUnsavedChanges: boolean, draft: RequestDraftSnapshot];
+  // State persistence events
+  stateChange: [state: { response: any; activeTab: TabType; scriptLogs: any[] }];
 }>();
-
-type TabType = 'params' | 'headers' | 'body' | 'auth' | 'preScript' | 'postScript' | 'mock' | 'examples' | 'response';
-type BodyFormat = 'none' | 'json' | 'form-data' | 'urlencoded' | 'raw' | 'binary';
-type ResponseViewType = 'pretty' | 'preview' | 'raw' | 'headers' | 'cookies' | 'imagePreview' | 'console';
 
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'] as const;
 const COMMON_HEADERS = [
@@ -390,6 +396,9 @@ const resolvePathVariables = (url: string): string => {
   return resolvedUrl;
 };
 
+// Track whether this is the first load (for state restoration)
+const isFirstLoad = ref(true);
+
 // Function to load request data into form state
 const loadRequestData = (request: HttpRequest) => {
   // Create a snapshot of key fields to detect changes
@@ -402,7 +411,7 @@ const loadRequestData = (request: HttpRequest) => {
   });
   
   // Skip if exactly the same as what we loaded
-  if (snapshot === lastLoadedRequestSnapshot.value && lastLoadedRequestId.value === request.id) {
+  if (snapshot === lastLoadedRequestSnapshot.value && lastLoadedRequestId.value === request.id && !isFirstLoad.value) {
     return;
   }
   
@@ -607,9 +616,29 @@ const loadRequestData = (request: HttpRequest) => {
     }
   });
 
-  // Clear response and script logs when switching requests
-  response.value = null;
-  scriptLogs.value = [];
+  // Only clear response and script logs on first load if no initial state provided
+  // This preserves state when switching between tabs
+  if (isFirstLoad.value) {
+    if (props.initialResponse !== undefined) {
+      response.value = props.initialResponse;
+    } else {
+      response.value = null;
+    }
+    
+    if (props.initialScriptLogs !== undefined) {
+      scriptLogs.value = props.initialScriptLogs;
+    } else {
+      scriptLogs.value = [];
+    }
+    
+    if (props.initialActiveTab !== undefined) {
+      activeTab.value = props.initialActiveTab;
+    } else {
+      activeTab.value = 'params';
+    }
+    
+    isFirstLoad.value = false;
+  }
   
   // Mark as loaded with snapshot
   lastLoadedRequestId.value = request.id;
@@ -618,8 +647,22 @@ const loadRequestData = (request: HttpRequest) => {
 
 // Watch for request ID changes - this ensures proper triggering on every request switch
 watch(() => props.request.id, () => {
+  isFirstLoad.value = true;
   loadRequestData(props.request);
 }, { immediate: true });
+
+// Watch for state changes and emit them for persistence
+watch(
+  [response, () => activeTab.value, scriptLogs],
+  ([newResponse, newActiveTab, newScriptLogs]) => {
+    emit('stateChange', {
+      response: newResponse,
+      activeTab: newActiveTab,
+      scriptLogs: newScriptLogs
+    });
+  },
+  { deep: true }
+);
 
 const updateUrlFromParams = () => {
   try {
