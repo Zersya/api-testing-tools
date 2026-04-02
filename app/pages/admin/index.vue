@@ -3141,6 +3141,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
                 :workspace-id="currentWorkspaceId"
                 :environment-id="activeEnvironment?.id"
                 :project-id="currentProjectId"
+                :collection-id="activeCollectionId"
                 :initial-response="getActiveOpenTab()?.response"
                 :initial-active-tab="getActiveOpenTab()?.activeBuilderTab"
                 :initial-script-logs="getActiveOpenTab()?.scriptLogs"
