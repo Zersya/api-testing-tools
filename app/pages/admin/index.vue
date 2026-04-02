@@ -1127,6 +1127,13 @@ const getActiveOpenTab = () => {
 const syncSelectedRequestWithActiveTab = () => {
   const activeTab = getActiveOpenTab();
   selectedRequest.value = activeTab?.request || null;
+  
+  // Check if the synced request is in a shared workspace
+  if (selectedRequest.value) {
+    isSharedWorkspace.value = checkIfRequestIsInSharedWorkspace(selectedRequest.value);
+  } else {
+    isSharedWorkspace.value = false;
+  }
 };
 
 const saveRequestTabsSession = async (session: PersistedTabSession, keepalive = false) => {
@@ -1506,6 +1513,7 @@ const handleSelectMock = (mock: any) => {
     activeTabKey.value = null;
     tryItResponse.value = null;
     tryItError.value = '';
+    isSharedWorkspace.value = false;
 };
 
 const createResource = async () => {
@@ -1659,6 +1667,9 @@ const handleSelectRequest = (request: HttpRequest) => {
   syncWorkspaceSelectionForRequest(request);
   const normalizedRequest = normalizeRequestForTab(request);
   
+  // Check if this request is in a shared workspace
+  isSharedWorkspace.value = checkIfRequestIsInSharedWorkspace(normalizedRequest);
+  
   // Check if tab already exists for this request
   const existingTab = openTabs.value.find(tab => tab.request.id === normalizedRequest.id);
   if (existingTab) {
@@ -1688,6 +1699,9 @@ const handleSelectTab = (tabKey: string) => {
     activeTabKey.value = tabKey;
     selectedRequest.value = tab.request;
     selectedMock.value = null;
+    
+    // Check if this request is in a shared workspace
+    isSharedWorkspace.value = checkIfRequestIsInSharedWorkspace(tab.request);
   }
 };
 
@@ -1706,6 +1720,7 @@ const handleCloseTab = (tabKey: string) => {
     } else {
       activeTabKey.value = null;
       selectedRequest.value = null;
+      isSharedWorkspace.value = false;
     }
   }
 };
@@ -1741,6 +1756,7 @@ const handleNewTab = () => {
   openTabs.value.push(newTab);
   activeTabKey.value = newTabKey;
   selectedRequest.value = newRequest;
+  isSharedWorkspace.value = false;
 };
 
 const handleReorderTabs = (fromIndex: number, toIndex: number) => {
@@ -1773,6 +1789,7 @@ const updateTabUnsavedStatus = (
 
   if (activeTabKey.value === tab.key) {
     selectedRequest.value = nextRequest;
+    isSharedWorkspace.value = checkIfRequestIsInSharedWorkspace(nextRequest);
   }
 };
 
@@ -2010,6 +2027,7 @@ const handleSave = async (data: any) => {
           tab.request = normalizedNewRequest;
           tab.hasUnsavedChanges = false;
           selectedRequest.value = normalizedNewRequest;
+          isSharedWorkspace.value = checkIfRequestIsInSharedWorkspace(normalizedNewRequest);
           syncWorkspaceSelectionForRequest(normalizedNewRequest);
         }
       }
@@ -2050,6 +2068,7 @@ const handleSave = async (data: any) => {
         });
 
         selectedRequest.value = normalizedUpdatedRequest;
+        isSharedWorkspace.value = checkIfRequestIsInSharedWorkspace(normalizedUpdatedRequest);
       }
       
       // Reset unsaved flag on the tab
@@ -2640,6 +2659,7 @@ const deleteRequest = async () => {
         
         if (selectedRequest.value?.id === requestId) {
             selectedRequest.value = null;
+            isSharedWorkspace.value = false;
         }
         
         await refreshWorkspaces();
