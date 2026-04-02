@@ -128,6 +128,8 @@ interface Props {
   collectionId?: string;
   projectId?: string;
   readOnly?: boolean;
+  // Tab key for identifying unique tab instance (handles multiple tabs with same request.id)
+  tabKey?: string;
   // Initial state props for persistence
   initialResponse?: ProxyResponse | ProxyErrorResponse | null;
   initialActiveTab?: TabType;
@@ -645,8 +647,9 @@ const loadRequestData = (request: HttpRequest) => {
   lastLoadedRequestSnapshot.value = snapshot;
 };
 
-// Watch for request ID changes - this ensures proper triggering on every request switch
-watch(() => props.request.id, () => {
+// Watch for tab key changes - this ensures proper triggering on every tab switch
+// Using tabKey instead of request.id to handle multiple tabs with same request (e.g., unsaved tabs with id: '')
+watch(() => props.tabKey, () => {
   isFirstLoad.value = true;
   loadRequestData(props.request);
 }, { immediate: true });
