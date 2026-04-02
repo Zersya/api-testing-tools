@@ -136,6 +136,7 @@ interface Props {
   initialResponse?: ProxyResponse | ProxyErrorResponse | null
   initialActiveTab?: TabType
   initialScriptLogs?: Array<{ phase: 'pre' | 'post'; type: 'log' | 'error' | 'warn'; message: string; timestamp: number }>
+  initialExpandedNodes?: string[]
   isSharedWorkspace?: boolean
 }
 
@@ -149,7 +150,7 @@ const emit = defineEmits<{
   saveAsRequest: [request: HttpRequest];
   unsavedChanges: [request: HttpRequest, hasUnsavedChanges: boolean, draft: RequestDraftSnapshot];
   // State persistence events
-  stateChange: [state: { response: any; activeTab: TabType; scriptLogs: any[] }];
+  stateChange: [state: { response: any; activeTab: TabType; scriptLogs: any[]; expandedNodes: string[] }];
   // Collection settings
   openCollectionSettings: [collectionId: string];
 }>();
@@ -670,6 +671,21 @@ const loadRequestData = (request: HttpRequest) => {
     } else {
       activeTab.value = 'params';
     }
+
+    // Restore expanded nodes state for JSON pretty view
+    if (props.initialExpandedNodes !== undefined && props.initialExpandedNodes.length > 0) {
+      // Restore saved expansion state
+      expandedNodes.value = new Set(props.initialExpandedNodes);
+    } else if (props.initialResponse && 'success' in props.initialResponse && props.initialResponse.body) {
+      // If there's a persisted response but no saved expansion state, expand all by default
+      nextTick(() => {
+        if (responseViewType.value === 'pretty') {
+          expandAll();
+        }
+      });
+    } else {
+      expandedNodes.value.clear();
+    }
     
     isFirstLoad.value = false;
   }
@@ -686,37 +702,68 @@ watch(() => props.tabKey, () => {
   loadRequestData(props.request);
 }, { immediate: true });
 
+// Watch for initialExpandedNodes changes to restore state when it becomes available
+// This handles the case where the parent's tabs are still loading when this component mounts
+watch(() => props.initialExpandedNodes, (newVal) => {
+  console.log('[DEBUG] initialExpandedNodes changed:', newVal?.length || 0, 'paths');
+  if (!response.value) return;
+  
+  if (newVal !== undefined && newVal.length > 0) {
+    // Restore saved expansion state
+    expandedNodes.value = new Set(newVal);
+    expandedNodesVersion++;
+    console.log('[DEBUG] Restored expandedNodes from prop');
+  } else if (newVal !== undefined && newVal.length === 0) {
+    // If explicitly empty array (persisted but no expansion state), expand all by default
+    nextTick(() => {
+      if (responseViewType.value === 'pretty') {
+        expandAll();
+      }
+    });
+  }
+}, { immediate: true });
+
 // Watch for state changes and emit them for persistence
 // Using identity watchers (not deep) to avoid frequent large JSON serializations
 // - response: watch identity changes (new response object)
 // - activeTab: watch value changes directly
 // - scriptLogs: watch identity changes (new array reference when logs are replaced)
-// Using debounce to batch rapid changes (e.g., response + scriptLogs update together)
+// - expandedNodes: use a counter to track mutations since Set doesn't change identity
+// Using debounce to batch rapid changes (e.g. response + scriptLogs update together)
 const emitStateChange = debounce((state: {
   response: any;
   activeTab: TabType;
   scriptLogs: any[];
+  expandedNodes: string[];
 }) => {
   emit('stateChange', state);
 }, 100);
+
+// Counter to track expandedNodes mutations
+let expandedNodesVersion = 0;
 
 watch(
   () => ({
     response: response.value,
     activeTab: activeTab.value,
-    scriptLogs: scriptLogs.value
+    scriptLogs: scriptLogs.value,
+    expandedNodesVer: expandedNodesVersion
   }),
   (newState, oldState) => {
     // Only emit if something actually changed (identity check)
     if (
       newState.response !== oldState?.response ||
       newState.activeTab !== oldState?.activeTab ||
-      newState.scriptLogs !== oldState?.scriptLogs
+      newState.scriptLogs !== oldState?.scriptLogs ||
+      newState.expandedNodesVer !== oldState?.expandedNodesVer
     ) {
+      const expandedNodesArray = Array.from(expandedNodes.value);
+      console.log('[DEBUG] Emitting stateChange with expandedNodes:', expandedNodesArray.length, 'paths');
       emitStateChange({
         response: newState.response,
         activeTab: newState.activeTab,
-        scriptLogs: newState.scriptLogs
+        scriptLogs: newState.scriptLogs,
+        expandedNodes: expandedNodesArray
       });
     }
   }
@@ -2028,7 +2075,9 @@ const toggleNode = (path: string) => {
   } else {
     expandedNodes.value.add(path);
   }
-
+  
+  expandedNodesVersion++;
+  console.log('[DEBUG] toggleNode - path:', path, 'expanded:', expandedNodes.value.has(path), 'total:', expandedNodes.value.size);
   updateSearchMatches(false);
 };
 
@@ -2049,12 +2098,14 @@ const expandAll = () => {
     const highlighted = highlightJson(response.value.body);
     expandRecursive(highlighted);
   }
-
+  
+  expandedNodesVersion++;
   updateSearchMatches(false);
 };
 
 const collapseAll = () => {
   expandedNodes.value.clear();
+  expandedNodesVersion++;
   updateSearchMatches(false);
 };
 
@@ -2417,6 +2468,7 @@ const sendRequest = async () => {
   searchMatches.value = [];
   activeSearchMatchIndex.value = -1;
   expandedNodes.value.clear();
+  expandedNodesVersion++;
 
   try {
     const requestBody = buildBody();
