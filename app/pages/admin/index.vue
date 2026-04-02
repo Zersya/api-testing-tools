@@ -1090,9 +1090,9 @@ const appSidebarRef = ref<{ activeView: Ref<'hierarchy' | 'mocks' | 'history' | 
 // Track sidebar active view locally (updated via event from AppSidebar)
 const sidebarActiveView = ref<'hierarchy' | 'mocks' | 'history' | 'definitions'>('hierarchy');
 
-// Computed property to check if mocks view is active in sidebar
+// Computed property to check if non-workspace sidebar view is active (mocks, definitions, history)
 const isMockSidebarActive = computed(() => {
-  return sidebarActiveView.value === 'mocks';
+  return ['mocks', 'definitions', 'history'].includes(sidebarActiveView.value);
 });
 
 // Delete workspace modal state
