@@ -1,4 +1,11 @@
-import { pgTable, text, timestamp, boolean, integer, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, boolean, integer, jsonb, varchar } from 'drizzle-orm/pg-core';
+
+/**
+ * Feedback status types
+ */
+export type FeedbackStatus = 'open' | 'pending' | 'process' | 'resolved' | 'closed';
+
+export const feedbackStatuses: FeedbackStatus[] = ['open', 'pending', 'process', 'resolved', 'closed'];
 
 /**
  * Feedback configuration - controlled by super admin
@@ -47,6 +54,9 @@ export const feedbackSubmissions = pgTable('feedback_submissions', {
   rating: integer('rating'), // overall rating if provided
   comment: text('comment'), // free text comment
   
+  // Ticketing status
+  status: varchar('status', { length: 20 }).notNull().default('open'),
+  
   // Metadata
   createdAt: timestamp('created_at').notNull().defaultNow(),
   userAgent: text('user_agent'),
@@ -57,3 +67,19 @@ export type FeedbackConfig = typeof feedbackConfig.$inferSelect;
 export type NewFeedbackConfig = typeof feedbackConfig.$inferInsert;
 export type FeedbackSubmission = typeof feedbackSubmissions.$inferSelect;
 export type NewFeedbackSubmission = typeof feedbackSubmissions.$inferInsert;
+
+/**
+ * Feedback status history for audit trail
+ */
+export const feedbackStatusHistory = pgTable('feedback_status_history', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  
+  submissionId: text('submission_id').notNull(),
+  fromStatus: varchar('from_status', { length: 20 }).notNull(),
+  toStatus: varchar('to_status', { length: 20 }).notNull(),
+  changedBy: text('changed_by').notNull(),
+  changedAt: timestamp('changed_at').notNull().defaultNow(),
+});
+
+export type FeedbackStatusHistory = typeof feedbackStatusHistory.$inferSelect;
+export type NewFeedbackStatusHistory = typeof feedbackStatusHistory.$inferInsert;
