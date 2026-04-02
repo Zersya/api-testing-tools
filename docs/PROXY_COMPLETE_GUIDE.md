@@ -16,19 +16,14 @@
 
 ### Step 1: Install
 
-**macOS / Linux:**
+**macOS / Linux / Git Bash:**
 ```bash
-curl -fsSL https://api-mock.transtrack.id/install-proxy.sh | bash
-```
-
-**Windows (Git Bash):**
-```bash
-curl -fsSL https://api-mock.transtrack.id/install-proxy.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Zersya/api-testing-tools/main/scripts/install-proxy.sh | bash
 ```
 
 **Windows (PowerShell):**
 ```powershell
-iwr -useb https://api-mock.transtrack.id/install-proxy.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/Zersya/api-testing-tools/main/scripts/install-proxy.ps1 | iex
 ```
 
 ### Step 2: Run
@@ -57,7 +52,7 @@ Press Ctrl+C to stop
 
 ### Step 3: Use in Mock API Service
 
-1. Open https://api-mock.transtrack.id
+1. Open your Mock API Service
 2. Create a request
 3. Use your IP from Step 2 (e.g., `http://192.168.1.100:8765`)
 4. ✅ Done! Your local API is now accessible.
@@ -77,12 +72,12 @@ Press Ctrl+C to stop
 
 **macOS / Linux / Git Bash:**
 ```bash
-curl -fsSL https://api-mock.transtrack.id/install-proxy.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Zersya/api-testing-tools/main/scripts/install-proxy.sh | bash
 ```
 
 **Windows PowerShell:**
 ```powershell
-iwr -useb https://api-mock.transtrack.id/install-proxy.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/Zersya/api-testing-tools/main/scripts/install-proxy.ps1 | iex
 ```
 
 What this does:
@@ -91,10 +86,18 @@ What this does:
 - Adds it to your PATH
 - Creates uninstaller
 
-#### Method 2: npm (Alternative)
+#### Method 2: Clone Repository
 
 ```bash
-npm install -g mock-api-local-proxy
+# Clone the repository
+git clone https://github.com/Zersya/api-testing-tools.git
+cd api-testing-tools/scripts
+
+# Run directly
+node mock-api-proxy.js
+
+# Or install globally
+npm install -g .
 mock-api-proxy
 ```
 
@@ -103,7 +106,7 @@ mock-api-proxy
 ```bash
 # Download the proxy
 mkdir -p ~/.mock-api-proxy
-curl -o ~/.mock-api-proxy/proxy.js https://api-mock.transtrack.id/proxy-scripts/mock-api-proxy.js
+curl -o ~/.mock-api-proxy/proxy.js https://raw.githubusercontent.com/Zersya/api-testing-tools/main/scripts/mock-api-proxy.js
 
 # Run it
 node ~/.mock-api-proxy/proxy.js
@@ -207,33 +210,18 @@ mock-api-proxy --stop api-main
 
 ## Advanced Features
 
-### Auto-Update
+### Updating to Latest Version
 
-The proxy checks for updates every time you run it. If a new version is available:
+To update the proxy to the latest version, simply re-run the install command:
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Update Available!                                          │
-├─────────────────────────────────────────────────────────────┤
-│  Current: 1.0.0                                             │
-│  Latest:  1.1.0                                             │
-└─────────────────────────────────────────────────────────────┘
-
-Would you like to update now? (Y/n): 
-```
-
-Type `Y` to auto-update, or `n` to skip.
-
-### Skip Update Check
-
+**macOS / Linux / Git Bash:**
 ```bash
-mock-api-proxy --no-update-check
+curl -fsSL https://raw.githubusercontent.com/Zersya/api-testing-tools/main/scripts/install-proxy.sh | bash
 ```
 
-### Manual Update Check
-
-```bash
-mock-api-proxy --update
+**Windows PowerShell:**
+```powershell
+iwr -useb https://raw.githubusercontent.com/Zersya/api-testing-tools/main/scripts/install-proxy.ps1 | iex
 ```
 
 ### Verbose Logging
@@ -360,10 +348,12 @@ ping YOUR_COMPUTER_IP
 
 **Problem:** Permission errors on install
 
-**Solution:** Install without sudo, or use npm method:
+**Solution:** Clone the repo and run locally:
 ```bash
-# Instead of sudo curl... use:
-npm install -g mock-api-local-proxy
+# Instead of curl, clone and run directly:
+git clone https://github.com/Zersya/api-testing-tools.git
+cd api-testing-tools/scripts
+node mock-api-proxy.js
 ```
 
 ### Windows-specific issues
@@ -471,6 +461,6 @@ Having issues?
 - Initial release
 - Multi-instance support
 - Terminal UI with beautiful tables
-- Auto-update checking
 - Cross-platform support (macOS, Linux, Windows)
 - Git Bash and PowerShell support
+- GitHub-based distribution
