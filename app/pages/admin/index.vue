@@ -4,7 +4,7 @@ import { debounce } from 'perfect-debounce';
 import RequestBuilder from '~/components/RequestBuilder.vue';
 import CodeExamples from '~/components/CodeExamples.vue';
 import SaveRequestDialog from '~/components/SaveRequestDialog.vue';
-import RequestTabs, { type OpenTab } from '~/components/RequestTabs.vue';
+import RequestTabs, { type OpenTab, type PersistedOpenTab } from '~/components/RequestTabs.vue';
 import ImportModal from '~/components/ImportModal.vue';
 import MethodBadge from '~/components/MethodBadge.vue';
 import ApiDocumentationViewer from '~/components/ApiDocumentationViewer.vue';
@@ -75,15 +75,7 @@ interface HttpRequest {
 }
 
 interface PersistedTabSession {
-  tabs: Array<{
-    key: string;
-    hasUnsavedChanges: boolean;
-    request: HttpRequest;
-    response?: any;
-    activeBuilderTab?: string;
-    scriptLogs?: any[];
-    draftSnapshot?: RequestDraftSnapshot;
-  }>;
+  tabs: PersistedOpenTab[];
   activeTabKey: string | null;
 }
 

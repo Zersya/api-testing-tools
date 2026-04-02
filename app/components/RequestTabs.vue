@@ -50,6 +50,17 @@ export interface OpenTab {
   draftSnapshot?: RequestDraftSnapshot;
 }
 
+// Persisted version of OpenTab with serializable types for storage
+export type PersistedOpenTab = {
+  key: OpenTab['key'];
+  hasUnsavedChanges: OpenTab['hasUnsavedChanges'];
+  request: OpenTab['request'];
+  response?: any; // Serialized response data
+  activeBuilderTab?: string; // Serialized tab type as string
+  scriptLogs?: any[]; // Serialized script logs
+  draftSnapshot?: RequestDraftSnapshot;
+};
+
 // Types imported from RequestBuilder.vue to avoid duplication:
 // - ProxyResponse, ProxyErrorResponse
 // - TabType
