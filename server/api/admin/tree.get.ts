@@ -1,7 +1,8 @@
 import { db } from '../../db';
 import { workspaces, projects, collections, folders, savedRequests, requestExamples } from '../../db/schema';
-import { eq, desc, asc, inArray } from 'drizzle-orm';
+import { eq, desc, asc, inArray, or } from 'drizzle-orm';
 import { getAccessibleWorkspaceIds, getWorkspacePermissionsBatch } from '../../utils/permissions';
+import { cache, CacheKeys } from '../../utils/cache';
 
 interface RequestExampleItem {
   id: string;
@@ -132,6 +133,15 @@ export default defineEventHandler(async (event) => {
     return [];
   }
 
+  // Check cache first
+  const cacheKey = CacheKeys.workspaceTree(user.id);
+  const cachedTree = cache.get<WorkspaceWithProjects[]>(cacheKey);
+  
+  if (cachedTree) {
+    console.log('[Tree API] Returning cached tree for user:', user.id);
+    return cachedTree;
+  }
+
   try {
     // Get all workspace IDs this user can access
     const accessibleIds = await getAccessibleWorkspaceIds(user.id, user.email);
@@ -144,31 +154,59 @@ export default defineEventHandler(async (event) => {
       return [];
     }
 
-    // Fetch only accessible workspaces
+    // OPTIMIZED: Use cascading filtered queries instead of loading all data
+    // Step 1: Fetch only accessible workspaces
     const allWorkspaces = await db
       .select()
       .from(workspaces)
       .where(inArray(workspaces.id, accessibleIds))
       .orderBy(desc(workspaces.createdAt));
 
-    const allProjects = await db
-      .select()
-      .from(projects);
+    // Step 2: Fetch only projects in accessible workspaces
+    const allProjects = accessibleIds.length > 0
+      ? await db
+          .select()
+          .from(projects)
+          .where(inArray(projects.workspaceId, accessibleIds))
+      : [];
 
-    const allCollections = await db
-      .select()
-      .from(collections);
+    const projectIds = allProjects.map(p => p.id);
 
-    const allFolders = await db
-      .select()
-      .from(folders);
+    // Step 3: Fetch only collections in those projects
+    const allCollections = projectIds.length > 0
+      ? await db
+          .select()
+          .from(collections)
+          .where(inArray(collections.projectId, projectIds))
+      : [];
 
-    const allRequestsRaw = await db
-      .select()
-      .from(savedRequests)
-      .orderBy(asc(savedRequests.order));
+    const collectionIds = allCollections.map(c => c.id);
 
-    // Fetch examples only for the requests we're loading (scoped at DB layer)
+    // Step 4: Fetch only folders in those collections
+    const allFolders = collectionIds.length > 0
+      ? await db
+          .select()
+          .from(folders)
+          .where(inArray(folders.collectionId, collectionIds))
+      : [];
+
+    const folderIds = allFolders.map(f => f.id);
+
+    // Step 5: Fetch only requests in those collections/folders
+    const allRequestsRaw = collectionIds.length > 0
+      ? await db
+          .select()
+          .from(savedRequests)
+          .where(
+            or(
+              inArray(savedRequests.collectionId, collectionIds),
+              inArray(savedRequests.folderId, folderIds)
+            )
+          )
+          .orderBy(asc(savedRequests.order))
+      : [];
+
+    // Step 6: Fetch examples only for loaded requests
     const requestIds = allRequestsRaw.map(r => r.id);
     const allExamplesRaw = requestIds.length > 0
       ? await db
@@ -245,6 +283,7 @@ export default defineEventHandler(async (event) => {
 
               return {
                 ...collection,
+                authConfig: parseJsonField<Record<string, unknown>>(collection.authConfig),
                 folders: folderTree,
                 requests: collectionRootRequests,
                 folderCount,
@@ -261,6 +300,9 @@ export default defineEventHandler(async (event) => {
       };
     });
 
+    // Cache for 30 seconds (adjust based on your needs)
+    cache.set(cacheKey, workspacesWithProjects, 30000);
+    
     return workspacesWithProjects;
   } catch (error) {
     console.error('Error fetching workspace tree:', error);
