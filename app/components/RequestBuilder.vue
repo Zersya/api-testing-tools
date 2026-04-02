@@ -1689,8 +1689,9 @@ const getResponsePreview = () => {
         preview.body = `[Binary data: ${res.body.size || 0} bytes]`;
       } else {
         const bodyStr = JSON.stringify(res.body);
+        // Truncate string representation for preview (not parseable JSON, just for display)
         preview.body = bodyStr.length > 200 
-          ? JSON.parse(bodyStr.substring(0, 200) + '...')
+          ? bodyStr.substring(0, 200) + '... (truncated)'
           : res.body;
       }
     } else if (typeof res.body === 'string') {
