@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, watch } from 'vue';
+import { debounce } from 'perfect-debounce';
 import JsonNode from './JsonNode.vue';
 import VariableInput from './VariableInput.vue';
 import VariableTextarea from './VariableTextarea.vue';
@@ -70,7 +71,7 @@ interface HttpRequest {
   updatedAt: Date;
 }
 
-interface ProxyResponse {
+export interface ProxyResponse {
   success: boolean;
   status: number;
   statusText: string;
@@ -83,7 +84,7 @@ interface ProxyResponse {
   };
 }
 
-interface ProxyErrorResponse {
+export interface ProxyErrorResponse {
   success: false;
   error: {
     message: string;
@@ -97,7 +98,11 @@ interface ProxyErrorResponse {
   };
 }
 
-interface RequestDraftSnapshot {
+export type TabType = 'params' | 'headers' | 'body' | 'auth' | 'preScript' | 'postScript' | 'mock' | 'examples' | 'response';
+type BodyFormat = 'none' | 'json' | 'form-data' | 'urlencoded' | 'raw' | 'binary';
+type ResponseViewType = 'pretty' | 'preview' | 'raw' | 'headers' | 'cookies' | 'imagePreview' | 'console';
+
+export interface RequestDraftSnapshot {
   method: string;
   url: string;
   headers: Record<string, string> | null;
@@ -124,6 +129,12 @@ interface Props {
   collectionId?: string;
   projectId?: string;
   readOnly?: boolean;
+  // Tab key for identifying unique tab instance (handles multiple tabs with same request.id)
+  tabKey?: string;
+  // Initial state props for persistence
+  initialResponse?: ProxyResponse | ProxyErrorResponse | null;
+  initialActiveTab?: TabType;
+  initialScriptLogs?: Array<{ phase: 'pre' | 'post'; type: 'log' | 'error' | 'warn'; message: string; timestamp: number }>;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -134,11 +145,9 @@ const emit = defineEmits<{
   saveRequest: [request: HttpRequest];
   saveAsRequest: [request: HttpRequest];
   unsavedChanges: [request: HttpRequest, hasUnsavedChanges: boolean, draft: RequestDraftSnapshot];
+  // State persistence events
+  stateChange: [state: { response: any; activeTab: TabType; scriptLogs: any[] }];
 }>();
-
-type TabType = 'params' | 'headers' | 'body' | 'auth' | 'preScript' | 'postScript' | 'mock' | 'examples' | 'response';
-type BodyFormat = 'none' | 'json' | 'form-data' | 'urlencoded' | 'raw' | 'binary';
-type ResponseViewType = 'pretty' | 'preview' | 'raw' | 'headers' | 'cookies' | 'imagePreview' | 'console';
 
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'] as const;
 const COMMON_HEADERS = [
@@ -390,6 +399,9 @@ const resolvePathVariables = (url: string): string => {
   return resolvedUrl;
 };
 
+// Track whether this is the first load (for state restoration)
+const isFirstLoad = ref(true);
+
 // Function to load request data into form state
 const loadRequestData = (request: HttpRequest) => {
   // Create a snapshot of key fields to detect changes
@@ -402,7 +414,7 @@ const loadRequestData = (request: HttpRequest) => {
   });
   
   // Skip if exactly the same as what we loaded
-  if (snapshot === lastLoadedRequestSnapshot.value && lastLoadedRequestId.value === request.id) {
+  if (snapshot === lastLoadedRequestSnapshot.value && lastLoadedRequestId.value === request.id && !isFirstLoad.value) {
     return;
   }
   
@@ -607,19 +619,77 @@ const loadRequestData = (request: HttpRequest) => {
     }
   });
 
-  // Clear response and script logs when switching requests
-  response.value = null;
-  scriptLogs.value = [];
+  // Only clear response and script logs on first load if no initial state provided
+  // This preserves state when switching between tabs
+  if (isFirstLoad.value) {
+    if (props.initialResponse !== undefined) {
+      response.value = props.initialResponse;
+    } else {
+      response.value = null;
+    }
+    
+    if (props.initialScriptLogs !== undefined) {
+      scriptLogs.value = props.initialScriptLogs;
+    } else {
+      scriptLogs.value = [];
+    }
+    
+    if (props.initialActiveTab !== undefined) {
+      activeTab.value = props.initialActiveTab;
+    } else {
+      activeTab.value = 'params';
+    }
+    
+    isFirstLoad.value = false;
+  }
   
   // Mark as loaded with snapshot
   lastLoadedRequestId.value = request.id;
   lastLoadedRequestSnapshot.value = snapshot;
 };
 
-// Watch for request ID changes - this ensures proper triggering on every request switch
-watch(() => props.request.id, () => {
+// Watch for tab key changes - this ensures proper triggering on every tab switch
+// Using tabKey instead of request.id to handle multiple tabs with same request (e.g., unsaved tabs with id: '')
+watch(() => props.tabKey, () => {
+  isFirstLoad.value = true;
   loadRequestData(props.request);
 }, { immediate: true });
+
+// Watch for state changes and emit them for persistence
+// Using identity watchers (not deep) to avoid frequent large JSON serializations
+// - response: watch identity changes (new response object)
+// - activeTab: watch value changes directly
+// - scriptLogs: watch identity changes (new array reference when logs are replaced)
+// Using debounce to batch rapid changes (e.g., response + scriptLogs update together)
+const emitStateChange = debounce((state: {
+  response: any;
+  activeTab: TabType;
+  scriptLogs: any[];
+}) => {
+  emit('stateChange', state);
+}, 100);
+
+watch(
+  () => ({
+    response: response.value,
+    activeTab: activeTab.value,
+    scriptLogs: scriptLogs.value
+  }),
+  (newState, oldState) => {
+    // Only emit if something actually changed (identity check)
+    if (
+      newState.response !== oldState?.response ||
+      newState.activeTab !== oldState?.activeTab ||
+      newState.scriptLogs !== oldState?.scriptLogs
+    ) {
+      emitStateChange({
+        response: newState.response,
+        activeTab: newState.activeTab,
+        scriptLogs: newState.scriptLogs
+      });
+    }
+  }
+);
 
 const updateUrlFromParams = () => {
   try {

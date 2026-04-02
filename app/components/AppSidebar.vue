@@ -2,6 +2,9 @@
 import RequestHistoryPanel from './RequestHistoryPanel.vue';
 import ApiDefinitionsPanel from './ApiDefinitionsPanel.vue';
 
+// Toast notification
+const { showToast } = useToast();
+
 interface Collection {
   id: string;
   name: string;
@@ -37,6 +40,14 @@ interface HttpRequest {
   order: number;
   createdAt: Date;
   updatedAt: Date;
+  examples?: Array<{
+    id: string;
+    name: string;
+    statusCode: number;
+    headers: Record<string, string> | null;
+    body: Record<string, unknown> | string | null;
+    isDefault: boolean;
+  }>;
 }
 
 interface FolderWithRequestsAndChildren {
@@ -979,6 +990,8 @@ const handleContextAction = (action: string) => {
         emit('renameFolder', data);
       } else if (action === 'delete-folder') {
         emit('deleteFolder', data);
+      } else if (action === 'copy-prompt') {
+        copyFolderPromptToClipboard(data);
       }
       break;
     case 'request':
@@ -989,6 +1002,251 @@ const handleContextAction = (action: string) => {
   }
 
   closeContextMenu();
+};
+
+/**
+ * Generate a comprehensive prompt for an AI agent based on folder contents
+ * Includes all endpoints with full details and nested folder structure
+ */
+const generateFolderPrompt = (folder: FolderWithRequestsAndChildren): string => {
+  // Collect all requests recursively
+  const allRequests: Array<{
+    request: HttpRequest;
+    path: string;
+  }> = [];
+  
+  const collectRequests = (currentFolder: FolderWithRequestsAndChildren, path: string) => {
+    const currentPath = path ? path + ' > ' + currentFolder.name : currentFolder.name;
+    
+    // Add requests from current folder
+    currentFolder.requests.forEach(request => {
+      allRequests.push({
+        request,
+        path: currentPath
+      });
+    });
+    
+    // Recursively collect from children
+    currentFolder.children.forEach(child => {
+      collectRequests(child, currentPath);
+    });
+  };
+  
+  collectRequests(folder, '');
+  
+  // Build folder structure representation
+  const buildStructure = (f: FolderWithRequestsAndChildren, indent: number = 0): string => {
+    const prefix = '  '.repeat(indent);
+    const subfolderText = f.children.length > 0 ? ', ' + f.children.length + ' subfolders' : '';
+    let result = prefix + '- ' + f.name + ' (' + f.requests.length + ' requests' + subfolderText + ')\n';
+    f.children.forEach(child => {
+      result += buildStructure(child, indent + 1);
+    });
+    return result;
+  };
+  
+  // Count methods
+  const methodCounts: Record<string, number> = {};
+  allRequests.forEach(({ request }) => {
+    methodCounts[request.method] = (methodCounts[request.method] || 0) + 1;
+  });
+  
+  // Format request body nicely
+  const formatBody = (body: any): string => {
+    if (!body) return 'None';
+    if (typeof body === 'string') {
+      try {
+        const parsed = JSON.parse(body);
+        return JSON.stringify(parsed, null, 2);
+      } catch {
+        return body;
+      }
+    }
+    return JSON.stringify(body, null, 2);
+  };
+  
+  // Mask sensitive values in headers
+  const maskSensitiveHeaders = (headers: Record<string, string> | null): string => {
+    if (!headers || Object.keys(headers).length === 0) return 'None';
+    
+    // Allowlist of headers that are safe to display (mask everything else)
+    const safeHeaders = new Set([
+      'content-type',
+      'accept',
+      'accept-encoding',
+      'accept-language',
+      'accept-charset',
+      'cache-control',
+      'connection',
+      'date',
+      'etag',
+      'expires',
+      'last-modified',
+      'location',
+      'pragma',
+      'server',
+      'user-agent',
+      'via',
+      'x-request-id',
+      'x-correlation-id',
+      'x-content-type-options',
+      'x-frame-options',
+      'x-xss-protection',
+      'strict-transport-security',
+      'access-control-allow-origin',
+      'access-control-allow-methods',
+      'access-control-allow-headers',
+      'access-control-expose-headers',
+      'access-control-max-age',
+      'access-control-allow-credentials',
+      'referrer-policy',
+      'permissions-policy',
+      'timing-allow-origin',
+      'nel',
+      'report-to',
+      'origin',
+      'referer',
+      'host',
+      'content-length',
+      'content-encoding',
+      'content-language',
+      'content-location',
+      'transfer-encoding',
+      'upgrade',
+      'vary',
+      'warning',
+      'www-authenticate',
+      'age',
+      'allow',
+      'clear-site-data',
+      'cross-origin-embedder-policy',
+      'cross-origin-opener-policy',
+      'cross-origin-resource-policy',
+      'keep-alive',
+      'link',
+      'refresh',
+      'retry-after'
+    ]);
+    
+    const masked: Record<string, string> = {};
+    
+    Object.entries(headers).forEach(([key, value]) => {
+      const lowerKey = key.toLowerCase();
+      // Only show value if header is in the allowlist of safe headers
+      const isSafe = safeHeaders.has(lowerKey);
+      masked[key] = isSafe ? value : '{{masked}}';
+    });
+    
+    return Object.entries(masked)
+      .map(([key, value]) => '  - ' + key + ': ' + value)
+      .join('\n');
+  };
+  
+  // Format auth info
+  const formatAuth = (auth: any): string => {
+    if (!auth || auth.type === 'none') return 'None';
+    
+    let authInfo = 'Type: ' + auth.type;
+    if (auth.credentials) {
+      const maskedCreds: Record<string, string> = {};
+      Object.keys(auth.credentials).forEach(key => {
+        maskedCreds[key] = '{{' + key + '}}';
+      });
+      authInfo += '\nCredentials: ' + JSON.stringify(maskedCreds, null, 2);
+    }
+    return authInfo;
+  };
+  
+  // Format example responses
+  const formatExamples = (examples: HttpRequest['examples']): string => {
+    if (!examples || examples.length === 0) return 'None';
+    
+    return examples.map((example, index) => {
+      const defaultLabel = example.isDefault ? ' (Default)' : '';
+      let result = '**Example ' + (index + 1) + defaultLabel + ': ' + example.name + '**\n';
+      result += '**Status Code**: ' + example.statusCode + '\n\n';
+      result += '**Response Headers**:\n';
+      result += maskSensitiveHeaders(example.headers) + '\n\n';
+      result += '**Response Body**:\n';
+      result += '```json\n';
+      result += formatBody(example.body) + '\n';
+      result += '```';
+      return result;
+    }).join('\n\n---\n\n');
+  };
+  
+  // Generate endpoints section
+  const endpointsSection = allRequests.map(({ request, path }) => {
+    const examplesSection = request.examples && request.examples.length > 0 
+      ? '\n\n**Example Responses**:\n' + formatExamples(request.examples)
+      : '';
+    
+    let result = '### ' + request.name + '\n';
+    result += '**Full Path**: ' + path + ' > ' + request.name + '\n\n';
+    result += '**Method**: ' + request.method + '\n';
+    result += '**URL**: ' + request.url + '\n\n';
+    result += '**Headers**:\n';
+    result += maskSensitiveHeaders(request.headers) + '\n\n';
+    result += '**Authentication**:\n';
+    result += formatAuth(request.auth) + '\n\n';
+    result += '**Request Body**:\n';
+    result += '```json\n';
+    result += formatBody(request.body) + '\n';
+    result += '```' + examplesSection + '\n\n---';
+    return result;
+  }).join('\n\n');
+  
+  let prompt = '# API Endpoints: ' + folder.name + '\n\n';
+  prompt += '**Context**: This folder contains API endpoints that should respect the existing API integration structure and patterns in your codebase. All authentication flows, error handling patterns, and response formats should remain consistent with the current implementation.\n\n';
+  prompt += '## UI Reference\n\n';
+  prompt += '**Important**: If UI designs, screenshots, or visual references are available for these endpoints, please:\n';
+  prompt += '1. Review and respect the UI layout, form fields, and validation patterns shown in the reference images\n';
+  prompt += '2. Ensure any implementation matches the visual structure and user flow depicted in the UI\n';
+  prompt += '3. Take note of field types, labels, placeholders, and error states shown in the UI\n\n';
+  prompt += '## Folder Structure\n\n';
+  prompt += buildStructure(folder) + '\n\n';
+  prompt += '## Endpoints\n\n';
+  prompt += endpointsSection + '\n\n';
+  prompt += '## Summary\n\n';
+  prompt += '- **Total Endpoints**: ' + allRequests.length + '\n';
+  prompt += '- **HTTP Methods**: ' + Object.entries(methodCounts).map(([method, count]) => method + ' (' + count + ')').join(', ') + '\n';
+  prompt += '- **Note**: Please maintain consistency with existing authentication flows, error handling patterns, and response formats when implementing new features or modifications.\n\n';
+  prompt += '## Critical Guidelines for Agent\n\n';
+  prompt += '**When working with these endpoints, you MUST:**\n\n';
+  prompt += '1. **Respect existing API integration patterns** - Maintain consistency with current authentication flows, error handling, and response formats\n\n';
+  prompt += '2. **ALWAYS ask for user confirmation when discrepancies are found** - If you notice ANY differences between:\n';
+  prompt += '   - The API request payload structure and what the UI suggests should be sent\n';
+  prompt += '   - The API response body format and what the UI expects to receive\n';
+  prompt += '   - Field names, types, or required/optional status between API and UI\n';
+  prompt += '   - **The API response examples provided below and what the UI expects to display**\n   \n';
+  prompt += '   **STOP and ask the user**: "I noticed a discrepancy between the API definition and the UI reference for [specific endpoint]. The API expects [X] but the UI shows [Y]. Which should I follow?"\n\n';
+  prompt += '3. **Follow established authentication flows** - Use the same auth patterns already in place\n\n';
+  prompt += '4. **Keep response formats uniform** - Match existing response structures across similar endpoints\n\n';
+  prompt += '5. **Respect UI reference images** - If UI screenshots or designs are provided, ensure your implementation matches the visual structure, form fields, and validation patterns shown\n\n';
+  prompt += '6. **Use provided response examples as reference** - The "Example Responses" section shows actual expected response formats. If implementing mock servers or testing, these are the definitive response structures to use.';
+  
+  return prompt;
+};
+
+/**
+ * Copy folder prompt to clipboard
+ */
+const copyFolderPromptToClipboard = async (folder: FolderWithRequestsAndChildren) => {
+  // Validate folder data to prevent crashes from incorrect event forwarding
+  if (!folder || typeof folder !== 'object' || !folder.id || !Array.isArray(folder.requests)) {
+    console.error('Invalid folder data received:', folder);
+    showToast('Error: Invalid folder data. Please try again.', 'error', { duration: 3000 });
+    return;
+  }
+  
+  try {
+    const prompt = generateFolderPrompt(folder);
+    await navigator.clipboard.writeText(prompt);
+    showToast('✨ Prompt copied! Ready to paste into your agent.', 'success', { duration: 3000 });
+  } catch (error) {
+    console.error('Failed to copy prompt:', error);
+    showToast('Failed to copy prompt. Please try again.', 'error', { duration: 3000 });
+  }
 };
 
 const getMethodIcon = (method: string) => {
@@ -1639,6 +1897,18 @@ watch(activeView, (newView) => {
               </svg>
               New Request
             </button>
+            <button
+              class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              @click.stop="handleContextAction('copy-prompt')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
+                <path d="M12 3v18m-6.364-6.364l12.728-12.728m0 12.728L5.636 5.636"/>
+                <path d="M7 17L17 7"/>
+                <path d="M7 7h10v10"/>
+              </svg>
+              Copy Prompt for Agent
+            </button>
+            <div class="border-t border-border-default my-1"></div>
             <button
               class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
               @click.stop="handleContextAction('rename-folder')"

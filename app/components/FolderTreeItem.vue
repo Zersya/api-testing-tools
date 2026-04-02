@@ -212,7 +212,7 @@ const isDescendant = (ancestorId: string, descendantId: string): boolean => {
             :drop-target="dropTarget"
             @toggle-folder="emit('toggleFolder', $event)"
             @select-request="emit('selectRequest', $event)"
-            @context-menu="emit('contextMenu', $event, 'folder', $event)"
+            @context-menu="(...args: any[]) => emit('contextMenu', args[0], args[1], args[2])"
             @create-request="emit('createRequest', $event)"
             @drag-start="(...args: any[]) => emit('dragStart', args[0], args[1])"
             @drag-end="emit('dragEnd')"
