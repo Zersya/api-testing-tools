@@ -7,6 +7,7 @@ import VariableTextarea from './VariableTextarea.vue';
 import RequestExampleManager from './RequestExampleManager.vue';
 import MockConfiguration from './MockConfiguration.vue';
 import { useUsageTracking } from '~/composables/useUsageTracking';
+import { useClientRequest, isLocalUrl } from '~/composables/useClientRequest';
 
 interface Variable {
   id: string;
@@ -2317,9 +2318,15 @@ const sendRequest = async () => {
       }
     }
 
-    const result = await $fetch<ProxyResponse | ProxyErrorResponse>('/api/proxy/request', {
-      method: 'POST',
-      body: {
+    // Determine if URL is local and should be handled client-side
+    const isLocalRequest = isLocalUrl(requestUrl);
+
+    let result: ProxyResponse | ProxyErrorResponse;
+
+    if (isLocalRequest) {
+      // Use client-side request for localhost/private URLs
+      const { executeClientRequest } = useClientRequest();
+      result = await executeClientRequest({
         url: requestUrl,
         method: form.value.method,
         headers: requestHeaders,
@@ -2327,8 +2334,22 @@ const sendRequest = async () => {
         workspaceId: props.workspaceId,
         environmentId: props.environmentId,
         savedRequestId: props.request.id || undefined
-      }
-    });
+      });
+    } else {
+      // Use server proxy for remote URLs
+      result = await $fetch<ProxyResponse | ProxyErrorResponse>('/api/proxy/request', {
+        method: 'POST',
+        body: {
+          url: requestUrl,
+          method: form.value.method,
+          headers: requestHeaders,
+          body: requestBody,
+          workspaceId: props.workspaceId,
+          environmentId: props.environmentId,
+          savedRequestId: props.request.id || undefined
+        }
+      });
+    }
 
     response.value = result;
     // Capture script logs from response
