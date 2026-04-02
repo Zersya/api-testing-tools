@@ -1,7 +1,7 @@
 import { db } from '../../../../db';
 import { projects, environments } from '../../../../db/schema';
 import { eq } from 'drizzle-orm';
-import { getAccessibleWorkspaceIds } from '../../../../utils/permissions';
+import { canEditWorkspace } from '../../../../utils/permissions';
 
 interface CreateEnvironmentBody {
   name: string;
@@ -72,14 +72,14 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  // Check if user has access to this workspace
-  const accessibleIds = await getAccessibleWorkspaceIds(user.id);
-  if (!accessibleIds.includes(project.workspaceId)) {
-    throw createError({
-      statusCode: 403,
-      statusMessage: 'You do not have access to this workspace'
-    });
-  }
+  // Check if user can edit this workspace (owner or edit permission)
+    const canEdit = await canEditWorkspace(user.id, project.workspaceId);
+    if (!canEdit) {
+      throw createError({
+        statusCode: 403,
+        statusMessage: 'You do not have edit access to this workspace'
+      });
+    }
 
   const existingEnvironments = await db
     .select()
