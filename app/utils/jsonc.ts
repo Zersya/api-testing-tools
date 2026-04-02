@@ -5,7 +5,7 @@
 
 /**
  * Strip comments from JSONC content
- * Handles both // line comments and /* block comments */
+ * Handles both line comments (//) and block comments (/ * *)
  */
 export function stripComments(content: string): string {
   if (!content) return content
@@ -76,6 +76,27 @@ export function validateJSONC(content: string): { valid: boolean; error?: string
     return { valid: true }
   } catch (e: any) {
     return { valid: false, error: e.message }
+  }
+}
+
+/**
+ * Format JSON/JSONC content with proper indentation
+ * Strips comments, parses, then stringifies with formatting
+ */
+export function formatJSONC(content: string, indent: number = 2): string {
+  if (!content || content.trim() === '') {
+    return content
+  }
+  
+  try {
+    // Strip comments and parse
+    const cleanContent = stripComments(content)
+    const parsed = JSON.parse(cleanContent)
+    // Re-stringify with formatting
+    return JSON.stringify(parsed, null, indent)
+  } catch (e) {
+    // If parsing fails, return original content unchanged
+    return content
   }
 }
 

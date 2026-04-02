@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
-import { highlightJSONC } from '~/utils/jsonc'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { highlightJSONC, formatJSONC } from '~/utils/jsonc'
 
 interface Variable {
   id: string
@@ -133,6 +133,112 @@ const handleInput = () => {
   emit('update:modelValue', content);
 };
 
+const getSelectedLines = (text: string, startPos: number, endPos: number): { startLine: number; endLine: number } => {
+  const linesBeforeStart = text.substring(0, startPos).split('\n').length - 1
+  const linesBeforeEnd = text.substring(0, endPos).split('\n').length - 1
+  return { startLine: linesBeforeStart, endLine: linesBeforeEnd }
+}
+
+const toggleComment = () => {
+  if (!editorRef.value || props.disabled) return
+  
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0) return
+  
+  const range = selection.getRangeAt(0)
+  const preCaretRange = range.cloneRange()
+  preCaretRange.selectNodeContents(editorRef.value)
+  preCaretRange.setEnd(range.startContainer, range.startOffset)
+  const startPos = preCaretRange.toString().length
+  
+  const preCaretRangeEnd = range.cloneRange()
+  preCaretRangeEnd.selectNodeContents(editorRef.value)
+  preCaretRangeEnd.setEnd(range.endContainer, range.endOffset)
+  const endPos = preCaretRangeEnd.toString().length
+  
+  const text = getEditorText()
+  const lines = text.split('\n')
+  const { startLine, endLine } = getSelectedLines(text, startPos, endPos)
+  
+  // Check if all selected lines are commented
+  let allCommented = true
+  for (let i = startLine; i <= endLine && i < lines.length; i++) {
+    const trimmed = lines[i].trimStart()
+    if (trimmed.length > 0 && !trimmed.startsWith('//')) {
+      allCommented = false
+      break
+    }
+  }
+  
+  // Toggle comments
+  for (let i = startLine; i <= endLine && i < lines.length; i++) {
+    const line = lines[i]
+    const trimmed = line.trimStart()
+    const leadingSpaces = line.length - trimmed.length
+    
+    if (allCommented) {
+      // Remove comment
+      if (trimmed.startsWith('//')) {
+        lines[i] = line.substring(0, leadingSpaces) + trimmed.substring(2)
+      }
+    } else {
+      // Add comment
+      if (trimmed.length > 0) {
+        lines[i] = line.substring(0, leadingSpaces) + '//' + trimmed
+      }
+    }
+  }
+  
+  const newText = lines.join('\n')
+  emit('update:modelValue', newText)
+  
+  // Restore focus
+  nextTick(() => {
+    if (editorRef.value) {
+      editorRef.value.focus()
+    }
+  })
+}
+
+const handleKeydown = (event: KeyboardEvent) => {
+  const isMacLike = navigator.platform.toUpperCase().indexOf('MAC') >= 0
+  const modifierPressed = isMacLike ? event.metaKey : event.ctrlKey
+  
+  // Toggle comment: Cmd+/ or Ctrl+/
+  if (modifierPressed && event.key === '/') {
+    event.preventDefault()
+    toggleComment()
+    return
+  }
+  
+  // Format JSON: Cmd+Shift+F or Ctrl+Shift+F (only when JSONC is enabled)
+  if (modifierPressed && event.shiftKey && (event.key === 'F' || event.key === 'f') && props.enableJsonc) {
+    event.preventDefault()
+    formatJSON()
+  }
+}
+
+const formatJSON = () => {
+  if (!editorRef.value || props.disabled || !props.enableJsonc) return
+  
+  const text = getEditorText()
+  if (!text.trim()) return
+  
+  const formatted = formatJSONC(text, 2)
+  
+  // Only update if formatting succeeded (content changed)
+  if (formatted !== text) {
+    emit('update:modelValue', formatted)
+    
+    // Restore focus after update
+    nextTick(() => {
+      if (editorRef.value) {
+        editorRef.value.focus()
+      }
+    })
+  }
+}
+
 // Set initial content on mount
 onMounted(() => {
   if (editorRef.value) {
@@ -162,6 +268,7 @@ watch(() => props.modelValue, (newValue) => {
       :rows="rows"
       :disabled="disabled"
       @input="handleInput"
+      @keydown="handleKeydown"
       spellcheck="false"
     ></div>
   </div>
