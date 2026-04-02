@@ -8,7 +8,7 @@ import RequestExampleManager from './RequestExampleManager.vue'
 import MockConfiguration from './MockConfiguration.vue'
 import { useUsageTracking } from '~/composables/useUsageTracking'
 import { useClientRequest, isLocalUrl } from '~/composables/useClientRequest'
-import { stripComments, validateJSONC } from '~/utils/jsonc'
+import { stripComments, validateJSONC, formatJSONC } from '~/utils/jsonc'
 
 interface Variable {
   id: string;
@@ -980,6 +980,15 @@ const handleBinaryFileSelect = (event: Event) => {
 
 const validateJson = (jsonString: string): { valid: boolean; error?: string } => {
   return validateJSONC(jsonString)
+}
+
+const formatJsonBody = () => {
+  if (!jsonBody.value.trim()) return
+  
+  const formatted = formatJSONC(jsonBody.value, 2)
+  if (formatted !== jsonBody.value) {
+    jsonBody.value = formatted
+  }
 }
 
 const buildBody = (): any => {
@@ -2818,15 +2827,30 @@ defineExpose({
 }"
                   class="w-full"
                 />
-                <div v-if="validateJSONC(jsonBody).valid" class="absolute top-2 right-2 px-2 py-0.5 bg-accent-green/15 text-accent-green text-[10px] font-semibold rounded">
-                  Valid JSON
-                </div>
-                <div v-else-if="jsonBody.trim()" class="absolute top-2 right-2 px-2 py-0.5 bg-accent-red/15 text-accent-red text-[10px] font-semibold rounded">
-                  Invalid JSON
+                <div class="absolute top-2 right-2 flex items-center gap-1.5">
+                  <button
+                    @click="formatJsonBody"
+                    class="px-2 py-0.5 bg-bg-tertiary hover:bg-bg-hover text-text-secondary hover:text-text-primary text-[10px] font-medium rounded border border-border-default transition-colors"
+                    title="Format JSON (Cmd+Shift+F)"
+                  >
+                    Format
+                  </button>
+                  <div v-if="validateJSONC(jsonBody).valid" class="px-2 py-0.5 bg-accent-green/15 text-accent-green text-[10px] font-semibold rounded">
+                    Valid JSON
+                  </div>
+                  <div v-else-if="jsonBody.trim()" class="px-2 py-0.5 bg-accent-red/15 text-accent-red text-[10px] font-semibold rounded">
+                    Invalid JSON
+                  </div>
                 </div>
               </div>
-              <div v-if="!validateJSONC(jsonBody).valid && jsonBody.trim()" class="text-xs text-accent-red">
-                {{ validateJSONC(jsonBody).error }}
+              <div class="flex items-center justify-between">
+                <div v-if="!validateJSONC(jsonBody).valid && jsonBody.trim()" class="text-xs text-accent-red">
+                  {{ validateJSONC(jsonBody).error }}
+                </div>
+                <div v-else></div>
+                <div class="text-[10px] text-text-muted">
+                  <span class="opacity-60">Cmd+/</span> comment · <span class="opacity-60">Cmd+Shift+F</span> format
+                </div>
               </div>
             </div>
 
