@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { computed, nextTick, watch } from 'vue';
-import { debounce } from 'perfect-debounce';
-import JsonNode from './JsonNode.vue';
-import VariableInput from './VariableInput.vue';
-import VariableTextarea from './VariableTextarea.vue';
-import RequestExampleManager from './RequestExampleManager.vue';
-import MockConfiguration from './MockConfiguration.vue';
-import { useUsageTracking } from '~/composables/useUsageTracking';
-import { useClientRequest, isLocalUrl } from '~/composables/useClientRequest';
+import { computed, nextTick, watch } from 'vue'
+import { debounce } from 'perfect-debounce'
+import JsonNode from './JsonNode.vue'
+import VariableInput from './VariableInput.vue'
+import VariableTextarea from './VariableTextarea.vue'
+import RequestExampleManager from './RequestExampleManager.vue'
+import MockConfiguration from './MockConfiguration.vue'
+import { useUsageTracking } from '~/composables/useUsageTracking'
+import { useClientRequest, isLocalUrl } from '~/composables/useClientRequest'
+import { stripComments, validateJSONC, formatJSONC } from '~/utils/jsonc'
 
 interface Variable {
   id: string;
@@ -124,22 +125,23 @@ export interface RequestDraftSnapshot {
 }
 
 interface Props {
-  request: HttpRequest;
-  workspaceId?: string;
-  environmentId?: string;
-  collectionId?: string;
-  projectId?: string;
-  readOnly?: boolean;
-  // Tab key for identifying unique tab instance (handles multiple tabs with same request.id)
-  tabKey?: string;
-  // Initial state props for persistence
-  initialResponse?: ProxyResponse | ProxyErrorResponse | null;
-  initialActiveTab?: TabType;
-  initialScriptLogs?: Array<{ phase: 'pre' | 'post'; type: 'log' | 'error' | 'warn'; message: string; timestamp: number }>;
+  request: HttpRequest
+  workspaceId?: string
+  environmentId?: string
+  collectionId?: string
+  projectId?: string
+  projectName?: string
+  readOnly?: boolean
+  tabKey?: string
+  initialResponse?: ProxyResponse | ProxyErrorResponse | null
+  initialActiveTab?: TabType
+  initialScriptLogs?: Array<{ phase: 'pre' | 'post'; type: 'log' | 'error' | 'warn'; message: string; timestamp: number }>
+  isSharedWorkspace?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  readOnly: false
+  readOnly: false,
+  isSharedWorkspace: false
 });
 
 const emit = defineEmits<{
@@ -148,6 +150,8 @@ const emit = defineEmits<{
   unsavedChanges: [request: HttpRequest, hasUnsavedChanges: boolean, draft: RequestDraftSnapshot];
   // State persistence events
   stateChange: [state: { response: any; activeTab: TabType; scriptLogs: any[] }];
+  // Collection settings
+  openCollectionSettings: [collectionId: string];
 }>();
 
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'] as const;
@@ -247,10 +251,22 @@ const oauth2 = ref({
   grantType: 'authorization_code' as 'authorization_code' | 'client_credentials',
   PKCE: false
 });
-const isGettingToken = ref(false);
-const tokenError = ref('');
-const inheritFromParent = ref(false);
-const expandedNodes = ref(new Set<string>());
+const isGettingToken = ref(false)
+const tokenError = ref('')
+const inheritFromParent = ref(false)
+const collectionAuth = ref<any>(null)
+const collectionName = ref<string>('')
+const collectionAuthLoading = ref(false)
+
+// Computed property to check if collection auth is effectively being used
+const isUsingCollectionAuth = computed(() => {
+  return inheritFromParent.value && 
+         collectionAuth.value && 
+         collectionAuth.value.type && 
+         collectionAuth.value.type !== 'none'
+})
+
+const expandedNodes = ref(new Set<string>())
 const showSearch = ref(false);
 const searchQuery = ref('');
 const responseContentRef = ref<HTMLElement | null>(null);
@@ -320,6 +336,7 @@ const lastSavedState = ref<{
   headers: Record<string, string> | null;
   body: any;
   auth: any;
+  inheritAuth: number;
   mockConfig: import('../../server/db/schema/savedRequest').MockConfig | null;
 } | null>(null);
 
@@ -332,6 +349,7 @@ const captureCurrentStateAsSaved = () => {
     body: buildBody(),
     auth: {
       type: authType.value,
+      inherit: inheritFromParent.value,
       credentials: authType.value === 'api-key' ? {
         key: apiKey.value.key,
         value: apiKey.value.value,
@@ -342,6 +360,7 @@ const captureCurrentStateAsSaved = () => {
           password: basicAuth.value.password
         } : undefined
     },
+    inheritAuth: inheritFromParent.value ? 1 : 0,
     mockConfig: mockConfig.value,
     preScript: preScript.value,
     postScript: postScript.value,
@@ -542,12 +561,14 @@ const loadRequestData = (request: HttpRequest) => {
   const authConfig = request.auth;
   if (!authConfig) {
     authType.value = 'none';
+    inheritFromParent.value = false;
     apiKey.value = { key: '', value: '', addTo: 'header' };
     bearerToken.value = '';
     basicAuth.value = { username: '', password: '' };
   } else {
     const type = authConfig.type as AuthType;
     authType.value = type;
+    inheritFromParent.value = authConfig.inherit || false;
 
     if (type === 'api-key' && authConfig.credentials) {
       apiKey.value.key = authConfig.credentials.key || '';
@@ -573,6 +594,9 @@ const loadRequestData = (request: HttpRequest) => {
       oauth2.value.PKCE = authConfig.credentials.PKCE || false;
     }
   }
+
+  // Load inheritAuth setting
+  inheritFromParent.value = (request as any).inheritAuth === 1;
 
   // Load mock configuration
   if (request.mockConfig) {
@@ -887,6 +911,7 @@ const buildDraftSnapshot = (): RequestDraftSnapshot => {
 
   const currentAuth = {
     type: authType.value,
+    inherit: inheritFromParent.value,
     credentials: authType.value === 'api-key' ? {
       key: apiKey.value.key,
       value: apiKey.value.value,
@@ -976,74 +1001,137 @@ const handleBinaryFileSelect = (event: Event) => {
 };
 
 const validateJson = (jsonString: string): { valid: boolean; error?: string } => {
-  try {
-    if (jsonString.trim() === '') {
-      return { valid: true };
-    }
-    JSON.parse(jsonString);
-    return { valid: true };
-  } catch (error: any) {
-    return { valid: false, error: error.message };
+  return validateJSONC(jsonString)
+}
+
+const formatJsonBody = () => {
+  if (!jsonBody.value.trim()) return
+  
+  const formatted = formatJSONC(jsonBody.value, 2)
+  if (formatted !== jsonBody.value) {
+    jsonBody.value = formatted
   }
-};
+}
 
 const buildBody = (): any => {
   switch (bodyFormat.value) {
     case 'none':
-      return undefined;
+      return undefined
     case 'json':
       try {
-        return JSON.parse(jsonBody.value);
+        const cleanJson = stripComments(jsonBody.value)
+        return JSON.parse(cleanJson)
       } catch {
-        return jsonBody.value;
+        return jsonBody.value
       }
     case 'form-data':
-      const formData = new FormData();
+      const formData = new FormData()
       formDataParams.value.forEach(param => {
         if (param.enabled && param.key) {
-          formData.append(param.key, param.value);
+          formData.append(param.key, param.value)
         }
-      });
-      return formData;
+      })
+      return formData
     case 'urlencoded':
-      const enabledParams = formDataParams.value.filter(p => p.enabled && p.key);
-      const params = new URLSearchParams();
+      const enabledParams = formDataParams.value.filter(p => p.enabled && p.key)
+      const params = new URLSearchParams()
       enabledParams.forEach(param => {
-        params.append(param.key, param.value);
-      });
-      return params.toString();
+        params.append(param.key, param.value)
+      })
+      return params.toString()
     case 'raw':
-      return rawBody.value;
+      return rawBody.value
     case 'binary':
-      return binaryFile.value;
+      return binaryFile.value
     default:
-      return undefined;
+      return undefined
   }
+}
+
+const resolveEnvVars = (value: string): string => {
+  if (!value || !environmentVariables.value) return value;
+  
+  return value.replace(/\{\{([^}]+)\}\}/g, (match, varName) => {
+    const variable = environmentVariables.value.find(v => v.key === varName.trim());
+    return variable ? variable.value : match;
+  });
 };
 
 const buildAuthHeaders = (): Record<string, string> => {
-  const authHeaders: Record<string, string> = {};
-
-  if (authType.value === 'api-key') {
-    if (apiKey.value.addTo === 'header' && apiKey.value.key) {
-      authHeaders[apiKey.value.key] = apiKey.value.value;
+  const authHeaders: Record<string, string> = {}
+  
+  const effectiveAuth = inheritFromParent.value ? collectionAuth.value : null
+  const effectiveAuthType = inheritFromParent.value ? (effectiveAuth?.type || 'none') : authType.value
+  
+  // Determine which auth type to use:
+  // - If inheriting and collection has auth, use collection auth
+  // - If inheriting but collection has no auth, fall back to request's auth
+  // - If not inheriting, use request's auth
+  const hasCollectionAuth = inheritFromParent.value && effectiveAuth && effectiveAuth.type && effectiveAuth.type !== 'none'
+  const finalAuthType = hasCollectionAuth ? effectiveAuthType : authType.value
+  
+  if (finalAuthType === 'api-key') {
+    const keyConfig = hasCollectionAuth 
+      ? (effectiveAuth?.credentials || {})
+      : apiKey.value
+    if (keyConfig.addTo === 'header' && keyConfig.key) {
+      // Resolve environment variables in inherited collection auth
+      const resolvedKey = hasCollectionAuth ? resolveEnvVars(keyConfig.key) : keyConfig.key
+      const resolvedValue = hasCollectionAuth ? resolveEnvVars(keyConfig.value) : keyConfig.value
+      authHeaders[resolvedKey] = resolvedValue
     }
-  } else if (authType.value === 'bearer' && bearerToken.value) {
-    authHeaders['Authorization'] = `Bearer ${bearerToken.value}`;
-  } else if (authType.value === 'basic' && basicAuth.value.username) {
-    const credentials = btoa(`${basicAuth.value.username}:${basicAuth.value.password}`);
-    authHeaders['Authorization'] = `Basic ${credentials}`;
-  } else if (authType.value === 'oauth2' && oauth2.value.accessToken) {
-    authHeaders['Authorization'] = `${oauth2.value.tokenType} ${oauth2.value.accessToken}`;
+  } else if (finalAuthType === 'bearer') {
+    const token = hasCollectionAuth 
+      ? (effectiveAuth?.credentials?.token || '')
+      : bearerToken.value
+    if (token) {
+      // Resolve environment variables in inherited collection auth
+      const resolvedToken = hasCollectionAuth ? resolveEnvVars(token) : token
+      authHeaders['Authorization'] = `Bearer ${resolvedToken}`
+    }
+  } else if (finalAuthType === 'basic') {
+    const creds = hasCollectionAuth 
+      ? (effectiveAuth?.credentials || {})
+      : basicAuth.value
+    if (creds.username) {
+      // Resolve environment variables in inherited collection auth
+      const resolvedUsername = hasCollectionAuth ? resolveEnvVars(creds.username) : creds.username
+      const resolvedPassword = hasCollectionAuth ? resolveEnvVars(creds.password) : creds.password
+      const credentials = btoa(`${resolvedUsername}:${resolvedPassword}`)
+      authHeaders['Authorization'] = `Basic ${credentials}`
+    }
+  } else if (finalAuthType === 'oauth2') {
+    const oauthConfig = hasCollectionAuth 
+      ? (effectiveAuth?.credentials || {})
+      : oauth2.value
+    if (oauthConfig.accessToken) {
+      // Resolve environment variables in inherited collection auth
+      const resolvedToken = hasCollectionAuth ? resolveEnvVars(oauthConfig.accessToken) : oauthConfig.accessToken
+      authHeaders['Authorization'] = `${oauthConfig.tokenType || 'Bearer'} ${resolvedToken}`
+    }
   }
-
-  return authHeaders;
-};
+  
+  return authHeaders
+}
 
 const buildAuthQueryParams = (): Record<string, string> => {
   const queryParams: Record<string, string> = {};
-
-  if (authType.value === 'api-key' && apiKey.value.addTo === 'query' && apiKey.value.key) {
+  
+  // Determine which auth to use for query params
+  const hasCollectionApiKey = inheritFromParent.value && collectionAuth.value?.type === 'api-key'
+  const hasRequestApiKey = authType.value === 'api-key' && apiKey.value.addTo === 'query' && apiKey.value.key
+  
+  // Handle inherited collection auth for API key in query
+  if (hasCollectionApiKey) {
+    const keyConfig = collectionAuth.value.credentials || {}
+    if (keyConfig.addTo === 'query' && keyConfig.key) {
+      // Resolve environment variables
+      const resolvedKey = resolveEnvVars(keyConfig.key)
+      const resolvedValue = resolveEnvVars(keyConfig.value)
+      queryParams[resolvedKey] = resolvedValue;
+    }
+  } else if (hasRequestApiKey) {
+    // Fall back to request's API key if inheriting but no collection auth
     queryParams[apiKey.value.key] = apiKey.value.value;
   }
 
@@ -1053,11 +1141,13 @@ const buildAuthQueryParams = (): Record<string, string> => {
 const parseAuthFromRequest = (authConfig: any) => {
   if (!authConfig) {
     authType.value = 'none';
+    inheritFromParent.value = false;
     return;
   }
 
   const type = authConfig.type as AuthType;
   authType.value = type;
+  inheritFromParent.value = authConfig.inherit || false;
 
   if (type === 'api-key' && authConfig.credentials) {
     apiKey.value.key = authConfig.credentials.key || '';
@@ -1082,7 +1172,30 @@ const parseAuthFromRequest = (authConfig: any) => {
     oauth2.value.grantType = authConfig.credentials.grantType || 'authorization_code';
     oauth2.value.PKCE = authConfig.credentials.PKCE || false;
   }
-};
+}
+
+const fetchCollectionAuth = async () => {
+  if (!props.collectionId) return
+  
+  collectionAuthLoading.value = true
+  try {
+    const result = await $fetch(`/api/admin/collections/${props.collectionId}/auth`)
+    collectionAuth.value = result.authConfig
+    collectionName.value = result.collectionName
+  } catch (error) {
+    console.error('Failed to fetch collection auth:', error)
+    collectionAuth.value = null
+    collectionName.value = ''
+  } finally {
+    collectionAuthLoading.value = false
+  }
+}
+
+const openCollectionSettings = () => {
+  if (props.collectionId) {
+    emit('openCollectionSettings', props.collectionId)
+  }
+}
 
 const isTokenExpired = computed(() => {
   if (!oauth2.value.expiresAt) return false;
@@ -1513,6 +1626,7 @@ const hasUnsavedChanges = computed(() => {
   const currentBody = buildBody();
   const currentAuth = {
     type: authType.value,
+    inherit: inheritFromParent.value,
     credentials: authType.value === 'api-key' ? {
       key: apiKey.value.key,
       value: apiKey.value.value,
@@ -1523,6 +1637,7 @@ const hasUnsavedChanges = computed(() => {
         password: basicAuth.value.password
       } : undefined
   } || null;
+  const currentInheritAuth = inheritFromParent.value ? 1 : 0;
   const currentPathVariables = buildPathVariablesRecord();
 
   // Use lastSavedState if available (after a save), otherwise use props.request
@@ -1532,6 +1647,7 @@ const hasUnsavedChanges = computed(() => {
     headers: props.request.headers,
     body: props.request.body,
     auth: props.request.auth,
+    inheritAuth: (props.request as any).inheritAuth || 0,
     mockConfig: props.request.mockConfig,
     preScript: props.request.preScript,
     postScript: props.request.postScript,
@@ -1545,12 +1661,13 @@ const hasUnsavedChanges = computed(() => {
   const normalizedOriginalBody = compareState.body === undefined ? null : compareState.body;
   const bodyChanged = JSON.stringify(normalizedCurrentBody) !== JSON.stringify(normalizedOriginalBody);
   const authChanged = JSON.stringify(currentAuth) !== JSON.stringify(compareState.auth || {});
+  const inheritAuthChanged = currentInheritAuth !== (compareState.inheritAuth || 0);
   const mockConfigChanged = JSON.stringify(mockConfig.value) !== JSON.stringify(compareState.mockConfig || null);
   const preScriptChanged = (preScript.value || '') !== (compareState.preScript || '');
   const postScriptChanged = (postScript.value || '') !== (compareState.postScript || '');
   const pathVarsChanged = JSON.stringify(currentPathVariables) !== JSON.stringify(compareState.pathVariables || {});
 
-  return urlChanged || methodChanged || headersChanged || bodyChanged || authChanged || mockConfigChanged || preScriptChanged || postScriptChanged || pathVarsChanged;
+  return urlChanged || methodChanged || headersChanged || bodyChanged || authChanged || inheritAuthChanged || mockConfigChanged || preScriptChanged || postScriptChanged || pathVarsChanged;
 });
 
 const getContentType = () => {
@@ -2121,6 +2238,7 @@ const openSaveDialog = () => {
     body: buildBody(),
     auth: {
       type: authType.value,
+      inherit: inheritFromParent.value,
       credentials: authType.value === 'api-key' ? {
         key: apiKey.value.key,
         value: apiKey.value.value,
@@ -2144,6 +2262,7 @@ const openSaveDialog = () => {
           PKCE: oauth2.value.PKCE
         } : undefined
     } || null,
+    inheritAuth: inheritFromParent.value ? 1 : 0,
     mockConfig: mockConfig.value,
     preScript: preScript.value,
     postScript: postScript.value,
@@ -2168,6 +2287,7 @@ const openSaveAsDialog = () => {
     body: buildBody(),
     auth: {
       type: authType.value,
+      inherit: inheritFromParent.value,
       credentials: authType.value === 'api-key' ? {
         key: apiKey.value.key,
         value: apiKey.value.value,
@@ -2191,6 +2311,7 @@ const openSaveAsDialog = () => {
           PKCE: oauth2.value.PKCE
         } : undefined
     } || null,
+    inheritAuth: inheritFromParent.value ? 1 : 0,
     mockConfig: mockConfig.value || {
       isEnabled: true,
       statusCode: 200,
@@ -2259,11 +2380,26 @@ onMounted(() => {
   parseAuthFromRequest(props.request.auth);
   checkForOAuthCallback();
   fetchEnvironmentVariables();
+  
+  // Fetch collection auth if we have a collectionId
+  if (props.collectionId) {
+    fetchCollectionAuth();
+  }
 });
 
 watch(() => props.environmentId, () => {
-  fetchEnvironmentVariables();
-});
+  fetchEnvironmentVariables()
+})
+
+watch(() => props.collectionId, () => {
+  fetchCollectionAuth()
+})
+
+watch(inheritFromParent, (newValue) => {
+  if (newValue && props.collectionId) {
+    fetchCollectionAuth()
+  }
+})
 
 const sendRequest = async () => {
   if (!form.value.url) return;
@@ -2423,7 +2559,8 @@ defineExpose({
   authType,
   bearerToken,
   basicAuth,
-  apiKey
+  apiKey,
+  refreshCollectionAuth: fetchCollectionAuth
 });
 </script>
 
@@ -2439,6 +2576,20 @@ defineExpose({
               class="w-2 h-2 rounded-full bg-accent-orange"
               title="Unsaved changes"
             ></span>
+            <!-- Shared workspace badge -->
+            <span 
+              v-if="isSharedWorkspace"
+              class="flex items-center gap-1 px-2 py-0.5 bg-accent-purple/15 text-accent-purple text-[10px] font-semibold rounded-full"
+              title="This request is in a shared collection visible to all team members"
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+              </svg>
+              Shared
+            </span>
           </h2>
           <span 
             class="text-[10px] font-semibold px-1.5 py-0.5 rounded"
@@ -2757,20 +2908,36 @@ defineExpose({
                   v-model="jsonBody"
                   :variables="environmentVariables"
                   :rows="12"
+                  :enable-jsonc="true"
                   placeholder="{
   &quot;key&quot;: &quot;value&quot;
 }"
                   class="w-full"
                 />
-                <div v-if="validateJson(jsonBody).valid" class="absolute top-2 right-2 px-2 py-0.5 bg-accent-green/15 text-accent-green text-[10px] font-semibold rounded">
-                  Valid JSON
-                </div>
-                <div v-else-if="jsonBody.trim()" class="absolute top-2 right-2 px-2 py-0.5 bg-accent-red/15 text-accent-red text-[10px] font-semibold rounded">
-                  Invalid JSON
+                <div class="absolute top-2 right-2 flex items-center gap-1.5">
+                  <button
+                    @click="formatJsonBody"
+                    class="px-2 py-0.5 bg-bg-tertiary hover:bg-bg-hover text-text-secondary hover:text-text-primary text-[10px] font-medium rounded border border-border-default transition-colors"
+                    title="Format JSON (Cmd+Shift+F)"
+                  >
+                    Format
+                  </button>
+                  <div v-if="validateJSONC(jsonBody).valid" class="px-2 py-0.5 bg-accent-green/15 text-accent-green text-[10px] font-semibold rounded">
+                    Valid JSON
+                  </div>
+                  <div v-else-if="jsonBody.trim()" class="px-2 py-0.5 bg-accent-red/15 text-accent-red text-[10px] font-semibold rounded">
+                    Invalid JSON
+                  </div>
                 </div>
               </div>
-              <div v-if="!validateJson(jsonBody).valid && jsonBody.trim()" class="text-xs text-accent-red">
-                {{ validateJson(jsonBody).error }}
+              <div class="flex items-center justify-between">
+                <div v-if="!validateJSONC(jsonBody).valid && jsonBody.trim()" class="text-xs text-accent-red">
+                  {{ validateJSONC(jsonBody).error }}
+                </div>
+                <div v-else></div>
+                <div class="text-[10px] text-text-muted">
+                  <span class="opacity-60">Cmd+/</span> comment · <span class="opacity-60">Cmd+Shift+F</span> format
+                </div>
               </div>
             </div>
 
@@ -2936,7 +3103,8 @@ defineExpose({
                 <label class="text-xs font-medium text-text-secondary">Auth Type</label>
                 <select
                   v-model="authType"
-                  class="w-full py-2 px-3 bg-bg-input border border-border-default rounded text-text-primary text-sm focus:outline-none focus:border-accent-blue"
+                  :disabled="isUsingCollectionAuth"
+                  class="w-full py-2 px-3 bg-bg-input border border-border-default rounded text-text-primary text-sm focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <option value="none">No Auth</option>
                   <option value="basic">Basic Auth</option>
@@ -2946,16 +3114,66 @@ defineExpose({
                 </select>
               </div>
 
-              <label class="flex items-center gap-2 cursor-pointer">
+              <label class="flex items-center gap-2 cursor-pointer select-none">
                 <input
                   type="checkbox"
                   v-model="inheritFromParent"
-                  class="w-4 h-4 rounded border-border-default bg-bg-input text-accent-blue focus:ring-accent-blue focus:ring-offset-bg-secondary cursor-pointer"
+                  :disabled="!collectionId || collectionAuthLoading"
+                  class="w-4 h-4 rounded border-border-default bg-bg-input text-accent-blue focus:ring-accent-blue focus:ring-offset-bg-secondary cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 />
-                <span class="text-xs text-text-secondary">Inherit from parent</span>
+                <span class="text-xs" :class="inheritFromParent ? 'text-accent-blue font-medium' : 'text-text-secondary'">
+                  Inherit auth from collection
+                </span>
+                <span v-if="collectionAuthLoading" class="text-xs text-text-muted">(loading...)</span>
               </label>
+              
+              <div v-if="inheritFromParent && collectionName && collectionAuth" class="p-3 bg-accent-blue/10 rounded border border-accent-blue/30">
+                <div class="flex items-center gap-2 text-xs text-text-secondary">
+                  <svg class="w-3.5 h-3.5 text-accent-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
+                  </svg>
+                  <span class="font-medium">Using auth from collection:</span>
+                  <span class="text-text-primary">{{ collectionName }}</span>
+                </div>
+                <div class="mt-2 flex items-center gap-2 text-xs">
+                  <span class="text-text-muted">Auth type:</span>
+                  <span class="px-1.5 py-0.5 bg-accent-blue/20 text-accent-blue font-semibold rounded">{{ collectionAuth.type }}</span>
+                </div>
+              </div>
+              
+              <div v-else-if="inheritFromParent && collectionName && !collectionAuth && !collectionAuthLoading" class="p-3 bg-accent-yellow/10 rounded border border-accent-yellow/30">
+                <div class="flex items-start gap-2">
+                  <svg class="w-3.5 h-3.5 text-accent-yellow mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                  </svg>
+                  <div class="text-xs">
+                    <div class="text-text-secondary mb-1">
+                      Collection "{{ collectionName }}" has no auth configured.
+                    </div>
+                    <button
+                      @click="openCollectionSettings"
+                      class="text-accent-blue hover:text-accent-blue/80 font-medium text-xs inline-flex items-center gap-1"
+                    >
+                      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37 1.608.982 3.678-.824 2.573-2.573z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                      </svg>
+                      Configure collection auth
+                    </button>
+                  </div>
+                </div>
+              </div>
+              
+              <div v-else-if="!collectionId" class="p-3 bg-bg-tertiary rounded border border-border-default">
+                <div class="flex items-start gap-2 text-xs text-text-muted">
+                  <svg class="w-3.5 h-3.5 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                  <span>This request is not in a collection. Save it to a collection to enable auth inheritance.</span>
+                </div>
+              </div>
 
-              <div v-if="authType === 'api-key'" class="space-y-3 p-3 bg-bg-tertiary rounded border border-border-default">
+              <div v-if="authType === 'api-key' && !isUsingCollectionAuth" class="space-y-3 p-3 bg-bg-tertiary rounded border border-border-default">
                 <div class="space-y-2">
                   <label class="text-xs font-medium text-text-secondary">Key</label>
                   <VariableInput
@@ -3004,7 +3222,7 @@ defineExpose({
                 </div>
               </div>
 
-              <div v-if="authType === 'bearer'" class="space-y-3 p-3 bg-bg-tertiary rounded border border-border-default">
+              <div v-if="authType === 'bearer' && !isUsingCollectionAuth" class="space-y-3 p-3 bg-bg-tertiary rounded border border-border-default">
                 <div class="space-y-2">
                   <label class="text-xs font-medium text-text-secondary">Token</label>
                   <VariableInput
@@ -3020,7 +3238,7 @@ defineExpose({
                 </div>
               </div>
 
-              <div v-if="authType === 'basic'" class="space-y-3 p-3 bg-bg-tertiary rounded border border-border-default">
+              <div v-if="authType === 'basic' && !isUsingCollectionAuth" class="space-y-3 p-3 bg-bg-tertiary rounded border border-border-default">
                 <div class="space-y-2">
                   <label class="text-xs font-medium text-text-secondary">Username</label>
                   <VariableInput
@@ -3045,7 +3263,7 @@ defineExpose({
                 </div>
               </div>
 
-              <div v-if="authType === 'oauth2'" class="space-y-4">
+              <div v-if="authType === 'oauth2' && !isUsingCollectionAuth" class="space-y-4">
                 <div class="flex items-center justify-between">
                   <h4 class="text-xs font-semibold text-text-primary">OAuth 2.0 Configuration</h4>
                   <div class="flex items-center gap-2">

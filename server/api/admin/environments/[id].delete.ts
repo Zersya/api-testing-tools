@@ -1,7 +1,7 @@
 import { db } from '../../../db';
 import { environments, environmentVariables, projects } from '../../../db/schema';
 import { eq } from 'drizzle-orm';
-import { getAccessibleWorkspaceIds } from '../../../utils/permissions';
+import { canEditWorkspace } from '../../../utils/permissions';
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id');
@@ -50,12 +50,12 @@ export default defineEventHandler(async (event) => {
       });
     }
 
-    // Check if user has access to this workspace
-    const accessibleIds = await getAccessibleWorkspaceIds(user.id);
-    if (!accessibleIds.includes(project.workspaceId)) {
+    // Check if user can edit this workspace (owner or edit permission)
+    const canEdit = await canEditWorkspace(user.id, project.workspaceId, user.email);
+    if (!canEdit) {
       throw createError({
         statusCode: 403,
-        statusMessage: 'You do not have access to this workspace'
+        statusMessage: 'You do not have edit access to this workspace'
       });
     }
 

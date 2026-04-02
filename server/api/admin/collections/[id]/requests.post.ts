@@ -1,6 +1,7 @@
 import { db } from '../../../../db';
 import { collections, savedRequests, folders, type HttpMethod, type RequestHeaders, type RequestBody, type RequestAuth, type RequestPathVariables } from '../../../../db/schema';
 import { eq, and, isNull } from 'drizzle-orm';
+import { cache, CacheKeys } from '../../../../utils/cache';
 
 interface CreateRequestBody {
   name: string;
@@ -160,6 +161,12 @@ export default defineEventHandler(async (event) => {
         order
       })
       .returning())[0];
+
+    // Invalidate cache for the user
+    const user = event.context.user;
+    if (user?.id) {
+      cache.delete(CacheKeys.workspaceTree(user.id));
+    }
 
     return newRequest;
   } catch (error: any) {
