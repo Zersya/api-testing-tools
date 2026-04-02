@@ -11,6 +11,7 @@ interface UpdateRequestBody {
   headers?: RequestHeaders;
   body?: RequestBody;
   auth?: RequestAuth;
+  inheritAuth?: number;
   mockConfig?: MockConfig;
   preScript?: string;
   postScript?: string;
@@ -66,6 +67,7 @@ export default defineEventHandler(async (event) => {
       headers: RequestHeaders | null;
       body: RequestBody;
       auth: RequestAuth;
+      inheritAuth: number;
       mockConfig: MockConfig;
       preScript: string | null;
       postScript: string | null;
@@ -157,6 +159,11 @@ export default defineEventHandler(async (event) => {
     // Set auth (can be null or object)
     if (body.auth !== undefined) {
       updateData.auth = body.auth;
+    }
+
+    // Set inheritAuth (can be 0 or 1)
+    if (body.inheritAuth !== undefined) {
+      updateData.inheritAuth = body.inheritAuth ? 1 : 0;
     }
 
     // Set mockConfig (can be null or object)

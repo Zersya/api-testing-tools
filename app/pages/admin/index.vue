@@ -12,6 +12,7 @@ import ResponseComparison from '~/components/ResponseComparison.vue';
 import KeyboardShortcutsHelpModal from '~/components/KeyboardShortcutsHelpModal.vue';
 import RenameWorkspaceModal from '~/components/RenameWorkspaceModal.vue';
 import ShareWorkspaceModal from '~/components/ShareWorkspaceModal.vue';
+import VariableInput from '~/components/VariableInput.vue';
 import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
 import { useExampleData } from '~/composables/useExampleData';
 
@@ -1227,7 +1228,17 @@ const collectionForm = ref({
   projectId: '',
   name: '',
   description: '',
-  color: '#6366f1'
+  color: '#6366f1',
+  authType: '',
+  authConfig: {
+    key: '',
+    value: '',
+    addTo: 'header' as 'header' | 'query',
+    username: '',
+    password: '',
+    token: '',
+    accessToken: ''
+  }
 });
 const collectionToDelete = ref<Collection | null>(null);
 const groupToDelete = ref<{ collectionId: string, name: string, mocks: Mock[] } | null>(null);
@@ -1749,6 +1760,7 @@ const handleSaveRequest = async (request: any) => {
       headers: request.headers,
       body: request.body,
       auth: request.auth,
+      inheritAuth: request.inheritAuth,
       mockConfig: request.mockConfig,
       preScript: request.preScript,
       postScript: request.postScript,
@@ -1887,6 +1899,7 @@ const handleSave = async (data: any) => {
             headers: requestToSave.value.headers,
             body: requestToSave.value.body,
             auth: requestToSave.value.auth,
+            inheritAuth: requestToSave.value.inheritAuth,
             mockConfig: requestToSave.value.mockConfig,
             preScript: requestToSave.value.preScript,
             postScript: requestToSave.value.postScript,
@@ -1920,6 +1933,7 @@ const handleSave = async (data: any) => {
           headers: requestToSave.value.headers,
           body: requestToSave.value.body,
           auth: requestToSave.value.auth,
+          inheritAuth: requestToSave.value.inheritAuth,
           mockConfig: requestToSave.value.mockConfig,
           preScript: requestToSave.value.preScript,
           postScript: requestToSave.value.postScript,
@@ -1937,6 +1951,7 @@ const handleSave = async (data: any) => {
           headers: requestToSave.value.headers,
           body: requestToSave.value.body,
           auth: requestToSave.value.auth,
+          inheritAuth: requestToSave.value.inheritAuth,
           mockConfig: requestToSave.value.mockConfig,
           preScript: requestToSave.value.preScript,
           postScript: requestToSave.value.postScript,
@@ -1994,7 +2009,8 @@ const handleSaveAs = async (data: any) => {
           url: originalRequest.url,
           headers: originalRequest.headers,
           body: originalRequest.body,
-          auth: originalRequest.auth
+          auth: originalRequest.auth,
+          inheritAuth: originalRequest.inheritAuth
         }
       });
     } else if (data.collectionId) {
@@ -2007,7 +2023,8 @@ const handleSaveAs = async (data: any) => {
           url: originalRequest.url,
           headers: originalRequest.headers,
           body: originalRequest.body,
-          auth: originalRequest.auth
+          auth: originalRequest.auth,
+          inheritAuth: originalRequest.inheritAuth
         }
       });
     } else {
@@ -2280,13 +2297,35 @@ const openCreateCollection = (projectId?: string) => {
     showCollectionModal.value = true;
 };
 
-const openEditCollection = (collection: Collection) => {
+const openEditCollection = async (collection: Collection) => {
     collectionModalMode.value = 'edit';
+    
+    // Fetch fresh auth config from API to ensure we have latest data
+    let authConfig: any = null;
+    try {
+        const authData = await $fetch(`/api/admin/collections/${collection.id}/auth`);
+        authConfig = authData.authConfig;
+    } catch (error) {
+        console.error('Failed to fetch collection auth:', error);
+        // Fallback to tree data if API fails
+        authConfig = (collection as any).authConfig;
+    }
+    
     collectionForm.value = {
         id: collection.id,
         name: collection.name,
         description: collection.description || '',
-        color: collection.color
+        color: collection.color,
+        authType: authConfig?.type || '',
+        authConfig: {
+            key: authConfig?.credentials?.key || '',
+            value: authConfig?.credentials?.value || '',
+            addTo: authConfig?.credentials?.addTo || 'header',
+            username: authConfig?.credentials?.username || '',
+            password: authConfig?.credentials?.password || '',
+            token: authConfig?.credentials?.token || '',
+            accessToken: authConfig?.credentials?.accessToken || ''
+        }
     };
     showCollectionModal.value = true;
 };
@@ -2306,15 +2345,57 @@ const saveCollection = async () => {
                 }
             });
         } else {
-            await $fetch('/api/admin/collections', {
+            // Update collection basic info using the proper database endpoint
+            await $fetch(`/api/admin/collections/${collectionForm.value.id}`, {
                 method: 'PUT',
                 body: {
-                    id: collectionForm.value.id,
                     name: collectionForm.value.name,
                     description: collectionForm.value.description,
                     color: collectionForm.value.color
                 }
             });
+            
+            // Update collection auth if configured
+            const authPayload: any = {};
+            
+            if (collectionForm.value.authType) {
+                authPayload.type = collectionForm.value.authType;
+                authPayload.credentials = {};
+                
+                if (collectionForm.value.authType === 'basic') {
+                    authPayload.credentials = {
+                        username: collectionForm.value.authConfig.username,
+                        password: collectionForm.value.authConfig.password
+                    };
+                } else if (collectionForm.value.authType === 'bearer') {
+                    authPayload.credentials = {
+                        token: collectionForm.value.authConfig.token
+                    };
+                } else if (collectionForm.value.authType === 'api-key') {
+                    authPayload.credentials = {
+                        key: collectionForm.value.authConfig.key,
+                        value: collectionForm.value.authConfig.value,
+                        addTo: collectionForm.value.authConfig.addTo
+                    };
+                } else if (collectionForm.value.authType === 'oauth2') {
+                    authPayload.credentials = {
+                        accessToken: collectionForm.value.authConfig.accessToken
+                    };
+                }
+            } else {
+                authPayload.type = 'none';
+                authPayload.credentials = {};
+            }
+            
+            await $fetch(`/api/admin/collections/${collectionForm.value.id}/auth`, {
+                method: 'POST',
+                body: { authConfig: authPayload }
+            });
+            
+            // Refresh collection auth in the RequestBuilder if it's showing a request from this collection
+            if (requestBuilderRef.value && activeCollectionId.value === collectionForm.value.id) {
+                requestBuilderRef.value.refreshCollectionAuth();
+            }
         }
         showCollectionModal.value = false;
         refreshWorkspaces();
@@ -3141,6 +3222,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
                 :workspace-id="currentWorkspaceId"
                 :environment-id="activeEnvironment?.id"
                 :project-id="currentProjectId"
+                :collection-id="activeCollectionId"
                 :initial-response="getActiveOpenTab()?.response"
                 :initial-active-tab="getActiveOpenTab()?.activeBuilderTab"
                 :initial-script-logs="getActiveOpenTab()?.scriptLogs"
@@ -3394,6 +3476,118 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
             :style="{ backgroundColor: color }"
             @click="collectionForm.color = color"
           ></button>
+        </div>
+      </div>
+
+      <!-- Auth Settings Section (only for edit mode) -->
+      <div v-if="collectionModalMode === 'edit'" class="mb-4 pt-4 border-t border-border-default">
+        <div class="flex items-center justify-between mb-3">
+          <label class="text-xs font-medium text-text-secondary uppercase tracking-wide">Collection Auth</label>
+          <span class="text-[10px] text-text-muted">Inherited by all requests in this collection</span>
+        </div>
+        
+        <div class="space-y-3">
+          <select 
+            v-model="collectionForm.authType"
+            class="w-full py-2.5 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue"
+          >
+            <option value="">No Auth</option>
+            <option value="basic">Basic Auth</option>
+            <option value="bearer">Bearer Token</option>
+            <option value="api-key">API Key</option>
+            <option value="oauth2">OAuth 2.0</option>
+          </select>
+
+          <!-- Basic Auth -->
+          <div v-if="collectionForm.authType === 'basic'" class="space-y-2 p-3 bg-bg-tertiary rounded border border-border-default">
+            <div>
+              <label class="text-xs text-text-muted">Username</label>
+              <VariableInput 
+                v-model="collectionForm.authConfig.username" 
+                :variables="activeEnvironment?.variables || []"
+                placeholder="username"
+                class="w-full mt-1"
+              />
+            </div>
+            <div>
+              <label class="text-xs text-text-muted">Password</label>
+              <VariableInput 
+                v-model="collectionForm.authConfig.password" 
+                :variables="activeEnvironment?.variables || []"
+                type="password"
+                placeholder="password"
+                class="w-full mt-1"
+              />
+            </div>
+          </div>
+
+          <!-- Bearer Token -->
+          <div v-if="collectionForm.authType === 'bearer'" class="p-3 bg-bg-tertiary rounded border border-border-default">
+            <label class="text-xs text-text-muted">Token</label>
+            <VariableInput 
+              v-model="collectionForm.authConfig.token" 
+              :variables="activeEnvironment?.variables || []"
+              type="password"
+              placeholder="Bearer token"
+              class="w-full mt-1"
+            />
+          </div>
+
+          <!-- API Key -->
+          <div v-if="collectionForm.authType === 'api-key'" class="space-y-2 p-3 bg-bg-tertiary rounded border border-border-default">
+            <div>
+              <label class="text-xs text-text-muted">Key Name</label>
+              <VariableInput 
+                v-model="collectionForm.authConfig.key" 
+                :variables="activeEnvironment?.variables || []"
+                placeholder="X-API-Key"
+                class="w-full mt-1"
+              />
+            </div>
+            <div>
+              <label class="text-xs text-text-muted">Value</label>
+              <VariableInput 
+                v-model="collectionForm.authConfig.value" 
+                :variables="activeEnvironment?.variables || []"
+                type="password"
+                placeholder="API key value"
+                class="w-full mt-1"
+              />
+            </div>
+            <div class="flex gap-2 mt-2">
+              <button
+                @click="collectionForm.authConfig.addTo = 'header'"
+                class="flex-1 py-2 px-3 rounded text-xs font-medium transition-all"
+                :class="collectionForm.authConfig.addTo === 'header' ? 'bg-accent-blue text-white' : 'bg-bg-input text-text-secondary border border-border-default'"
+              >
+                Header
+              </button>
+              <button
+                @click="collectionForm.authConfig.addTo = 'query'"
+                class="flex-1 py-2 px-3 rounded text-xs font-medium transition-all"
+                :class="collectionForm.authConfig.addTo === 'query' ? 'bg-accent-blue text-white' : 'bg-bg-input text-text-secondary border border-border-default'"
+              >
+                Query
+              </button>
+            </div>
+          </div>
+
+          <!-- OAuth 2.0 -->
+          <div v-if="collectionForm.authType === 'oauth2'" class="space-y-2 p-3 bg-bg-tertiary rounded border border-border-default">
+            <div>
+              <label class="text-xs text-text-muted">Access Token</label>
+              <VariableInput 
+                v-model="collectionForm.authConfig.accessToken" 
+                :variables="activeEnvironment?.variables || []"
+                type="password"
+                placeholder="OAuth access token"
+                class="w-full mt-1"
+              />
+            </div>
+            <div class="text-[10px] text-text-muted">
+              Configure full OAuth settings in request editor
+            </div>
+          </div>
         </div>
       </div>
       <template #footer>

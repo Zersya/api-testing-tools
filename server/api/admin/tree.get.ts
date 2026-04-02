@@ -283,6 +283,7 @@ export default defineEventHandler(async (event) => {
 
               return {
                 ...collection,
+                authConfig: parseJsonField<Record<string, unknown>>(collection.authConfig),
                 folders: folderTree,
                 requests: collectionRootRequests,
                 folderCount,
