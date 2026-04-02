@@ -74,6 +74,7 @@ export default defineEventHandler(async (event) => {
         responses: body.responses,
         rating: body.rating,
         comment: body.comment,
+        status: 'open', // Default status for new submissions
         userAgent,
         createdAt: now
       })

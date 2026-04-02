@@ -243,8 +243,8 @@ export async function canAccessWorkspace(userId: string, workspaceId: string): P
 /**
  * Check if user can edit a workspace (owner or edit permission)
  */
-export async function canEditWorkspace(userId: string, workspaceId: string): Promise<boolean> {
-  const permission = await getWorkspacePermission(userId, workspaceId);
+export async function canEditWorkspace(userId: string, workspaceId: string, userEmail?: string): Promise<boolean> {
+  const permission = await getWorkspacePermission(userId, workspaceId, userEmail);
   return permission === 'owner' || permission === 'edit';
 }
 
@@ -380,25 +380,23 @@ export async function getAccessibleWorkspaceIds(userId: string, userEmail?: stri
 
   console.log('[Permissions] getAccessibleWorkspaceIds called for user:', userId);
 
-  // Get owned workspaces (including legacy workspaces with null ownerId for backward compatibility)
+  // OPTIMIZED: Query only relevant workspaces at database level
   const ownedWorkspaces = await db
-    .select({ id: workspaces.id, ownerId: workspaces.ownerId })
-    .from(workspaces);
+    .select({ id: workspaces.id })
+    .from(workspaces)
+    .where(
+      or(
+        eq(workspaces.ownerId, userId),
+        isNull(workspaces.ownerId),
+        eq(workspaces.ownerId, 'unknown'),
+        eq(workspaces.ownerId, '')
+      )
+    );
 
-  console.log('[Permissions] All workspaces from DB:', ownedWorkspaces);
-
-  // Filter workspaces that user owns or has null/unknown ownerId (legacy/unclaimed)
-  const accessibleOwnedWorkspaces = ownedWorkspaces.filter(ws => {
-    const isOwned = ws.ownerId === userId;
-    const isLegacy = ws.ownerId === null || ws.ownerId === 'unknown' || ws.ownerId === '';
-    console.log(`[Permissions] Workspace ${ws.id}: ownerId=${ws.ownerId}, isOwned=${isOwned}, isLegacy=${isLegacy}`);
-    return isOwned || isLegacy;
-  });
-
-  const ownedIds = accessibleOwnedWorkspaces.map(w => w.id);
+  const ownedIds = ownedWorkspaces.map(w => w.id);
   console.log('[Permissions] Owned workspace IDs:', ownedIds);
 
-  // Get shared workspaces - workspaces user accessed via share link
+  // OPTIMIZED: Single query for shared access
   const sharedViaAccess = await db
     .select({ workspaceId: workspaceShares.workspaceId })
     .from(workspaceAccess)
@@ -417,14 +415,14 @@ export async function getAccessibleWorkspaceIds(userId: string, userEmail?: stri
   const sharedViaAccessIds = sharedViaAccess.map(w => w.workspaceId);
   console.log('[Permissions] Shared workspace IDs (via access):', sharedViaAccessIds);
 
-  // Get workspaces where user is an explicit member (email invitation)
+  // OPTIMIZED: Batch query for member workspaces
   const memberWorkspaces: string[] = [];
   
   if (userEmail) {
     const normalizedEmail = userEmail.toLowerCase().trim();
     
-    // Find accepted memberships by userId
-    const memberByUserId = await db
+    // Single query for accepted memberships
+    const acceptedMemberships = await db
       .select({ workspaceId: workspaceMembers.workspaceId })
       .from(workspaceMembers)
       .where(
@@ -434,9 +432,9 @@ export async function getAccessibleWorkspaceIds(userId: string, userEmail?: stri
         )
       );
     
-    memberByUserId.forEach(m => memberWorkspaces.push(m.workspaceId));
+    memberWorkspaces.push(...acceptedMemberships.map(m => m.workspaceId));
     
-    // Find pending invitations by email and auto-accept them
+    // Single query for pending invitations
     const pendingInvitations = await db
       .select({ 
         id: workspaceMembers.id,
@@ -450,8 +448,10 @@ export async function getAccessibleWorkspaceIds(userId: string, userEmail?: stri
         )
       );
     
-    for (const invitation of pendingInvitations) {
-      // Auto-accept the invitation
+    // Batch update pending invitations
+    if (pendingInvitations.length > 0) {
+      const invitationIds = pendingInvitations.map(i => i.id);
+      
       await db
         .update(workspaceMembers)
         .set({ 
@@ -459,9 +459,9 @@ export async function getAccessibleWorkspaceIds(userId: string, userEmail?: stri
           status: 'accepted',
           acceptedAt: new Date()
         })
-        .where(eq(workspaceMembers.id, invitation.id));
+        .where(inArray(workspaceMembers.id, invitationIds));
       
-      memberWorkspaces.push(invitation.workspaceId);
+      memberWorkspaces.push(...pendingInvitations.map(i => i.workspaceId));
     }
   }
   

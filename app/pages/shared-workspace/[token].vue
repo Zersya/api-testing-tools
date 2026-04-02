@@ -506,6 +506,7 @@ const goBack = () => {
               ref="requestBuilderRef"
               :request="selectedRequest"
               :environment-id="currentEnvironmentId"
+              :collection-id="currentCollectionId"
               :read-only="isReadOnly"
               :is-shared-workspace="true"
               @save-request="handleRequestSave"
