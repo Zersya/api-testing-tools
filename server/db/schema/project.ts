@@ -1,5 +1,4 @@
-import { pgTable, text, integer, timestamp } from 'drizzle-orm/pg-core';
-import { sql } from 'drizzle-orm';
+import { pgTable, text, timestamp, index } from 'drizzle-orm/pg-core';
 import { workspaces } from './workspace';
 
 export const projects = pgTable('projects', {
@@ -15,7 +14,9 @@ export const projects = pgTable('projects', {
   updatedAt: timestamp('updated_at')
     .notNull()
     .defaultNow()
-});
+}, (table) => ({
+  workspaceIdx: index('idx_projects_workspace').on(table.workspaceId)
+}));
 
 export type Project = typeof projects.$inferSelect;
 export type NewProject = typeof projects.$inferInsert;
