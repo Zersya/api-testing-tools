@@ -977,6 +977,10 @@ const handleContextAction = (action: string) => {
         emit('createFolder', data.id);
       } else if (action === 'create-request') {
         emit('createRequest', null, data.id); // Pass null for folderId, collectionId as second param
+      } else if (action === 'edit-collection') {
+        emit('editCollection', data);
+      } else if (action === 'configure-auth') {
+        emit('editCollection', data); // Open edit modal, user can scroll to auth section
       } else if (action === 'rename-collection') {
         emit('renameCollection', data);
       } else if (action === 'delete-collection') {
@@ -1866,6 +1870,27 @@ watch(activeView, (newView) => {
               </svg>
               New Request
             </button>
+            <div class="border-t border-border-default my-1"></div>
+            <button
+              class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              @click.stop="handleContextAction('edit-collection')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
+                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+              </svg>
+              Edit Collection
+            </button>
+            <button
+              class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              @click.stop="handleContextAction('configure-auth')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+              </svg>
+              Configure Auth
+            </button>
+            <div class="border-t border-border-default my-1"></div>
             <button
               class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
               @click.stop="handleContextAction('rename-collection')"
