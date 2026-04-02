@@ -247,6 +247,14 @@ const responseContentRef = ref<HTMLElement | null>(null);
 const searchMatches = ref<HTMLElement[]>([]);
 const activeSearchMatchIndex = ref(-1);
 
+// Save response as example state
+const showSaveExampleModal = ref(false);
+const saveExampleName = ref('');
+const saveExampleIsDefault = ref(false);
+const saveExampleLoading = ref(false);
+const saveExampleError = ref<string | null>(null);
+const saveExampleSuccess = ref(false);
+
 // Mock configuration state
 const mockConfig = ref<import('../../server/db/schema/savedRequest').MockConfig | null>(null);
 
@@ -1536,6 +1544,163 @@ const copyResponseBody = async () => {
   } catch (error) {
     console.error('Failed to copy:', error);
   }
+};
+
+// Save response as example functions
+const openSaveExampleModal = () => {
+  if (!response.value || !('success' in response.value) || !response.value.success) {
+    return;
+  }
+  
+  // Auto-suggest name based on status code
+  const status = response.value.status;
+  let suggestedName = '';
+  
+  const statusTextMap: Record<number, string> = {
+    200: 'Success Response',
+    201: 'Created Response',
+    204: 'No Content Response',
+    400: 'Bad Request Response',
+    401: 'Unauthorized Response',
+    403: 'Forbidden Response',
+    404: 'Not Found Response',
+    409: 'Conflict Response',
+    422: 'Validation Error Response',
+    500: 'Server Error Response',
+    502: 'Bad Gateway Response',
+    503: 'Service Unavailable Response'
+  };
+  
+  suggestedName = statusTextMap[status] || `${status} Response`;
+  
+  saveExampleName.value = suggestedName;
+  saveExampleIsDefault.value = false;
+  saveExampleError.value = null;
+  saveExampleSuccess.value = false;
+  showSaveExampleModal.value = true;
+};
+
+const closeSaveExampleModal = () => {
+  showSaveExampleModal.value = false;
+  saveExampleName.value = '';
+  saveExampleIsDefault.value = false;
+  saveExampleError.value = null;
+  saveExampleSuccess.value = false;
+};
+
+const saveResponseAsExample = async () => {
+  if (!response.value || !('success' in response.value) || !response.value.success) {
+    return;
+  }
+  
+  if (!saveExampleName.value.trim()) {
+    saveExampleError.value = 'Example name is required';
+    return;
+  }
+  
+  saveExampleLoading.value = true;
+  saveExampleError.value = null;
+  saveExampleSuccess.value = false;
+  
+  try {
+    const res = response.value;
+    
+    // Prepare headers - filter out non-serializable headers
+    const headersToSave: Record<string, string> = {};
+    if (res.headers) {
+      Object.entries(res.headers).forEach(([key, value]) => {
+        // Skip binary/Set-Cookie headers that might be arrays
+        if (typeof value === 'string') {
+          headersToSave[key] = value;
+        }
+      });
+    }
+    
+    // Prepare body - extract actual data
+    let bodyToSave: Record<string, unknown> | string | null = null;
+    if (res.body !== null && res.body !== undefined) {
+      if (typeof res.body === 'object') {
+        // Handle binary response format
+        if (res.body._binary && res.body.data) {
+          // For binary responses, save a placeholder or the base64 data
+          bodyToSave = { _type: 'binary', size: res.body.size || 0 };
+        } else {
+          bodyToSave = res.body as Record<string, unknown>;
+        }
+      } else if (typeof res.body === 'string') {
+        // Try to parse as JSON, if it fails, save as string
+        try {
+          bodyToSave = JSON.parse(res.body);
+        } catch {
+          bodyToSave = res.body;
+        }
+      }
+    }
+    
+    await $fetch(`/api/admin/requests/${props.request.id}/examples`, {
+      method: 'POST',
+      body: {
+        name: saveExampleName.value.trim(),
+        statusCode: res.status,
+        headers: Object.keys(headersToSave).length > 0 ? headersToSave : null,
+        body: bodyToSave,
+        isDefault: saveExampleIsDefault.value
+      }
+    });
+    
+    saveExampleSuccess.value = true;
+    
+    // Close modal after a short delay
+    setTimeout(() => {
+      closeSaveExampleModal();
+    }, 1500);
+    
+  } catch (err: any) {
+    saveExampleError.value = err.message || 'Failed to save example';
+    console.error('Error saving response as example:', err);
+  } finally {
+    saveExampleLoading.value = false;
+  }
+};
+
+const getResponsePreview = () => {
+  if (!response.value || !('success' in response.value) || !response.value.success) {
+    return '';
+  }
+  
+  const res = response.value;
+  const preview: Record<string, unknown> = {
+    status: res.status,
+    statusText: res.statusText
+  };
+  
+  // Add headers preview (limited)
+  if (res.headers && Object.keys(res.headers).length > 0) {
+    const headerCount = Object.keys(res.headers).length;
+    preview.headers = headerCount > 5 
+      ? `${headerCount} headers (will be saved)` 
+      : res.headers;
+  }
+  
+  // Add body preview
+  if (res.body !== null && res.body !== undefined) {
+    if (typeof res.body === 'object') {
+      if (res.body._binary) {
+        preview.body = `[Binary data: ${res.body.size || 0} bytes]`;
+      } else {
+        const bodyStr = JSON.stringify(res.body);
+        preview.body = bodyStr.length > 200 
+          ? JSON.parse(bodyStr.substring(0, 200) + '...')
+          : res.body;
+      }
+    } else if (typeof res.body === 'string') {
+      preview.body = res.body.length > 200 
+        ? res.body.substring(0, 200) + '...'
+        : res.body;
+    }
+  }
+  
+  return JSON.stringify(preview, null, 2);
 };
 
 const getJsonPreviewHtml = () => {
@@ -3149,6 +3314,17 @@ defineExpose({
                     </svg>
                   </button>
                   <button 
+                    @click="openSaveExampleModal"
+                    class="p-1.5 text-text-muted hover:text-accent-green transition-colors duration-fast"
+                    title="Save response as example"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                      <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                      <polyline points="7 3 7 8 15 8"></polyline>
+                    </svg>
+                  </button>
+                  <button 
                     @click="copyResponseBody"
                     class="p-1.5 text-text-muted hover:text-text-secondary transition-colors duration-fast"
                     title="Copy response body"
@@ -3464,6 +3640,118 @@ defineExpose({
         </div>
       </div>
     </div>
+
+    <!-- Save Response as Example Modal -->
+    <Teleport to="body">
+      <div v-if="showSaveExampleModal" class="fixed inset-0 z-50 flex items-center justify-center">
+        <div class="absolute inset-0 bg-black/50" @click="closeSaveExampleModal"></div>
+        <div class="relative w-full max-w-lg mx-4 bg-bg-primary border border-border-default rounded-xl shadow-xl max-h-[90vh] overflow-hidden flex flex-col">
+          <div class="flex items-center justify-between px-6 py-4 border-b border-border-default">
+            <h3 class="text-lg font-semibold text-text-primary">Save Response as Example</h3>
+            <button @click="closeSaveExampleModal" class="p-1 text-text-muted hover:text-text-primary">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+          
+          <div class="flex-1 overflow-auto p-6 space-y-4">
+            <!-- Success Message -->
+            <div v-if="saveExampleSuccess" class="p-3 bg-accent-green/10 border border-accent-green/30 rounded-md">
+              <div class="flex items-center gap-2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-accent-green">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                <span class="text-sm text-accent-green font-medium">Example saved successfully!</span>
+              </div>
+            </div>
+            
+            <!-- Error Message -->
+            <div v-if="saveExampleError" class="p-3 bg-accent-red/10 border border-accent-red/30 rounded-md">
+              <p class="text-xs text-accent-red">{{ saveExampleError }}</p>
+            </div>
+            
+            <div v-if="!saveExampleSuccess">
+              <div class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-text-primary mb-1">Example Name *</label>
+                  <input
+                    v-model="saveExampleName"
+                    type="text"
+                    placeholder="e.g., Success Response"
+                    class="w-full px-3 py-2 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue"
+                    @keyup.enter="saveResponseAsExample"
+                  />
+                  <p class="text-xs text-text-muted mt-1">Give this response a descriptive name</p>
+                </div>
+                
+                <div>
+                  <label class="block text-sm font-medium text-text-primary mb-1">Status Code</label>
+                  <div class="px-3 py-2 bg-bg-tertiary border border-border-default rounded-md text-text-primary text-sm">
+                    <span 
+                      v-if="response && 'success' in response && response.success"
+                      :class="[
+                        'font-mono font-bold',
+                        response.status >= 200 && response.status < 300 ? 'text-accent-green' :
+                        response.status >= 400 && response.status < 500 ? 'text-accent-orange' :
+                        response.status >= 500 ? 'text-accent-red' : 'text-text-primary'
+                      ]"
+                    >
+                      {{ response.status }} {{ response.statusText }}
+                    </span>
+                  </div>
+                </div>
+                
+                <div class="flex items-center gap-2">
+                  <input
+                    v-model="saveExampleIsDefault"
+                    type="checkbox"
+                    id="saveExampleIsDefault"
+                    class="w-4 h-4 rounded border-border-default bg-bg-input text-accent-blue focus:ring-accent-blue"
+                  />
+                  <label for="saveExampleIsDefault" class="text-sm text-text-primary">Set as default example for this status code</label>
+                </div>
+                
+                <div>
+                  <label class="block text-sm font-medium text-text-primary mb-2">Preview</label>
+                  <div class="bg-bg-tertiary rounded-md border border-border-default p-3">
+                    <pre class="text-xs font-mono text-text-secondary overflow-x-auto max-h-48">{{ getResponsePreview() }}</pre>
+                  </div>
+                  <p class="text-xs text-text-muted mt-1">This is what will be saved as the example</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-border-default">
+            <button
+              @click="closeSaveExampleModal"
+              class="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
+              :disabled="saveExampleLoading"
+            >
+              Cancel
+            </button>
+            <button
+              v-if="!saveExampleSuccess"
+              @click="saveResponseAsExample"
+              :disabled="saveExampleLoading || !saveExampleName.trim()"
+              class="px-4 py-2 text-sm font-medium text-white bg-accent-blue rounded-md hover:bg-[#1976D2] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+            >
+              <svg v-if="saveExampleLoading" class="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+              </svg>
+              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                <polyline points="7 3 7 8 15 8"></polyline>
+              </svg>
+              {{ saveExampleLoading ? 'Saving...' : 'Save Example' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
