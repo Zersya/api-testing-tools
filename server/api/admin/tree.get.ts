@@ -168,10 +168,14 @@ export default defineEventHandler(async (event) => {
       .from(savedRequests)
       .orderBy(asc(savedRequests.order));
 
-    // Fetch all examples
-    const allExamplesRaw = await db
-      .select()
-      .from(requestExamples);
+    // Fetch examples only for the requests we're loading (scoped at DB layer)
+    const requestIds = allRequestsRaw.map(r => r.id);
+    const allExamplesRaw = requestIds.length > 0
+      ? await db
+          .select()
+          .from(requestExamples)
+          .where(inArray(requestExamples.requestId, requestIds))
+      : [];
 
     // Parse JSON fields from text columns for examples (keep requestId for filtering)
     const allExamples = allExamplesRaw.map(ex => ({

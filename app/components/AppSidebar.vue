@@ -3,7 +3,7 @@ import RequestHistoryPanel from './RequestHistoryPanel.vue';
 import ApiDefinitionsPanel from './ApiDefinitionsPanel.vue';
 
 // Toast notification
-const { toastState, showToast, hideToast } = useToast();
+const { showToast } = useToast();
 
 interface Collection {
   id: string;
@@ -1069,13 +1069,72 @@ const generateFolderPrompt = (folder: FolderWithRequestsAndChildren): string => 
   const maskSensitiveHeaders = (headers: Record<string, string> | null): string => {
     if (!headers || Object.keys(headers).length === 0) return 'None';
     
-    const sensitiveKeys = ['authorization', 'token', 'api-key', 'apikey', 'secret', 'password', 'x-api-key'];
+    // Allowlist of headers that are safe to display (mask everything else)
+    const safeHeaders = new Set([
+      'content-type',
+      'accept',
+      'accept-encoding',
+      'accept-language',
+      'accept-charset',
+      'cache-control',
+      'connection',
+      'date',
+      'etag',
+      'expires',
+      'last-modified',
+      'location',
+      'pragma',
+      'server',
+      'user-agent',
+      'via',
+      'x-request-id',
+      'x-correlation-id',
+      'x-content-type-options',
+      'x-frame-options',
+      'x-xss-protection',
+      'strict-transport-security',
+      'access-control-allow-origin',
+      'access-control-allow-methods',
+      'access-control-allow-headers',
+      'access-control-expose-headers',
+      'access-control-max-age',
+      'access-control-allow-credentials',
+      'referrer-policy',
+      'permissions-policy',
+      'timing-allow-origin',
+      'nel',
+      'report-to',
+      'origin',
+      'referer',
+      'host',
+      'content-length',
+      'content-encoding',
+      'content-language',
+      'content-location',
+      'transfer-encoding',
+      'upgrade',
+      'vary',
+      'warning',
+      'www-authenticate',
+      'age',
+      'allow',
+      'clear-site-data',
+      'cross-origin-embedder-policy',
+      'cross-origin-opener-policy',
+      'cross-origin-resource-policy',
+      'keep-alive',
+      'link',
+      'refresh',
+      'retry-after'
+    ]);
+    
     const masked: Record<string, string> = {};
     
     Object.entries(headers).forEach(([key, value]) => {
       const lowerKey = key.toLowerCase();
-      const isSensitive = sensitiveKeys.some(sk => lowerKey.includes(sk));
-      masked[key] = isSensitive ? '{{masked}}' : value;
+      // Only show value if header is in the allowlist of safe headers
+      const isSafe = safeHeaders.has(lowerKey);
+      masked[key] = isSafe ? value : '{{masked}}';
     });
     
     return Object.entries(masked)
@@ -1173,6 +1232,13 @@ const generateFolderPrompt = (folder: FolderWithRequestsAndChildren): string => 
  * Copy folder prompt to clipboard
  */
 const copyFolderPromptToClipboard = async (folder: FolderWithRequestsAndChildren) => {
+  // Validate folder data to prevent crashes from incorrect event forwarding
+  if (!folder || typeof folder !== 'object' || !folder.id || !Array.isArray(folder.requests)) {
+    console.error('Invalid folder data received:', folder);
+    showToast('Error: Invalid folder data. Please try again.', 'error', { duration: 3000 });
+    return;
+  }
+  
   try {
     const prompt = generateFolderPrompt(folder);
     await navigator.clipboard.writeText(prompt);
@@ -1920,73 +1986,6 @@ watch(activeView, (newView) => {
       class="fixed inset-0 z-40"
       @click="closeContextMenu"
     ></div>
-
-    <!-- Toast Notification -->
-    <Teleport to="body">
-      <Transition name="toast">
-        <div
-          v-if="toastState.show"
-          class="fixed bottom-4 right-4 z-[200] flex items-center gap-3 px-4 py-3 bg-bg-secondary border rounded-lg shadow-lg max-w-sm"
-          :class="toastState.type === 'success' ? 'border-accent-green/30' : 'border-accent-red/30'"
-        >
-          <!-- Icon -->
-          <div
-            class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center"
-            :class="toastState.type === 'success' ? 'bg-accent-green/15' : 'bg-accent-red/15'"
-          >
-            <svg
-              v-if="toastState.type === 'success'"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              class="text-accent-green"
-            >
-              <polyline points="20 6 9 17 4 12"></polyline>
-            </svg>
-            <svg
-              v-else
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              class="text-accent-red"
-            >
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="8" x2="12" y2="12"></line>
-              <line x1="12" y1="16" x2="12.01" y2="16"></line>
-            </svg>
-          </div>
-
-          <!-- Message -->
-          <div class="flex-1 min-w-0">
-            <p class="text-sm font-medium" :class="toastState.type === 'success' ? 'text-accent-green' : 'text-accent-red'">
-              {{ toastState.message }}
-            </p>
-          </div>
-
-          <!-- Dismiss Button -->
-          <button
-            @click="hideToast"
-            class="flex-shrink-0 p-1 text-text-muted hover:text-text-primary transition-colors duration-fast"
-            aria-label="Dismiss notification"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        </div>
-      </Transition>
-    </Teleport>
   </aside>
 </template>
 
@@ -2008,21 +2007,5 @@ watch(activeView, (newView) => {
 .expand-leave-from {
   opacity: 1;
   max-height: 2000px;
-}
-
-/* Toast transitions */
-.toast-enter-active,
-.toast-leave-active {
-  transition: all 300ms ease;
-}
-
-.toast-enter-from {
-  opacity: 0;
-  transform: translateY(20px) scale(0.95);
-}
-
-.toast-leave-to {
-  opacity: 0;
-  transform: translateX(20px);
 }
 </style>

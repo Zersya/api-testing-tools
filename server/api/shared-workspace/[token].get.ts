@@ -1,6 +1,6 @@
 import { db } from '../../db';
 import { workspaces, projects, collections, folders, savedRequests, requestExamples, environments, environmentVariables } from '../../db/schema';
-import { eq, asc, and } from 'drizzle-orm';
+import { eq, asc, and, inArray } from 'drizzle-orm';
 import { validateShareToken, recordSharedAccess } from '../../utils/permissions';
 
 interface RequestExampleItem {
@@ -228,10 +228,14 @@ export default defineEventHandler(async (event) => {
       .select()
       .from(environmentVariables);
 
-    // Fetch all examples
-    const allExamplesRaw = await db
-      .select()
-      .from(requestExamples);
+    // Fetch examples only for the requests we're loading (scoped at DB layer)
+    const requestIds = allRequestsRaw.map(r => r.id);
+    const allExamplesRaw = requestIds.length > 0
+      ? await db
+          .select()
+          .from(requestExamples)
+          .where(inArray(requestExamples.requestId, requestIds))
+      : [];
 
     // Parse JSON fields from text columns for examples
     const allExamples = allExamplesRaw.map(ex => ({
