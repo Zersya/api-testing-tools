@@ -3037,28 +3037,40 @@ defineExpose({
                 </select>
               </div>
 
-              <label class="flex items-center gap-2 cursor-pointer">
+              <label class="flex items-center gap-2 cursor-pointer select-none">
                 <input
                   type="checkbox"
-                  v-model="inheritFromParent"
+                  :checked="inheritFromParent"
+                  @change="inheritFromParent = ($event.target as HTMLInputElement).checked"
                   :disabled="!collectionId || collectionAuthLoading"
-                  class="w-4 h-4 rounded border-border-default bg-bg-input text-accent-blue focus:ring-accent-blue focus:ring-offset-bg-secondary cursor-pointer"
+                  class="w-4 h-4 rounded border-border-default bg-bg-input text-accent-blue focus:ring-accent-blue focus:ring-offset-bg-secondary cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 />
-                <span class="text-xs text-text-secondary">Inherit from parent</span>
+                <span class="text-xs" :class="inheritFromParent ? 'text-accent-blue font-medium' : 'text-text-secondary'">
+                  Inherit from parent
+                </span>
+                <span v-if="collectionAuthLoading" class="text-xs text-text-muted">(loading...)</span>
               </label>
               
-              <div v-if="inheritFromParent && collectionName" class="p-2 bg-bg-tertiary rounded border border-border-default">
-                <div class="text-xs text-text-muted">
-                  Inherited from: <span class="text-text-secondary font-medium">{{ projectName || 'Project' }} > {{ collectionName }}</span>
+              <div v-if="inheritFromParent && collectionName" class="p-3 bg-accent-blue/10 rounded border border-accent-blue/30">
+                <div class="flex items-center gap-2 text-xs text-text-secondary">
+                  <svg class="w-3.5 h-3.5 text-accent-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
+                  </svg>
+                  <span class="font-medium">Inherited from:</span>
+                  <span>{{ projectName || 'Project' }} > {{ collectionName }}</span>
                 </div>
-                <div v-if="collectionAuth" class="mt-1 text-xs text-text-muted">
-                  Auth type: <span class="text-accent-blue">{{ collectionAuth.type }}</span>
+                <div v-if="collectionAuth" class="mt-2 flex items-center gap-2 text-xs">
+                  <span class="text-text-muted">Auth type:</span>
+                  <span class="px-1.5 py-0.5 bg-accent-blue/20 text-accent-blue font-semibold rounded">{{ collectionAuth.type }}</span>
                 </div>
               </div>
               
-              <div v-if="inheritFromParent && !collectionAuth" class="p-2 bg-bg-tertiary rounded border border-border-default">
-                <div class="text-xs text-text-muted">
-                  No auth configured at collection level
+              <div v-else-if="inheritFromParent && !collectionAuth && !collectionAuthLoading" class="p-3 bg-accent-yellow/10 rounded border border-accent-yellow/30">
+                <div class="flex items-center gap-2 text-xs text-text-secondary">
+                  <svg class="w-3.5 h-3.5 text-accent-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                  </svg>
+                  <span>No auth configured at collection level</span>
                 </div>
               </div>
 
