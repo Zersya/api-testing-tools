@@ -362,13 +362,22 @@ const hydrateOpenTabs = (session: PersistedTabSession | null | undefined) => {
     return;
   }
 
+  // Build a lookup map by key from persisted tabs for safe state restoration
+  const persistedTabMap = new Map<string, PersistedTabSession['tabs'][number]>();
+  session.tabs.forEach(tab => {
+    if (tab && typeof tab.key === 'string') {
+      persistedTabMap.set(tab.key, tab);
+    }
+  });
+
   const normalizedTabs = session.tabs
     .map(tab => normalizeOpenTab(tab))
     .filter((tab): tab is OpenTab => Boolean(tab));
 
-  // Restore persisted UI state fields
-  normalizedTabs.forEach((tab, index) => {
-    const persistedTab = session.tabs[index];
+  // Restore persisted UI state fields using key-based lookup (not index-based)
+  // This prevents misalignment when tabs are filtered during normalization
+  normalizedTabs.forEach((tab) => {
+    const persistedTab = persistedTabMap.get(tab.key);
     if (persistedTab) {
       tab.response = persistedTab.response;
       tab.activeBuilderTab = persistedTab.activeBuilderTab;
