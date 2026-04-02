@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, index } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { projects } from './project';
 
@@ -13,7 +13,9 @@ export const collections = pgTable('collections', {
   createdAt: timestamp('created_at')
     .notNull()
     .defaultNow()
-});
+}, (table) => ({
+  projectIdx: index('idx_collections_project').on(table.projectId)
+}));
 
 export type Collection = typeof collections.$inferSelect;
 export type NewCollection = typeof collections.$inferInsert;

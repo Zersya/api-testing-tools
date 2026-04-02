@@ -2,6 +2,7 @@ import { db } from '../../../db';
 import { savedRequests } from '../../../db/schema';
 import { eq } from 'drizzle-orm';
 import { trackResourceAction } from '../../../services/usageTracking';
+import { cache, CacheKeys } from '../../../utils/cache';
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id');
@@ -44,6 +45,9 @@ export default defineEventHandler(async (event) => {
         resourceId: id,
         resourceName: existing.name,
       });
+      
+      // Invalidate cache for this user
+      cache.delete(CacheKeys.workspaceTree(user.id));
     }
 
     return {
