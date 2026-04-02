@@ -111,8 +111,10 @@ export interface RequestDraftSnapshot {
   body: Record<string, unknown> | string | null;
   auth: {
     type: string;
+    inherit?: boolean;
     credentials?: Record<string, string>;
   } | null;
+  inheritAuth?: number;
   mockConfig?: import('../../server/db/schema/savedRequest').MockConfig | null;
   preScript?: string;
   postScript?: string;
@@ -942,6 +944,7 @@ const buildDraftSnapshot = (): RequestDraftSnapshot => {
     headers: buildHeadersRecord(),
     body: normalizedBody,
     auth: currentAuth,
+    inheritAuth: inheritFromParent.value ? 1 : 0,
     mockConfig: mockConfig.value,
     preScript: preScript.value,
     postScript: postScript.value,
