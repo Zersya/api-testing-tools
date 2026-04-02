@@ -351,7 +351,8 @@ const captureCurrentStateAsSaved = () => {
 // Path Variables functions
 const extractPathVariablesFromUrl = (url: string): string[] => {
   // Match only :paramName syntax (not {{environmentVariables}})
-  const pathVariablePattern = /:(\w+)/g;
+  // Exclude pure numbers (like port numbers :8080) by requiring at least one letter
+  const pathVariablePattern = /:([a-zA-Z_]\w*)/g;
   const matches: string[] = [];
   let match;
   while ((match = pathVariablePattern.exec(url)) !== null) {
@@ -391,7 +392,12 @@ const resolvePathVariables = (url: string): string => {
   let resolvedUrl = url;
   pathVariables.value.forEach(variable => {
     if (variable.enabled && variable.key) {
+      // Skip pure numeric keys (like "8080" which is a port, not a path variable)
+      if (/^\d+$/.test(variable.key)) {
+        return;
+      }
       // Replace only :key syntax (not {{environmentVariables}})
+      // Use same pattern as extract: require at least one letter to avoid matching ports
       const pattern = new RegExp(`:${variable.key}(?![a-zA-Z0-9_])`, 'g');
       resolvedUrl = resolvedUrl.replace(pattern, variable.value);
     }
