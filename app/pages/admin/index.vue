@@ -1083,9 +1083,12 @@ const workspaceToRename = ref<{ id: string; name: string } | null>(null);
 // Ref for AppSidebar to access its exposed properties
 const appSidebarRef = ref<{ activeView: Ref<'hierarchy' | 'mocks' | 'history' | 'definitions'> } | null>(null);
 
+// Track sidebar active view locally (updated via event from AppSidebar)
+const sidebarActiveView = ref<'hierarchy' | 'mocks' | 'history' | 'definitions'>('hierarchy');
+
 // Computed property to check if mocks view is active in sidebar
 const isMockSidebarActive = computed(() => {
-  return appSidebarRef.value?.activeView?.value === 'mocks';
+  return sidebarActiveView.value === 'mocks';
 });
 
 // Delete workspace modal state
@@ -2883,6 +2886,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
         @reorder-requests="handleReorderRequests"
         @select-workspace="handleWorkspaceSelect($event)"
         @import-complete="definitionsRefreshTrigger++"
+        @active-view-change="sidebarActiveView = $event"
       />
 
       <!-- Main Content -->

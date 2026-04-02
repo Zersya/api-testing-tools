@@ -126,35 +126,35 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
   selectMock: [mock: Mock];
-  selectCollection: [collection: Collection];
   selectRequest: [request: HttpRequest];
-  createMock: [collectionId?: string];
-  createCollection: [projectId?: string];
+  createMock: [];
   createResource: [];
-  editCollection: [collection: Collection];
-  renameCollection: [collection: Collection];
-  deleteCollection: [collection: Collection];
-  deleteGroup: [collectionId: string, groupName: string, mocks: Mock[]];
-  deleteFolder: [folder: any];
-  createRequest: [folderId?: string, collectionId?: string];
-  createFolder: [collectionId?: string];
-  createProject: [workspaceId?: string];
+  createCollection: [];
+  createRequest: [];
+  createFolder: [collectionId: string];
+  createProject: [workspaceId: string];
   createWorkspace: [];
   renameWorkspace: [workspace: { id: string; name: string }];
   shareWorkspace: [workspace: { id: string; name: string }];
-  renameProject: [project: any];
-  deleteProject: [project: any];
-  deleteRequest: [request: any];
-  restoreRequest: [request: HttpRequest];
+  renameProject: [project: { id: string; name: string }];
+  deleteProject: [project: { id: string; name: string }];
+  editCollection: [collection: { id: string; name: string; description: string }];
+  renameCollection: [collection: { id: string; name: string }];
+  deleteCollection: [collectionId: string];
+  deleteGroup: [collectionId: string, groupName: string, mocks: Mock[]];
+  deleteFolder: [folderId: string];
+  renameFolder: [folder: any];
+  deleteRequest: [requestId: string];
+  restoreRequest: [request: any];
   compare: [left: any, right: any];
   viewDefinitionDocs: [definition: any];
   generateDefinitionMocks: [definition: any];
   reimportDefinition: [definition: any];
-  reorderFolders: [collectionId: string, folderUpdates: { id: string; parentFolderId: string | null; order: number }[]];
-  reorderRequests: [folderId: string | null, requestUpdates: { id: string; folderId?: string | null; collectionId?: string | null; order: number }[], collectionId?: string | null];
+  reorderFolders: [folders: Array<{ id: string; order: number }>];
+  reorderRequests: [requests: Array<{ id: string; order: number }>];
   selectWorkspace: [workspaceId: string];
-  renameFolder: [folder: any];
   importComplete: [];
+  activeViewChange: [view: 'hierarchy' | 'mocks' | 'history' | 'definitions'];
 }>();
 
 const selectedWorkspaceId = ref<string | null>(null);
@@ -1291,6 +1291,7 @@ watch(activeView, (newView) => {
   if (typeof window !== 'undefined') {
     localStorage.setItem('activeView', newView);
   }
+  emit('activeViewChange', newView);
 });
 
 // Expose activeView for parent components
