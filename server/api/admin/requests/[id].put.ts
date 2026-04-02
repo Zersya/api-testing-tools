@@ -2,6 +2,7 @@ import { db } from '../../../db';
 import { savedRequests, type HttpMethod, type RequestHeaders, type RequestBody, type RequestAuth, type MockConfig, type RequestPathVariables } from '../../../db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { trackResourceAction } from '../../../services/usageTracking';
+import { cache, CacheKeys } from '../../../utils/cache';
 
 interface UpdateRequestBody {
   name?: string;
@@ -218,6 +219,9 @@ export default defineEventHandler(async (event) => {
         resourceId: updatedRequest.id,
         resourceName: updatedRequest.name,
       });
+      
+      // Invalidate cache for this user
+      cache.delete(CacheKeys.workspaceTree(user.id));
     }
 
     return updatedRequest;
