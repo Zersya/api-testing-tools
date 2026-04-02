@@ -148,6 +148,8 @@ const emit = defineEmits<{
   unsavedChanges: [request: HttpRequest, hasUnsavedChanges: boolean, draft: RequestDraftSnapshot];
   // State persistence events
   stateChange: [state: { response: any; activeTab: TabType; scriptLogs: any[] }];
+  // Collection settings
+  openCollectionSettings: [collectionId: string];
 }>();
 
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'] as const;
@@ -1140,6 +1142,12 @@ const fetchCollectionAuth = async () => {
     collectionName.value = ''
   } finally {
     collectionAuthLoading.value = false
+  }
+}
+
+const openCollectionSettings = () => {
+  if (props.collectionId) {
+    emit('openCollectionSettings', props.collectionId)
   }
 }
 
@@ -3046,31 +3054,54 @@ defineExpose({
                   class="w-4 h-4 rounded border-border-default bg-bg-input text-accent-blue focus:ring-accent-blue focus:ring-offset-bg-secondary cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <span class="text-xs" :class="inheritFromParent ? 'text-accent-blue font-medium' : 'text-text-secondary'">
-                  Inherit from parent
+                  Inherit auth from collection
                 </span>
                 <span v-if="collectionAuthLoading" class="text-xs text-text-muted">(loading...)</span>
               </label>
               
-              <div v-if="inheritFromParent && collectionName" class="p-3 bg-accent-blue/10 rounded border border-accent-blue/30">
+              <div v-if="inheritFromParent && collectionName && collectionAuth" class="p-3 bg-accent-blue/10 rounded border border-accent-blue/30">
                 <div class="flex items-center gap-2 text-xs text-text-secondary">
                   <svg class="w-3.5 h-3.5 text-accent-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
                   </svg>
-                  <span class="font-medium">Inherited from:</span>
-                  <span>{{ projectName || 'Project' }} > {{ collectionName }}</span>
+                  <span class="font-medium">Using auth from collection:</span>
+                  <span class="text-text-primary">{{ collectionName }}</span>
                 </div>
-                <div v-if="collectionAuth" class="mt-2 flex items-center gap-2 text-xs">
+                <div class="mt-2 flex items-center gap-2 text-xs">
                   <span class="text-text-muted">Auth type:</span>
                   <span class="px-1.5 py-0.5 bg-accent-blue/20 text-accent-blue font-semibold rounded">{{ collectionAuth.type }}</span>
                 </div>
               </div>
               
-              <div v-else-if="inheritFromParent && !collectionAuth && !collectionAuthLoading" class="p-3 bg-accent-yellow/10 rounded border border-accent-yellow/30">
-                <div class="flex items-center gap-2 text-xs text-text-secondary">
-                  <svg class="w-3.5 h-3.5 text-accent-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div v-else-if="inheritFromParent && collectionName && !collectionAuth && !collectionAuthLoading" class="p-3 bg-accent-yellow/10 rounded border border-accent-yellow/30">
+                <div class="flex items-start gap-2">
+                  <svg class="w-3.5 h-3.5 text-accent-yellow mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
                   </svg>
-                  <span>No auth configured at collection level</span>
+                  <div class="text-xs">
+                    <div class="text-text-secondary mb-1">
+                      Collection "{{ collectionName }}" has no auth configured.
+                    </div>
+                    <button
+                      @click="openCollectionSettings"
+                      class="text-accent-blue hover:text-accent-blue/80 font-medium text-xs inline-flex items-center gap-1"
+                    >
+                      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37 1.608.982 3.678-.824 2.573-2.573z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                      </svg>
+                      Configure collection auth
+                    </button>
+                  </div>
+                </div>
+              </div>
+              
+              <div v-else-if="!collectionId" class="p-3 bg-bg-tertiary rounded border border-border-default">
+                <div class="flex items-start gap-2 text-xs text-text-muted">
+                  <svg class="w-3.5 h-3.5 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                  <span>This request is not in a collection. Save it to a collection to enable auth inheritance.</span>
                 </div>
               </div>
 
