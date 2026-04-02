@@ -3136,6 +3136,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
               <RequestBuilder
                 ref="requestBuilderRef"
                 :request="selectedRequest"
+                :tab-key="activeTabKey"
                 :workspace-id="currentWorkspaceId"
                 :environment-id="activeEnvironment?.id"
                 :project-id="currentProjectId"
