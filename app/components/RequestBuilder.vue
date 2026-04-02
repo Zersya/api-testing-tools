@@ -351,18 +351,14 @@ const captureCurrentStateAsSaved = () => {
 // Path Variables functions
 const extractPathVariablesFromUrl = (url: string): string[] => {
   // Match only :paramName syntax (not {{environmentVariables}})
-  const pathVariablePattern = /:(\w+)/g;
+  // Exclude pure numbers (like port numbers :8080) by requiring at least one letter
+  const pathVariablePattern = /:([a-zA-Z_]\w*)/g;
   const matches: string[] = [];
   let match;
   while ((match = pathVariablePattern.exec(url)) !== null) {
     matches.push(match[1]);
   }
-  const uniqueMatches = [...new Set(matches)]; // Remove duplicates
-  // DEBUG: Log detected variables
-  if (matches.length > 0) {
-    console.log('[DEBUG] extractPathVariablesFromUrl - URL:', url, 'detected:', uniqueMatches);
-  }
-  return uniqueMatches;
+  return [...new Set(matches)]; // Remove duplicates
 };
 
 const addPathVariable = (key: string) => {
@@ -394,16 +390,16 @@ const updatePathVariable = (id: string, field: keyof PathVariable, value: string
 
 const resolvePathVariables = (url: string): string => {
   let resolvedUrl = url;
-  // DEBUG: Log path variables being applied
-  console.log('[DEBUG] resolvePathVariables - input URL:', url);
-  console.log('[DEBUG] resolvePathVariables - pathVariables array:', pathVariables.value);
   pathVariables.value.forEach(variable => {
     if (variable.enabled && variable.key) {
+      // Skip pure numeric keys (like "8080" which is a port, not a path variable)
+      if (/^\d+$/.test(variable.key)) {
+        return;
+      }
       // Replace only :key syntax (not {{environmentVariables}})
+      // Use same pattern as extract: require at least one letter to avoid matching ports
       const pattern = new RegExp(`:${variable.key}(?![a-zA-Z0-9_])`, 'g');
-      console.log('[DEBUG] Checking pattern:', pattern, 'for key:', variable.key, 'with value:', variable.value);
       resolvedUrl = resolvedUrl.replace(pattern, variable.value);
-      console.log('[DEBUG] After replacement:', resolvedUrl);
     }
   });
   return resolvedUrl;
@@ -2305,15 +2301,9 @@ const sendRequest = async () => {
     requestHeaders = { ...requestHeaders, ...authHeaders };
 
     let requestUrl = form.value.url;
-    
-    // DEBUG: Log the original URL
-    console.log('[DEBUG] Original URL from form:', requestUrl);
 
     // Apply path variable substitution
     requestUrl = resolvePathVariables(requestUrl);
-    
-    // DEBUG: Log URL after path variable substitution
-    console.log('[DEBUG] URL after path variable substitution:', requestUrl);
 
     const authQueryParams = buildAuthQueryParams();
     if (Object.keys(authQueryParams).length > 0) {
@@ -2326,9 +2316,6 @@ const sendRequest = async () => {
       } catch {
       }
     }
-    
-    // DEBUG: Log final URL before sending
-    console.log('[DEBUG] Final URL being sent to proxy:', requestUrl);
 
     const result = await $fetch<ProxyResponse | ProxyErrorResponse>('/api/proxy/request', {
       method: 'POST',
