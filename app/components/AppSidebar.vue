@@ -2,6 +2,9 @@
 import RequestHistoryPanel from './RequestHistoryPanel.vue';
 import ApiDefinitionsPanel from './ApiDefinitionsPanel.vue';
 
+// Toast notification
+const { toastState, showToast, hideToast } = useToast();
+
 interface Collection {
   id: string;
   name: string;
@@ -37,6 +40,14 @@ interface HttpRequest {
   order: number;
   createdAt: Date;
   updatedAt: Date;
+  examples?: Array<{
+    id: string;
+    name: string;
+    statusCode: number;
+    headers: Record<string, string> | null;
+    body: Record<string, unknown> | string | null;
+    isDefault: boolean;
+  }>;
 }
 
 interface FolderWithRequestsAndChildren {
@@ -979,6 +990,8 @@ const handleContextAction = (action: string) => {
         emit('renameFolder', data);
       } else if (action === 'delete-folder') {
         emit('deleteFolder', data);
+      } else if (action === 'copy-prompt') {
+        copyFolderPromptToClipboard(data);
       }
       break;
     case 'request':
@@ -989,6 +1002,185 @@ const handleContextAction = (action: string) => {
   }
 
   closeContextMenu();
+};
+
+/**
+ * Generate a comprehensive prompt for an AI agent based on folder contents
+ * Includes all endpoints with full details and nested folder structure
+ */
+const generateFolderPrompt = (folder: FolderWithRequestsAndChildren): string => {
+  // Collect all requests recursively
+  const allRequests: Array<{
+    request: HttpRequest;
+    path: string;
+  }> = [];
+  
+  const collectRequests = (currentFolder: FolderWithRequestsAndChildren, path: string) => {
+    const currentPath = path ? path + ' > ' + currentFolder.name : currentFolder.name;
+    
+    // Add requests from current folder
+    currentFolder.requests.forEach(request => {
+      allRequests.push({
+        request,
+        path: currentPath
+      });
+    });
+    
+    // Recursively collect from children
+    currentFolder.children.forEach(child => {
+      collectRequests(child, currentPath);
+    });
+  };
+  
+  collectRequests(folder, '');
+  
+  // Build folder structure representation
+  const buildStructure = (f: FolderWithRequestsAndChildren, indent: number = 0): string => {
+    const prefix = '  '.repeat(indent);
+    const subfolderText = f.children.length > 0 ? ', ' + f.children.length + ' subfolders' : '';
+    let result = prefix + '- ' + f.name + ' (' + f.requests.length + ' requests' + subfolderText + ')\n';
+    f.children.forEach(child => {
+      result += buildStructure(child, indent + 1);
+    });
+    return result;
+  };
+  
+  // Count methods
+  const methodCounts: Record<string, number> = {};
+  allRequests.forEach(({ request }) => {
+    methodCounts[request.method] = (methodCounts[request.method] || 0) + 1;
+  });
+  
+  // Format request body nicely
+  const formatBody = (body: any): string => {
+    if (!body) return 'None';
+    if (typeof body === 'string') {
+      try {
+        const parsed = JSON.parse(body);
+        return JSON.stringify(parsed, null, 2);
+      } catch {
+        return body;
+      }
+    }
+    return JSON.stringify(body, null, 2);
+  };
+  
+  // Mask sensitive values in headers
+  const maskSensitiveHeaders = (headers: Record<string, string> | null): string => {
+    if (!headers || Object.keys(headers).length === 0) return 'None';
+    
+    const sensitiveKeys = ['authorization', 'token', 'api-key', 'apikey', 'secret', 'password', 'x-api-key'];
+    const masked: Record<string, string> = {};
+    
+    Object.entries(headers).forEach(([key, value]) => {
+      const lowerKey = key.toLowerCase();
+      const isSensitive = sensitiveKeys.some(sk => lowerKey.includes(sk));
+      masked[key] = isSensitive ? '{{masked}}' : value;
+    });
+    
+    return Object.entries(masked)
+      .map(([key, value]) => '  - ' + key + ': ' + value)
+      .join('\n');
+  };
+  
+  // Format auth info
+  const formatAuth = (auth: any): string => {
+    if (!auth || auth.type === 'none') return 'None';
+    
+    let authInfo = 'Type: ' + auth.type;
+    if (auth.credentials) {
+      const maskedCreds: Record<string, string> = {};
+      Object.keys(auth.credentials).forEach(key => {
+        maskedCreds[key] = '{{' + key + '}}';
+      });
+      authInfo += '\nCredentials: ' + JSON.stringify(maskedCreds, null, 2);
+    }
+    return authInfo;
+  };
+  
+  // Format example responses
+  const formatExamples = (examples: HttpRequest['examples']): string => {
+    if (!examples || examples.length === 0) return 'None';
+    
+    return examples.map((example, index) => {
+      const defaultLabel = example.isDefault ? ' (Default)' : '';
+      let result = '**Example ' + (index + 1) + defaultLabel + ': ' + example.name + '**\n';
+      result += '**Status Code**: ' + example.statusCode + '\n\n';
+      result += '**Response Headers**:\n';
+      result += maskSensitiveHeaders(example.headers) + '\n\n';
+      result += '**Response Body**:\n';
+      result += '```json\n';
+      result += formatBody(example.body) + '\n';
+      result += '```';
+      return result;
+    }).join('\n\n---\n\n');
+  };
+  
+  // Generate endpoints section
+  const endpointsSection = allRequests.map(({ request, path }) => {
+    const examplesSection = request.examples && request.examples.length > 0 
+      ? '\n\n**Example Responses**:\n' + formatExamples(request.examples)
+      : '';
+    
+    let result = '### ' + request.name + '\n';
+    result += '**Full Path**: ' + path + ' > ' + request.name + '\n\n';
+    result += '**Method**: ' + request.method + '\n';
+    result += '**URL**: ' + request.url + '\n\n';
+    result += '**Headers**:\n';
+    result += maskSensitiveHeaders(request.headers) + '\n\n';
+    result += '**Authentication**:\n';
+    result += formatAuth(request.auth) + '\n\n';
+    result += '**Request Body**:\n';
+    result += '```json\n';
+    result += formatBody(request.body) + '\n';
+    result += '```' + examplesSection + '\n\n---';
+    return result;
+  }).join('\n\n');
+  
+  let prompt = '# API Endpoints: ' + folder.name + '\n\n';
+  prompt += '**Context**: This folder contains API endpoints that should respect the existing API integration structure and patterns in your codebase. All authentication flows, error handling patterns, and response formats should remain consistent with the current implementation.\n\n';
+  prompt += '## UI Reference\n\n';
+  prompt += '**Important**: If UI designs, screenshots, or visual references are available for these endpoints, please:\n';
+  prompt += '1. Review and respect the UI layout, form fields, and validation patterns shown in the reference images\n';
+  prompt += '2. Ensure any implementation matches the visual structure and user flow depicted in the UI\n';
+  prompt += '3. Take note of field types, labels, placeholders, and error states shown in the UI\n\n';
+  prompt += '## Folder Structure\n\n';
+  prompt += buildStructure(folder) + '\n\n';
+  prompt += '## Endpoints\n\n';
+  prompt += endpointsSection + '\n\n';
+  prompt += '## Summary\n\n';
+  prompt += '- **Total Endpoints**: ' + allRequests.length + '\n';
+  prompt += '- **HTTP Methods**: ' + Object.entries(methodCounts).map(([method, count]) => method + ' (' + count + ')').join(', ') + '\n';
+  prompt += '- **Note**: Please maintain consistency with existing authentication flows, error handling patterns, and response formats when implementing new features or modifications.\n\n';
+  prompt += '## Critical Guidelines for Agent\n\n';
+  prompt += '**When working with these endpoints, you MUST:**\n\n';
+  prompt += '1. **Respect existing API integration patterns** - Maintain consistency with current authentication flows, error handling, and response formats\n\n';
+  prompt += '2. **ALWAYS ask for user confirmation when discrepancies are found** - If you notice ANY differences between:\n';
+  prompt += '   - The API request payload structure and what the UI suggests should be sent\n';
+  prompt += '   - The API response body format and what the UI expects to receive\n';
+  prompt += '   - Field names, types, or required/optional status between API and UI\n';
+  prompt += '   - **The API response examples provided below and what the UI expects to display**\n   \n';
+  prompt += '   **STOP and ask the user**: "I noticed a discrepancy between the API definition and the UI reference for [specific endpoint]. The API expects [X] but the UI shows [Y]. Which should I follow?"\n\n';
+  prompt += '3. **Follow established authentication flows** - Use the same auth patterns already in place\n\n';
+  prompt += '4. **Keep response formats uniform** - Match existing response structures across similar endpoints\n\n';
+  prompt += '5. **Respect UI reference images** - If UI screenshots or designs are provided, ensure your implementation matches the visual structure, form fields, and validation patterns shown\n\n';
+  prompt += '6. **Use provided response examples as reference** - The "Example Responses" section shows actual expected response formats. If implementing mock servers or testing, these are the definitive response structures to use.';
+  
+  return prompt;
+};
+
+/**
+ * Copy folder prompt to clipboard
+ */
+const copyFolderPromptToClipboard = async (folder: FolderWithRequestsAndChildren) => {
+  try {
+    const prompt = generateFolderPrompt(folder);
+    await navigator.clipboard.writeText(prompt);
+    showToast('✨ Prompt copied! Ready to paste into your agent.', 'success', { duration: 3000 });
+  } catch (error) {
+    console.error('Failed to copy prompt:', error);
+    showToast('Failed to copy prompt. Please try again.', 'error', { duration: 3000 });
+  }
 };
 
 const getMethodIcon = (method: string) => {
@@ -1641,6 +1833,18 @@ watch(activeView, (newView) => {
             </button>
             <button
               class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              @click.stop="handleContextAction('copy-prompt')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
+                <path d="M12 3v18m-6.364-6.364l12.728-12.728m0 12.728L5.636 5.636"/>
+                <path d="M7 17L17 7"/>
+                <path d="M7 7h10v10"/>
+              </svg>
+              Copy Prompt for Agent
+            </button>
+            <div class="border-t border-border-default my-1"></div>
+            <button
+              class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
               @click.stop="handleContextAction('rename-folder')"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
@@ -1716,6 +1920,73 @@ watch(activeView, (newView) => {
       class="fixed inset-0 z-40"
       @click="closeContextMenu"
     ></div>
+
+    <!-- Toast Notification -->
+    <Teleport to="body">
+      <Transition name="toast">
+        <div
+          v-if="toastState.show"
+          class="fixed bottom-4 right-4 z-[200] flex items-center gap-3 px-4 py-3 bg-bg-secondary border rounded-lg shadow-lg max-w-sm"
+          :class="toastState.type === 'success' ? 'border-accent-green/30' : 'border-accent-red/30'"
+        >
+          <!-- Icon -->
+          <div
+            class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center"
+            :class="toastState.type === 'success' ? 'bg-accent-green/15' : 'bg-accent-red/15'"
+          >
+            <svg
+              v-if="toastState.type === 'success'"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="text-accent-green"
+            >
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            <svg
+              v-else
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="text-accent-red"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+          </div>
+
+          <!-- Message -->
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium" :class="toastState.type === 'success' ? 'text-accent-green' : 'text-accent-red'">
+              {{ toastState.message }}
+            </p>
+          </div>
+
+          <!-- Dismiss Button -->
+          <button
+            @click="hideToast"
+            class="flex-shrink-0 p-1 text-text-muted hover:text-text-primary transition-colors duration-fast"
+            aria-label="Dismiss notification"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+      </Transition>
+    </Teleport>
   </aside>
 </template>
 
@@ -1737,5 +2008,21 @@ watch(activeView, (newView) => {
 .expand-leave-from {
   opacity: 1;
   max-height: 2000px;
+}
+
+/* Toast transitions */
+.toast-enter-active,
+.toast-leave-active {
+  transition: all 300ms ease;
+}
+
+.toast-enter-from {
+  opacity: 0;
+  transform: translateY(20px) scale(0.95);
+}
+
+.toast-leave-to {
+  opacity: 0;
+  transform: translateX(20px);
 }
 </style>
