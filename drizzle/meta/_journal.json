@@ -71,6 +71,20 @@
       "when": 1774865750282,
       "tag": "0009_gifted_nico_minoru",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1775127754723,
+      "tag": "0010_sharp_king_cobra",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1775128100485,
+      "tag": "0011_add_inherit_auth",
+      "breakpoints": true
     }
   ]
 }
