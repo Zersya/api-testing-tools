@@ -255,6 +255,15 @@ const inheritFromParent = ref(false)
 const collectionAuth = ref<any>(null)
 const collectionName = ref<string>('')
 const collectionAuthLoading = ref(false)
+
+// Computed property to check if collection auth is effectively being used
+const isUsingCollectionAuth = computed(() => {
+  return inheritFromParent.value && 
+         collectionAuth.value && 
+         collectionAuth.value.type && 
+         collectionAuth.value.type !== 'none'
+})
+
 const expandedNodes = ref(new Set<string>())
 const showSearch = ref(false);
 const searchQuery = ref('');
@@ -1033,52 +1042,67 @@ const buildBody = (): any => {
   }
 }
 
+const resolveEnvVars = (value: string): string => {
+  if (!value || !environmentVariables.value) return value;
+  
+  return value.replace(/\{\{([^}]+)\}\}/g, (match, varName) => {
+    const variable = environmentVariables.value.find(v => v.key === varName.trim());
+    return variable ? variable.value : match;
+  });
+};
+
 const buildAuthHeaders = (): Record<string, string> => {
   const authHeaders: Record<string, string> = {}
   
   const effectiveAuth = inheritFromParent.value ? collectionAuth.value : null
   const effectiveAuthType = inheritFromParent.value ? (effectiveAuth?.type || 'none') : authType.value
   
-  if (effectiveAuthType === 'api-key') {
-    const keyConfig = inheritFromParent.value 
+  // Determine which auth type to use:
+  // - If inheriting and collection has auth, use collection auth
+  // - If inheriting but collection has no auth, fall back to request's auth
+  // - If not inheriting, use request's auth
+  const hasCollectionAuth = inheritFromParent.value && effectiveAuth && effectiveAuth.type && effectiveAuth.type !== 'none'
+  const finalAuthType = hasCollectionAuth ? effectiveAuthType : authType.value
+  
+  if (finalAuthType === 'api-key') {
+    const keyConfig = hasCollectionAuth 
       ? (effectiveAuth?.credentials || {})
       : apiKey.value
     if (keyConfig.addTo === 'header' && keyConfig.key) {
-      authHeaders[keyConfig.key] = keyConfig.value
+      // Resolve environment variables in inherited collection auth
+      const resolvedKey = hasCollectionAuth ? resolveEnvVars(keyConfig.key) : keyConfig.key
+      const resolvedValue = hasCollectionAuth ? resolveEnvVars(keyConfig.value) : keyConfig.value
+      authHeaders[resolvedKey] = resolvedValue
     }
-  } else if (effectiveAuthType === 'bearer') {
-    const token = inheritFromParent.value 
+  } else if (finalAuthType === 'bearer') {
+    const token = hasCollectionAuth 
       ? (effectiveAuth?.credentials?.token || '')
       : bearerToken.value
     if (token) {
-      authHeaders['Authorization'] = `Bearer ${token}`
+      // Resolve environment variables in inherited collection auth
+      const resolvedToken = hasCollectionAuth ? resolveEnvVars(token) : token
+      authHeaders['Authorization'] = `Bearer ${resolvedToken}`
     }
-  } else if (effectiveAuthType === 'basic') {
-    const creds = inheritFromParent.value 
+  } else if (finalAuthType === 'basic') {
+    const creds = hasCollectionAuth 
       ? (effectiveAuth?.credentials || {})
       : basicAuth.value
     if (creds.username) {
-      const credentials = btoa(`${creds.username}:${creds.password}`)
+      // Resolve environment variables in inherited collection auth
+      const resolvedUsername = hasCollectionAuth ? resolveEnvVars(creds.username) : creds.username
+      const resolvedPassword = hasCollectionAuth ? resolveEnvVars(creds.password) : creds.password
+      const credentials = btoa(`${resolvedUsername}:${resolvedPassword}`)
       authHeaders['Authorization'] = `Basic ${credentials}`
     }
-  } else if (effectiveAuthType === 'oauth2') {
-    const oauthConfig = inheritFromParent.value 
+  } else if (finalAuthType === 'oauth2') {
+    const oauthConfig = hasCollectionAuth 
       ? (effectiveAuth?.credentials || {})
       : oauth2.value
     if (oauthConfig.accessToken) {
-      authHeaders['Authorization'] = `${oauthConfig.tokenType || 'Bearer'} ${oauthConfig.accessToken}`
+      // Resolve environment variables in inherited collection auth
+      const resolvedToken = hasCollectionAuth ? resolveEnvVars(oauthConfig.accessToken) : oauthConfig.accessToken
+      authHeaders['Authorization'] = `${oauthConfig.tokenType || 'Bearer'} ${resolvedToken}`
     }
-  } else if (!inheritFromParent.value && authType.value === 'api-key') {
-    if (apiKey.value.addTo === 'header' && apiKey.value.key) {
-      authHeaders[apiKey.value.key] = apiKey.value.value
-    }
-  } else if (!inheritFromParent.value && authType.value === 'bearer' && bearerToken.value) {
-    authHeaders['Authorization'] = `Bearer ${bearerToken.value}`
-  } else if (!inheritFromParent.value && authType.value === 'basic' && basicAuth.value.username) {
-    const credentials = btoa(`${basicAuth.value.username}:${basicAuth.value.password}`)
-    authHeaders['Authorization'] = `Basic ${credentials}`
-  } else if (!inheritFromParent.value && authType.value === 'oauth2' && oauth2.value.accessToken) {
-    authHeaders['Authorization'] = `${oauth2.value.tokenType} ${oauth2.value.accessToken}`
   }
   
   return authHeaders
@@ -1086,8 +1110,22 @@ const buildAuthHeaders = (): Record<string, string> => {
 
 const buildAuthQueryParams = (): Record<string, string> => {
   const queryParams: Record<string, string> = {};
-
-  if (authType.value === 'api-key' && apiKey.value.addTo === 'query' && apiKey.value.key) {
+  
+  // Determine which auth to use for query params
+  const hasCollectionApiKey = inheritFromParent.value && collectionAuth.value?.type === 'api-key'
+  const hasRequestApiKey = authType.value === 'api-key' && apiKey.value.addTo === 'query' && apiKey.value.key
+  
+  // Handle inherited collection auth for API key in query
+  if (hasCollectionApiKey) {
+    const keyConfig = collectionAuth.value.credentials || {}
+    if (keyConfig.addTo === 'query' && keyConfig.key) {
+      // Resolve environment variables
+      const resolvedKey = resolveEnvVars(keyConfig.key)
+      const resolvedValue = resolveEnvVars(keyConfig.value)
+      queryParams[resolvedKey] = resolvedValue;
+    }
+  } else if (hasRequestApiKey) {
+    // Fall back to request's API key if inheriting but no collection auth
     queryParams[apiKey.value.key] = apiKey.value.value;
   }
 
@@ -2331,6 +2369,11 @@ onMounted(() => {
   parseAuthFromRequest(props.request.auth);
   checkForOAuthCallback();
   fetchEnvironmentVariables();
+  
+  // Fetch collection auth if we have a collectionId
+  if (props.collectionId) {
+    fetchCollectionAuth();
+  }
 });
 
 watch(() => props.environmentId, () => {
@@ -2505,7 +2548,8 @@ defineExpose({
   authType,
   bearerToken,
   basicAuth,
-  apiKey
+  apiKey,
+  refreshCollectionAuth: fetchCollectionAuth
 });
 </script>
 
@@ -3034,7 +3078,7 @@ defineExpose({
                 <label class="text-xs font-medium text-text-secondary">Auth Type</label>
                 <select
                   v-model="authType"
-                  :disabled="inheritFromParent"
+                  :disabled="isUsingCollectionAuth"
                   class="w-full py-2 px-3 bg-bg-input border border-border-default rounded text-text-primary text-sm focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <option value="none">No Auth</option>
@@ -3048,8 +3092,7 @@ defineExpose({
               <label class="flex items-center gap-2 cursor-pointer select-none">
                 <input
                   type="checkbox"
-                  :checked="inheritFromParent"
-                  @change="inheritFromParent = ($event.target as HTMLInputElement).checked"
+                  v-model="inheritFromParent"
                   :disabled="!collectionId || collectionAuthLoading"
                   class="w-4 h-4 rounded border-border-default bg-bg-input text-accent-blue focus:ring-accent-blue focus:ring-offset-bg-secondary cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 />
@@ -3105,7 +3148,7 @@ defineExpose({
                 </div>
               </div>
 
-              <div v-if="authType === 'api-key' && !inheritFromParent" class="space-y-3 p-3 bg-bg-tertiary rounded border border-border-default">
+              <div v-if="authType === 'api-key' && !isUsingCollectionAuth" class="space-y-3 p-3 bg-bg-tertiary rounded border border-border-default">
                 <div class="space-y-2">
                   <label class="text-xs font-medium text-text-secondary">Key</label>
                   <VariableInput
@@ -3154,7 +3197,7 @@ defineExpose({
                 </div>
               </div>
 
-              <div v-if="authType === 'bearer' && !inheritFromParent" class="space-y-3 p-3 bg-bg-tertiary rounded border border-border-default">
+              <div v-if="authType === 'bearer' && !isUsingCollectionAuth" class="space-y-3 p-3 bg-bg-tertiary rounded border border-border-default">
                 <div class="space-y-2">
                   <label class="text-xs font-medium text-text-secondary">Token</label>
                   <VariableInput
@@ -3170,7 +3213,7 @@ defineExpose({
                 </div>
               </div>
 
-              <div v-if="authType === 'basic' && !inheritFromParent" class="space-y-3 p-3 bg-bg-tertiary rounded border border-border-default">
+              <div v-if="authType === 'basic' && !isUsingCollectionAuth" class="space-y-3 p-3 bg-bg-tertiary rounded border border-border-default">
                 <div class="space-y-2">
                   <label class="text-xs font-medium text-text-secondary">Username</label>
                   <VariableInput
@@ -3195,7 +3238,7 @@ defineExpose({
                 </div>
               </div>
 
-              <div v-if="authType === 'oauth2' && !inheritFromParent" class="space-y-4">
+              <div v-if="authType === 'oauth2' && !isUsingCollectionAuth" class="space-y-4">
                 <div class="flex items-center justify-between">
                   <h4 class="text-xs font-semibold text-text-primary">OAuth 2.0 Configuration</h4>
                   <div class="flex items-center gap-2">

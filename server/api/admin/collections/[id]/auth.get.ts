@@ -2,6 +2,20 @@ import { db } from '../../../../db'
 import { collections } from '../../../../db/schema'
 import { eq } from 'drizzle-orm'
 
+function parseJsonField<T>(value: unknown): T | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      return null;
+    }
+  }
+  return value as T;
+}
+
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
 
@@ -31,7 +45,7 @@ export default defineEventHandler(async (event) => {
     }
 
     return {
-      authConfig: collection.authConfig,
+      authConfig: parseJsonField<Record<string, unknown>>(collection.authConfig),
       collectionName: collection.name
     }
   } catch (error: any) {

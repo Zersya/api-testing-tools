@@ -1,6 +1,7 @@
 import { db } from '../../../../db'
 import { collections } from '../../../../db/schema'
 import { eq } from 'drizzle-orm'
+import { cache, CacheKeys } from '../../../../utils/cache'
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
@@ -44,6 +45,12 @@ export default defineEventHandler(async (event) => {
       })
       .where(eq(collections.id, id))
       .returning())[0]
+
+    // Clear the tree cache so fresh data is loaded
+    const user = event.context.user
+    if (user?.id) {
+      cache.delete(CacheKeys.workspaceTree(user.id))
+    }
 
     return {
       authConfig: updated.authConfig,
