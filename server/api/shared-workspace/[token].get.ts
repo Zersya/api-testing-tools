@@ -1,7 +1,16 @@
 import { db } from '../../db';
-import { workspaces, projects, collections, folders, savedRequests, environments, environmentVariables } from '../../db/schema';
-import { eq, asc, and } from 'drizzle-orm';
+import { workspaces, projects, collections, folders, savedRequests, requestExamples, environments, environmentVariables } from '../../db/schema';
+import { eq, asc, and, inArray } from 'drizzle-orm';
 import { validateShareToken, recordSharedAccess } from '../../utils/permissions';
+
+interface RequestExampleItem {
+  id: string;
+  name: string;
+  statusCode: number;
+  headers: Record<string, string> | null;
+  body: Record<string, unknown> | string | null;
+  isDefault: boolean;
+}
 
 interface RequestItem {
   id: string;
@@ -26,6 +35,7 @@ interface RequestItem {
   order: number;
   createdAt: Date;
   updatedAt: Date;
+  examples: RequestExampleItem[];
 }
 
 interface FolderWithRequestsAndChildren {
@@ -218,15 +228,44 @@ export default defineEventHandler(async (event) => {
       .select()
       .from(environmentVariables);
 
-    // Parse JSON fields from text columns
-    const allRequests: RequestItem[] = allRequestsRaw.map(req => ({
-      ...req,
-      headers: parseJsonField<Record<string, string>>(req.headers),
-      body: parseJsonField<Record<string, unknown> | string>(req.body),
-      auth: parseJsonField<RequestItem['auth']>(req.auth),
-      mockConfig: parseJsonField<RequestItem['mockConfig']>(req.mockConfig),
-      pathVariables: parseJsonField<RequestItem['pathVariables']>(req.pathVariables)
+    // Fetch examples only for the requests we're loading (scoped at DB layer)
+    const requestIds = allRequestsRaw.map(r => r.id);
+    const allExamplesRaw = requestIds.length > 0
+      ? await db
+          .select()
+          .from(requestExamples)
+          .where(inArray(requestExamples.requestId, requestIds))
+      : [];
+
+    // Parse JSON fields from text columns for examples
+    const allExamples = allExamplesRaw.map(ex => ({
+      ...ex,
+      headers: parseJsonField<Record<string, string>>(ex.headers),
+      body: parseJsonField<Record<string, unknown> | string>(ex.body)
     }));
+
+    // Parse JSON fields from text columns and associate examples with requests
+    const allRequests: RequestItem[] = allRequestsRaw.map(req => {
+      const requestExamplesList = allExamples
+        .filter(ex => ex.requestId === req.id)
+        .map(ex => ({
+          id: ex.id,
+          name: ex.name,
+          statusCode: ex.statusCode,
+          headers: ex.headers,
+          body: ex.body,
+          isDefault: ex.isDefault
+        }));
+      return {
+        ...req,
+        headers: parseJsonField<Record<string, string>>(req.headers),
+        body: parseJsonField<Record<string, unknown> | string>(req.body),
+        auth: parseJsonField<RequestItem['auth']>(req.auth),
+        mockConfig: parseJsonField<RequestItem['mockConfig']>(req.mockConfig),
+        pathVariables: parseJsonField<RequestItem['pathVariables']>(req.pathVariables),
+        examples: requestExamplesList
+      };
+    });
 
     // Build the workspace tree
     const workspaceProjects = allProjects.filter(p => p.workspaceId === workspaceId);
