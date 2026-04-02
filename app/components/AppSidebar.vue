@@ -1292,6 +1292,11 @@ watch(activeView, (newView) => {
     localStorage.setItem('activeView', newView);
   }
 });
+
+// Expose activeView for parent components
+defineExpose({
+  activeView
+});
 </script>
 
 <template>
