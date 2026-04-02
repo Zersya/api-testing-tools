@@ -28,6 +28,16 @@ services:
             - "traefik.http.routers.${IMAGE_NAME}-${APP_ENV}-secure.service=${IMAGE_NAME}-${APP_ENV}"
             - "traefik.http.services.${IMAGE_NAME}-${APP_ENV}.loadbalancer.server.port=3000"
             - "traefik.docker.network=proxy"
+            # CORS and Private Network Access (PNA) headers middleware
+            - "traefik.http.middlewares.${IMAGE_NAME}-${APP_ENV}-cors.headers.accesscontrolallowmethods=GET,POST,PUT,PATCH,DELETE,OPTIONS,HEAD"
+            - "traefik.http.middlewares.${IMAGE_NAME}-${APP_ENV}-cors.headers.accesscontrolallowheaders=Content-Type,Authorization,X-Requested-With,Accept,Origin"
+            - "traefik.http.middlewares.${IMAGE_NAME}-${APP_ENV}-cors.headers.accesscontrolalloworiginlist=*"
+            - "traefik.http.middlewares.${IMAGE_NAME}-${APP_ENV}-cors.headers.accesscontrolallowcredentials=true"
+            - "traefik.http.middlewares.${IMAGE_NAME}-${APP_ENV}-cors.headers.accesscontrolmaxage=86400"
+            # Private Network Access header - CRITICAL for local API testing
+            - "traefik.http.middlewares.${IMAGE_NAME}-${APP_ENV}-cors.headers.customresponseheaders.Access-Control-Allow-Private-Network=true"
+            # Apply CORS middleware to secure router
+            - "traefik.http.routers.${IMAGE_NAME}-${APP_ENV}-secure.middlewares=${IMAGE_NAME}-${APP_ENV}-cors"
 
 volumes:
     mock-service-data:
