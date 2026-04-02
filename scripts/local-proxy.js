@@ -4,10 +4,10 @@
  * Local Development Proxy for Mock API Service
  * 
  * This script allows backend engineers to test their local APIs
- * when using the production Mock API Service (https://api-mock.transtrack.id).
+ * when using a Mock API Service.
  * 
- * Problem: The production server runs in Docker and cannot access
- * engineers' local machines (localhost/127.0.0.1).
+ * Problem: The production server often runs in Docker or a different network
+ * and cannot access engineers' local machines (localhost/127.0.0.1).
  * 
  * Solution: This proxy runs on the engineer's machine and creates
  * a bridge between the production app and their local API.

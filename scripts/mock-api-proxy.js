@@ -13,8 +13,13 @@
  *   mock-api-proxy --name api1        # Named instance
  *   mock-api-proxy --list             # Show all instances
  *   mock-api-proxy --stop api1        # Stop named instance
- *   mock-api-proxy --update           # Check for updates
  *   mock-api-proxy --uninstall        # Remove from system
+ * 
+ * Installation/Update:
+ *   curl -fsSL https://raw.githubusercontent.com/Zersya/api-testing-tools/main/scripts/install-proxy.sh | bash
+ *   
+ * Repository:
+ *   https://github.com/Zersya/api-testing-tools/tree/main/scripts
  */
 
 const http = require('http');
@@ -27,7 +32,7 @@ const { spawn, exec } = require('child_process');
 const readline = require('readline');
 
 const VERSION = '1.0.0';
-const UPDATE_CHECK_URL = 'https://api-mock.transtrack.id/api/proxy/info';
+const REPO_URL = 'https://github.com/Zersya/api-testing-tools';
 
 // ANSI color codes for TUI
 const colors = {
@@ -64,9 +69,7 @@ const PID_DIR = path.join(PROXY_DIR, 'pids');
 let config = {
   defaultPort: 8765,
   defaultTargetPort: 8080,
-  defaultTargetHost: 'localhost',
-  autoCheckUpdates: true,
-  lastUpdateCheck: null
+  defaultTargetHost: 'localhost'
 };
 
 // Load config
@@ -121,103 +124,6 @@ const getLocalIPs = () => {
     }
   }
   return ips;
-};
-
-// Check for updates
-const checkForUpdates = async () => {
-  if (!config.autoCheckUpdates) return null;
-  
-  // Only check once per day
-  const now = new Date();
-  if (config.lastUpdateCheck) {
-    const lastCheck = new Date(config.lastUpdateCheck);
-    const hoursSince = (now - lastCheck) / (1000 * 60 * 60);
-    if (hoursSince < 24) return null;
-  }
-  
-  try {
-    const response = await new Promise((resolve, reject) => {
-      const req = https.get(UPDATE_CHECK_URL, (res) => {
-        let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => resolve(data));
-      });
-      req.on('error', reject);
-      req.setTimeout(5000, () => reject(new Error('Timeout')));
-    });
-    
-    const remote = JSON.parse(response);
-    config.lastUpdateCheck = now.toISOString();
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
-    
-    if (remote.version && remote.version !== VERSION) {
-      return {
-        current: VERSION,
-        latest: remote.version,
-        url: remote.downloadUrl
-      };
-    }
-  } catch (e) {
-    // Silently fail on update check error
-  }
-  
-  return null;
-};
-
-// Show update prompt
-const promptUpdate = async (updateInfo) => {
-  console.log(`\n${colors.yellow}┌─────────────────────────────────────────────────────────────┐${colors.reset}`);
-  console.log(`${colors.yellow}│${colors.reset}  ${'Update Available!'.padEnd(57)}${colors.yellow}│${colors.reset}`);
-  console.log(`${colors.yellow}├─────────────────────────────────────────────────────────────┤${colors.reset}`);
-  console.log(`${colors.yellow}│${colors.reset}  Current: ${updateInfo.current.padEnd(50)}${colors.yellow}│${colors.reset}`);
-  console.log(`${colors.yellow}│${colors.reset}  Latest:  ${updateInfo.latest.padEnd(50)}${colors.yellow}│${colors.reset}`);
-  console.log(`${colors.yellow}└─────────────────────────────────────────────────────────────┘${colors.reset}\n`);
-  
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
-  });
-  
-  return new Promise((resolve) => {
-    rl.question('Would you like to update now? (Y/n): ', (answer) => {
-      rl.close();
-      resolve(answer.toLowerCase() !== 'n');
-    });
-  });
-};
-
-// Perform update
-const performUpdate = async (updateInfo) => {
-  console.log('\n' + info('Downloading update...'));
-  
-  try {
-    // Download new version
-    const proxyScriptPath = path.join(__dirname, 'proxy.js');
-    
-    await new Promise((resolve, reject) => {
-      https.get(updateInfo.url, (res) => {
-        if (res.statusCode === 200) {
-          const file = fs.createWriteStream(proxyScriptPath + '.tmp');
-          res.pipe(file);
-          file.on('finish', () => {
-            file.close();
-            fs.renameSync(proxyScriptPath + '.tmp', proxyScriptPath);
-            fs.chmodSync(proxyScriptPath, 0o755);
-            resolve();
-          });
-        } else {
-          reject(new Error(`HTTP ${res.statusCode}`));
-        }
-      }).on('error', reject);
-    });
-    
-    console.log(success('Update installed successfully!'));
-    console.log(info('Please restart the proxy to use the new version.\n'));
-    return true;
-  } catch (e) {
-    console.log(error(`Update failed: ${e.message}`));
-    return false;
-  }
 };
 
 // Create proxy server
@@ -337,8 +243,6 @@ const main = async () => {
       console.log('  --host <hostname>       Target host (default: localhost)');
       console.log('  --list, -l              Show running instances');
       console.log('  --stop <name>           Stop named instance');
-      console.log('  --update, -u            Check for updates');
-      console.log('  --no-update-check       Skip update check this time');
       console.log('  --uninstall             Remove from system');
       console.log('  --version, -v           Show version');
       console.log('  --help, -h              Show this help\n');
@@ -348,6 +252,8 @@ const main = async () => {
       console.log('  mock-api-proxy --port 9999 --name api1  # Custom port and name');
       console.log('  mock-api-proxy --list                   # Show all instances');
       console.log('  mock-api-proxy --stop api1              # Stop api1 instance\n');
+      console.log('Update via GitHub:');
+      console.log('  curl -fsSL https://raw.githubusercontent.com/Zersya/api-testing-tools/main/scripts/install-proxy.sh | bash\n');
       process.exit(0);
     }
     
@@ -381,39 +287,10 @@ const main = async () => {
       process.exit(0);
     }
     
-    if (arg === '--update' || arg === '-u') {
-      const update = await checkForUpdates();
-      if (update) {
-        const shouldUpdate = await promptUpdate(update);
-        if (shouldUpdate) {
-          await performUpdate(update);
-        }
-      } else {
-        console.log(success('You are running the latest version!'));
-      }
-      process.exit(0);
-    }
-    
-    if (arg === '--no-update-check') {
-      config.autoCheckUpdates = false;
-    }
-    
     if (arg === '--uninstall') {
       // Handled by separate uninstall script
       console.log(info('Please run: mock-api-proxy-uninstall'));
       process.exit(0);
-    }
-  }
-  
-  // Check for updates
-  if (config.autoCheckUpdates) {
-    const update = await checkForUpdates();
-    if (update) {
-      const shouldUpdate = await promptUpdate(update);
-      if (shouldUpdate) {
-        const updated = await performUpdate(update);
-        if (updated) process.exit(0);
-      }
     }
   }
   

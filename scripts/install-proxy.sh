@@ -4,10 +4,10 @@
 # Supports: macOS, Linux, Windows (Git Bash)
 #
 # Installation:
-#   curl -fsSL https://api-mock.transtrack.id/install-proxy.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Zersya/api-testing-tools/main/scripts/install-proxy.sh | bash
 #   
 # Or download and run:
-#   wget https://api-mock.transtrack.id/install-proxy.sh
+#   wget https://raw.githubusercontent.com/Zersya/api-testing-tools/main/scripts/install-proxy.sh
 #   bash install-proxy.sh
 
 set -e
@@ -25,7 +25,7 @@ BOLD='\033[1m'
 PROXY_VERSION="1.0.0"
 INSTALL_DIR="$HOME/.mock-api-proxy"
 BIN_DIR="$HOME/.local/bin"
-PROXY_URL="https://api-mock.transtrack.id/proxy-scripts/mock-api-proxy.js"
+PROXY_URL="https://raw.githubusercontent.com/Zersya/api-testing-tools/main/scripts/mock-api-proxy.js"
 REPO_URL="https://github.com/Zersya/api-testing-tools"
 
 # Functions
@@ -291,7 +291,6 @@ create_config() {
   "defaultPort": 8765,
   "defaultTargetPort": 8080,
   "defaultTargetHost": "localhost",
-  "autoCheckUpdates": true,
   "installedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 }
 EOF
@@ -316,15 +315,14 @@ print_finish() {
     echo -e "${BOLD}Quick Start:${NC}"
     echo "  1. Start your local API server (e.g., on localhost:8080)"
     echo "  2. Run: mock-api-proxy"
-    echo "  3. Use the displayed URL in https://api-mock.transtrack.id"
+    echo "  3. Use the displayed URL in the Mock API Service"
     echo ""
     echo -e "${BOLD}Management:${NC}"
     echo "  mock-api-proxy --list             Show running instances"
-    echo "  mock-api-proxy --update           Check for updates"
     echo "  mock-api-proxy-uninstall          Remove from system"
     echo ""
-    echo -e "${BOLD}Documentation:${NC}"
-    echo "  https://api-mock.transtrack.id/docs/proxy"
+    echo -e "${BOLD}Repository:${NC}"
+    echo "  $REPO_URL"
     echo ""
 }
 

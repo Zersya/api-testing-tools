@@ -10,8 +10,8 @@
     Supports PowerShell 3.0 and later.
     
 .EXAMPLE
-    # Run directly from web:
-    iwr -useb https://api-mock.transtrack.id/install-proxy.ps1 | iex
+    # Run directly from GitHub:
+    iwr -useb https://raw.githubusercontent.com/Zersya/api-testing-tools/main/scripts/install-proxy.ps1 | iex
     
     # Or download and run:
     .\install-proxy.ps1
@@ -25,7 +25,7 @@ $ErrorActionPreference = "Stop"
 # Configuration
 $script:PROXY_VERSION = "1.0.0"
 $script:INSTALL_DIR = "$env:USERPROFILE\.mock-api-proxy"
-$script:PROXY_URL = "https://api-mock.transtrack.id/proxy-scripts/mock-api-proxy.js"
+$script:PROXY_URL = "https://raw.githubusercontent.com/Zersya/api-testing-tools/main/scripts/mock-api-proxy.js"
 
 # Colors for PowerShell
 function Write-Success($Message) {
@@ -255,7 +255,6 @@ function New-ConfigFile {
         defaultPort = 8765
         defaultTargetPort = 8080
         defaultTargetHost = "localhost"
-        autoCheckUpdates = $true
         installedAt = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
     } | ConvertTo-Json
     
@@ -278,15 +277,14 @@ function Write-Instructions {
     Write-Host "Quick Start:" -ForegroundColor White -BackgroundColor DarkBlue
     Write-Host "  1. Start your local API server (e.g., on localhost:8080)"
     Write-Host "  2. Run: mock-api-proxy"
-    Write-Host "  3. Use the displayed URL in https://api-mock.transtrack.id"
+    Write-Host "  3. Use the displayed URL in the Mock API Service"
     Write-Host ""
     Write-Host "Management:" -ForegroundColor White -BackgroundColor DarkBlue
     Write-Host "  mock-api-proxy --list             Show running instances"
-    Write-Host "  mock-api-proxy --update           Check for updates"
     Write-Host "  mock-api-proxy-uninstall          Remove from system"
     Write-Host ""
-    Write-Host "Documentation:" -ForegroundColor White -BackgroundColor DarkBlue
-    Write-Host "  https://api-mock.transtrack.id/docs/proxy"
+    Write-Host "Repository:" -ForegroundColor White -BackgroundColor DarkBlue
+    Write-Host "  https://github.com/Zersya/api-testing-tools"
     Write-Host ""
 }
 
