@@ -48,6 +48,13 @@ export default defineEventHandler((event) => {
     setResponseHeader(event, 'Access-Control-Allow-Credentials', 'true');
     setResponseHeader(event, 'Access-Control-Max-Age', '86400'); // 24 hours
 
+    // IMPORTANT: Always grant Private Network Access permission for proxy endpoint
+    // This allows the browser to send requests to localhost/127.0.0.1/192.168.x.x
+    if (path.includes('/api/proxy')) {
+        setResponseHeader(event, 'Access-Control-Allow-Private-Network', 'true');
+        console.log('[CORS Middleware] Granting PNA permission for proxy endpoint:', origin);
+    }
+
     // Handle Private Network Access (PNA) preflight
     // Chrome sends a preflight request with Access-Control-Request-Private-Network: true
     // when a public website tries to access a local network resource

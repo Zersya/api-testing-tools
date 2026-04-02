@@ -98,12 +98,10 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
   setResponseHeader(event, 'Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD');
   setResponseHeader(event, 'Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
   
-  // Handle Private Network Access (PNA) - crucial for allowing requests to localhost/192.168.x.x
-  const isPrivateNetworkRequest = getHeader(event, 'access-control-request-private-network') === 'true';
-  if (isPrivateNetworkRequest) {
-    setResponseHeader(event, 'Access-Control-Allow-Private-Network', 'true');
-    console.log('[Proxy] Granting Private Network Access permission');
-  }
+  // ALWAYS grant Private Network Access permission for proxy endpoint
+  // This is crucial for allowing requests to localhost/192.168.x.x from public domains
+  setResponseHeader(event, 'Access-Control-Allow-Private-Network', 'true');
+  console.log('[Proxy] PNA header set for proxy request to local network');
 
   // Handle preflight OPTIONS request
   if (event.method === 'OPTIONS') {
