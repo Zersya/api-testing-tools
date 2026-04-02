@@ -319,7 +319,7 @@ onMounted(() => {
     <template v-if="showAutocomplete && filteredVariables.length > 0">
       <Teleport to="body">
         <div 
-          class="absolute z-50 w-64 max-h-48 overflow-auto bg-bg-secondary border border-border-default rounded-lg shadow-xl variable-autocomplete"
+          class="absolute z-[110] w-64 max-h-48 overflow-auto bg-bg-secondary border border-border-default rounded-lg shadow-xl variable-autocomplete"
           :style="{
             top: `${editorRef?.getBoundingClientRect?.()?.bottom + 4 || 0}px`,
             left: `${editorRef?.getBoundingClientRect?.()?.left || 0}px`

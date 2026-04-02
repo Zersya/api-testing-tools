@@ -1,6 +1,7 @@
 import { db } from '../../../db';
 import { folders } from '../../../db/schema';
 import { eq, and, isNull, ne } from 'drizzle-orm';
+import { cache, CacheKeys } from '../../../utils/cache';
 
 interface UpdateFolderBody {
   name?: string;
@@ -196,6 +197,12 @@ export default defineEventHandler(async (event) => {
       .set(updateData)
       .where(eq(folders.id, id))
       .returning())[0];
+
+    // Invalidate cache for the user
+    const user = event.context.user;
+    if (user?.id) {
+      cache.delete(CacheKeys.workspaceTree(user.id));
+    }
 
     return updatedFolder;
   } catch (error: any) {

@@ -58,7 +58,7 @@ export function useKeyboardShortcuts(callbacks: ShortcutCallbacks) {
       category: 'Navigation'
     },
     {
-      key: '/',
+      key: '?',
       ctrl: true,
       meta: true,
       description: 'Show keyboard shortcuts',
@@ -77,7 +77,7 @@ export function useKeyboardShortcuts(callbacks: ShortcutCallbacks) {
         return;
       }
 
-      if (modifierPressed && event.key === '/') {
+      if (modifierPressed && event.key === '?') {
         if (event.target.closest('.modal-overlay')) return;
         event.preventDefault();
         isHelpVisible.value = !isHelpVisible.value;
@@ -124,7 +124,7 @@ export function useKeyboardShortcuts(callbacks: ShortcutCallbacks) {
           event.preventDefault();
           callbacks.onFocusUrl?.();
           break;
-        case '/':
+        case '?':
           event.preventDefault();
           isHelpVisible.value = !isHelpVisible.value;
           break;
