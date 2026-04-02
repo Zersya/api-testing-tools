@@ -323,6 +323,7 @@ const lastSavedState = ref<{
   headers: Record<string, string> | null;
   body: any;
   auth: any;
+  inheritAuth: number;
   mockConfig: import('../../server/db/schema/savedRequest').MockConfig | null;
 } | null>(null);
 
@@ -345,6 +346,7 @@ const captureCurrentStateAsSaved = () => {
           password: basicAuth.value.password
         } : undefined
     },
+    inheritAuth: inheritFromParent.value ? 1 : 0,
     mockConfig: mockConfig.value,
     preScript: preScript.value,
     postScript: postScript.value,
@@ -576,6 +578,9 @@ const loadRequestData = (request: HttpRequest) => {
       oauth2.value.PKCE = authConfig.credentials.PKCE || false;
     }
   }
+
+  // Load inheritAuth setting
+  inheritFromParent.value = (request as any).inheritAuth === 1;
 
   // Load mock configuration
   if (request.mockConfig) {
@@ -1577,6 +1582,7 @@ const hasUnsavedChanges = computed(() => {
         password: basicAuth.value.password
       } : undefined
   } || null;
+  const currentInheritAuth = inheritFromParent.value ? 1 : 0;
   const currentPathVariables = buildPathVariablesRecord();
 
   // Use lastSavedState if available (after a save), otherwise use props.request
@@ -1586,6 +1592,7 @@ const hasUnsavedChanges = computed(() => {
     headers: props.request.headers,
     body: props.request.body,
     auth: props.request.auth,
+    inheritAuth: (props.request as any).inheritAuth || 0,
     mockConfig: props.request.mockConfig,
     preScript: props.request.preScript,
     postScript: props.request.postScript,
@@ -1599,12 +1606,13 @@ const hasUnsavedChanges = computed(() => {
   const normalizedOriginalBody = compareState.body === undefined ? null : compareState.body;
   const bodyChanged = JSON.stringify(normalizedCurrentBody) !== JSON.stringify(normalizedOriginalBody);
   const authChanged = JSON.stringify(currentAuth) !== JSON.stringify(compareState.auth || {});
+  const inheritAuthChanged = currentInheritAuth !== (compareState.inheritAuth || 0);
   const mockConfigChanged = JSON.stringify(mockConfig.value) !== JSON.stringify(compareState.mockConfig || null);
   const preScriptChanged = (preScript.value || '') !== (compareState.preScript || '');
   const postScriptChanged = (postScript.value || '') !== (compareState.postScript || '');
   const pathVarsChanged = JSON.stringify(currentPathVariables) !== JSON.stringify(compareState.pathVariables || {});
 
-  return urlChanged || methodChanged || headersChanged || bodyChanged || authChanged || mockConfigChanged || preScriptChanged || postScriptChanged || pathVarsChanged;
+  return urlChanged || methodChanged || headersChanged || bodyChanged || authChanged || inheritAuthChanged || mockConfigChanged || preScriptChanged || postScriptChanged || pathVarsChanged;
 });
 
 const getContentType = () => {
@@ -2198,6 +2206,7 @@ const openSaveDialog = () => {
           PKCE: oauth2.value.PKCE
         } : undefined
     } || null,
+    inheritAuth: inheritFromParent.value ? 1 : 0,
     mockConfig: mockConfig.value,
     preScript: preScript.value,
     postScript: postScript.value,
@@ -2245,6 +2254,7 @@ const openSaveAsDialog = () => {
           PKCE: oauth2.value.PKCE
         } : undefined
     } || null,
+    inheritAuth: inheritFromParent.value ? 1 : 0,
     mockConfig: mockConfig.value || {
       isEnabled: true,
       statusCode: 200,
