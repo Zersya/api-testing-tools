@@ -349,6 +349,7 @@ const captureCurrentStateAsSaved = () => {
     body: buildBody(),
     auth: {
       type: authType.value,
+      inherit: inheritFromParent.value,
       credentials: authType.value === 'api-key' ? {
         key: apiKey.value.key,
         value: apiKey.value.value,
@@ -560,12 +561,14 @@ const loadRequestData = (request: HttpRequest) => {
   const authConfig = request.auth;
   if (!authConfig) {
     authType.value = 'none';
+    inheritFromParent.value = false;
     apiKey.value = { key: '', value: '', addTo: 'header' };
     bearerToken.value = '';
     basicAuth.value = { username: '', password: '' };
   } else {
     const type = authConfig.type as AuthType;
     authType.value = type;
+    inheritFromParent.value = authConfig.inherit || false;
 
     if (type === 'api-key' && authConfig.credentials) {
       apiKey.value.key = authConfig.credentials.key || '';
@@ -908,6 +911,7 @@ const buildDraftSnapshot = (): RequestDraftSnapshot => {
 
   const currentAuth = {
     type: authType.value,
+    inherit: inheritFromParent.value,
     credentials: authType.value === 'api-key' ? {
       key: apiKey.value.key,
       value: apiKey.value.value,
@@ -1137,11 +1141,13 @@ const buildAuthQueryParams = (): Record<string, string> => {
 const parseAuthFromRequest = (authConfig: any) => {
   if (!authConfig) {
     authType.value = 'none';
+    inheritFromParent.value = false;
     return;
   }
 
   const type = authConfig.type as AuthType;
   authType.value = type;
+  inheritFromParent.value = authConfig.inherit || false;
 
   if (type === 'api-key' && authConfig.credentials) {
     apiKey.value.key = authConfig.credentials.key || '';
@@ -1620,6 +1626,7 @@ const hasUnsavedChanges = computed(() => {
   const currentBody = buildBody();
   const currentAuth = {
     type: authType.value,
+    inherit: inheritFromParent.value,
     credentials: authType.value === 'api-key' ? {
       key: apiKey.value.key,
       value: apiKey.value.value,
@@ -2231,6 +2238,7 @@ const openSaveDialog = () => {
     body: buildBody(),
     auth: {
       type: authType.value,
+      inherit: inheritFromParent.value,
       credentials: authType.value === 'api-key' ? {
         key: apiKey.value.key,
         value: apiKey.value.value,
@@ -2279,6 +2287,7 @@ const openSaveAsDialog = () => {
     body: buildBody(),
     auth: {
       type: authType.value,
+      inherit: inheritFromParent.value,
       credentials: authType.value === 'api-key' ? {
         key: apiKey.value.key,
         value: apiKey.value.value,
