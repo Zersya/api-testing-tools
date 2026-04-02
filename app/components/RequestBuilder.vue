@@ -2295,9 +2295,15 @@ const sendRequest = async () => {
     requestHeaders = { ...requestHeaders, ...authHeaders };
 
     let requestUrl = form.value.url;
+    
+    // DEBUG: Log the original URL
+    console.log('[DEBUG] Original URL from form:', requestUrl);
 
     // Apply path variable substitution
     requestUrl = resolvePathVariables(requestUrl);
+    
+    // DEBUG: Log URL after path variable substitution
+    console.log('[DEBUG] URL after path variable substitution:', requestUrl);
 
     const authQueryParams = buildAuthQueryParams();
     if (Object.keys(authQueryParams).length > 0) {
@@ -2310,6 +2316,9 @@ const sendRequest = async () => {
       } catch {
       }
     }
+    
+    // DEBUG: Log final URL before sending
+    console.log('[DEBUG] Final URL being sent to proxy:', requestUrl);
 
     const result = await $fetch<ProxyResponse | ProxyErrorResponse>('/api/proxy/request', {
       method: 'POST',

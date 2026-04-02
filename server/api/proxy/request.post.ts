@@ -116,6 +116,10 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
 
   try {
     const body = await readBody<ProxyRequestBody>(event);
+    
+    // DEBUG: Log received URL
+    console.log('[DEBUG] Received URL in proxy:', body.url);
+    console.log('[DEBUG] Full request body:', JSON.stringify(body, null, 2));
 
     if (!body.url) {
       throw createError({
@@ -586,6 +590,14 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
     let targetUrl: URL;
     try {
       targetUrl = new URL(resolvedUrl);
+      // DEBUG: Log parsed URL
+      console.log('[DEBUG] Parsed target URL:', {
+        href: targetUrl.href,
+        protocol: targetUrl.protocol,
+        hostname: targetUrl.hostname,
+        port: targetUrl.port,
+        pathname: targetUrl.pathname
+      });
     } catch {
       throw createError({
         statusCode: 400,
@@ -612,6 +624,9 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
       }
     }
 
+    // DEBUG: Log final URL before fetch
+    console.log('[DEBUG] Fetching URL:', targetUrl.toString());
+    
     const response = await fetch(targetUrl.toString(), fetchOptions);
     const endTime = Date.now();
 
