@@ -75,7 +75,15 @@ interface HttpRequest {
 }
 
 interface PersistedTabSession {
-  tabs: OpenTab[];
+  tabs: Array<{
+    key: string;
+    hasUnsavedChanges: boolean;
+    request: HttpRequest;
+    response?: any;
+    activeBuilderTab?: string;
+    scriptLogs?: any[];
+    draftSnapshot?: RequestDraftSnapshot;
+  }>;
   activeTabKey: string | null;
 }
 
@@ -322,7 +330,12 @@ const normalizeOpenTab = (tab: Partial<OpenTab> | null | undefined): OpenTab | n
   return {
     key: tab.key,
     hasUnsavedChanges: Boolean(tab.hasUnsavedChanges),
-    request: normalizeRequestForTab((tab as OpenTab).request || {})
+    request: normalizeRequestForTab((tab as OpenTab).request || {}),
+    // Preserve persisted UI state fields
+    response: (tab as OpenTab).response,
+    activeBuilderTab: (tab as OpenTab).activeBuilderTab,
+    scriptLogs: (tab as OpenTab).scriptLogs,
+    draftSnapshot: (tab as OpenTab).draftSnapshot
   };
 };
 
@@ -334,7 +347,12 @@ const serializeOpenTabs = (): PersistedTabSession => ({
       ...tab.request,
       createdAt: tab.request.createdAt instanceof Date ? tab.request.createdAt.toISOString() : tab.request.createdAt,
       updatedAt: tab.request.updatedAt instanceof Date ? tab.request.updatedAt.toISOString() : tab.request.updatedAt
-    }
+    },
+    // Persist UI state fields
+    response: tab.response,
+    activeBuilderTab: tab.activeBuilderTab,
+    scriptLogs: tab.scriptLogs,
+    draftSnapshot: tab.draftSnapshot
   })) as OpenTab[],
   activeTabKey: activeTabKey.value
 });
@@ -347,6 +365,17 @@ const hydrateOpenTabs = (session: PersistedTabSession | null | undefined) => {
   const normalizedTabs = session.tabs
     .map(tab => normalizeOpenTab(tab))
     .filter((tab): tab is OpenTab => Boolean(tab));
+
+  // Restore persisted UI state fields
+  normalizedTabs.forEach((tab, index) => {
+    const persistedTab = session.tabs[index];
+    if (persistedTab) {
+      tab.response = persistedTab.response;
+      tab.activeBuilderTab = persistedTab.activeBuilderTab;
+      tab.scriptLogs = persistedTab.scriptLogs;
+      tab.draftSnapshot = persistedTab.draftSnapshot;
+    }
+  });
 
   openTabs.value = normalizedTabs;
 
@@ -1686,6 +1715,23 @@ const updateTabUnsavedStatus = (
   if (activeTabKey.value === tab.key) {
     selectedRequest.value = nextRequest;
   }
+};
+
+// Handle state changes from RequestBuilder for persistence
+const handleBuilderStateChange = (state: {
+  response: any;
+  activeTab: string;
+  scriptLogs: any[];
+}) => {
+  const tab = openTabs.value.find(t => t.key === activeTabKey.value);
+  if (!tab) {
+    return;
+  }
+
+  // Update the tab's persisted state
+  tab.response = state.response;
+  tab.activeBuilderTab = state.activeTab as any;
+  tab.scriptLogs = state.scriptLogs;
 };
 
 const handleSaveRequest = async (request: any) => {
@@ -3089,14 +3135,17 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
             <div class="flex-1 overflow-auto">
               <RequestBuilder
                 ref="requestBuilderRef"
-                :key="activeTabKey"
                 :request="selectedRequest"
                 :workspace-id="currentWorkspaceId"
                 :environment-id="activeEnvironment?.id"
                 :project-id="currentProjectId"
+                :initial-response="getActiveOpenTab()?.response"
+                :initial-active-tab="getActiveOpenTab()?.activeBuilderTab"
+                :initial-script-logs="getActiveOpenTab()?.scriptLogs"
                 @save-request="handleSaveRequest"
                 @save-as-request="handleSaveAsRequest"
                 @unsaved-changes="updateTabUnsavedStatus"
+                @state-change="handleBuilderStateChange"
               />
             </div>
             
