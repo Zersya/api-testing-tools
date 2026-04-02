@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { ProxyResponse, ProxyErrorResponse, TabType, RequestDraftSnapshot } from './RequestBuilder.vue';
+
 interface HttpRequest {
   id: string;
   folderId: string | null;
@@ -41,7 +43,28 @@ export interface OpenTab {
   request: HttpRequest;
   hasUnsavedChanges: boolean;
   key: string;
+  // UI state persistence fields
+  response?: ProxyResponse | ProxyErrorResponse | null;
+  activeBuilderTab?: TabType;
+  scriptLogs?: Array<{ phase: 'pre' | 'post'; type: 'log' | 'error' | 'warn'; message: string; timestamp: number }>;
+  draftSnapshot?: RequestDraftSnapshot;
 }
+
+// Persisted version of OpenTab with serializable types for storage
+export type PersistedOpenTab = {
+  key: OpenTab['key'];
+  hasUnsavedChanges: OpenTab['hasUnsavedChanges'];
+  request: OpenTab['request'];
+  response?: any; // Serialized response data
+  activeBuilderTab?: string; // Serialized tab type as string
+  scriptLogs?: any[]; // Serialized script logs
+  draftSnapshot?: RequestDraftSnapshot;
+};
+
+// Types imported from RequestBuilder.vue to avoid duplication:
+// - ProxyResponse, ProxyErrorResponse
+// - TabType
+// - RequestDraftSnapshot
 
 interface Props {
   openTabs: OpenTab[];
