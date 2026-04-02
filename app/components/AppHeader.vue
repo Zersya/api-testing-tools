@@ -32,6 +32,7 @@ interface Props {
   workspaces?: Workspace[];
   selectedWorkspaceId?: string | null;
   currentUserEmail?: string | null;
+  isMockSidebarActive?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -42,7 +43,8 @@ const props = withDefaults(defineProps<Props>(), {
   currentProjectId: null,
   workspaces: () => [],
   selectedWorkspaceId: null,
-  currentUserEmail: null
+  currentUserEmail: null,
+  isMockSidebarActive: false
 });
 
 const emit = defineEmits<{
@@ -269,7 +271,7 @@ watch(() => authState.value?.user?.email, async (newEmail) => {
 
       <!-- Settings Button -->
       <button
-        v-if="showActions && !isEnvironmentsPage"
+        v-if="showActions && !isEnvironmentsPage && isMockSidebarActive"
         class="inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 bg-transparent text-text-secondary border-none rounded-md cursor-pointer text-[13px] font-medium transition-all duration-fast hover:bg-bg-hover hover:text-text-primary"
         @click="emit('openSettings')"
         title="Settings"

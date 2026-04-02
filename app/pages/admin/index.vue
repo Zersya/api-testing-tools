@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { watch } from 'vue';
+import { watch, type Ref } from 'vue';
 import { debounce } from 'perfect-debounce';
 import RequestBuilder from '~/components/RequestBuilder.vue';
 import CodeExamples from '~/components/CodeExamples.vue';
@@ -1079,6 +1079,14 @@ const projectWorkspaceId = ref<string | null>(null);
 const showWorkspaceModal = ref(false);
 const showRenameWorkspaceModal = ref(false);
 const workspaceToRename = ref<{ id: string; name: string } | null>(null);
+
+// Ref for AppSidebar to access its exposed properties
+const appSidebarRef = ref<{ activeView: Ref<'hierarchy' | 'mocks' | 'history' | 'definitions'> } | null>(null);
+
+// Computed property to check if mocks view is active in sidebar
+const isMockSidebarActive = computed(() => {
+  return appSidebarRef.value?.activeView?.value === 'mocks';
+});
 
 // Delete workspace modal state
 const showDeleteWorkspaceConfirm = ref(false);
@@ -2822,6 +2830,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
       :workspaces="workspaces || []"
       :selected-workspace-id="selectedWorkspaceId"
       :current-user-email="currentUserEmail"
+      :is-mock-sidebar-active="isMockSidebarActive"
       @open-settings="openSettings"
       @export-open-a-p-i="exportOpenAPI"
       @import-open-a-p-i="openImportModal"
@@ -2838,6 +2847,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
     <div class="flex flex-1 overflow-hidden">
       <!-- Sidebar -->
       <AppSidebar
+        ref="appSidebarRef"
         :collections="collections || []"
         :mocks="mocks || []"
         :selected-mock-id="selectedMock?.id"
