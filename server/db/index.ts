@@ -18,9 +18,22 @@ if (!databaseUrl) {
 
 console.log(`[Database] Using PostgreSQL database`);
 
-// Create PostgreSQL connection pool
+// Optimized connection pool configuration
 const pool = new Pool({
   connectionString: databaseUrl,
+  max: 20,                        // Maximum connections in pool
+  idleTimeoutMillis: 30000,       // Close idle connections after 30 seconds
+  connectionTimeoutMillis: 2000,  // Return error after 2 seconds if connection cannot be established
+  allowExitOnIdle: false,         // Keep pool active even when idle
+});
+
+// Monitor pool health
+pool.on('connect', () => {
+  console.log('[Database] New connection established');
+});
+
+pool.on('error', (err) => {
+  console.error('[Database] Unexpected error on idle client', err);
 });
 
 export const db = drizzle(pool, { schema });

@@ -3,6 +3,7 @@ import { projects, collections } from '../../../../db/schema';
 import { eq } from 'drizzle-orm';
 import { getAccessibleWorkspaceIds } from '../../../../utils/permissions';
 import { trackResourceAction } from '../../../../services/usageTracking';
+import { cache, CacheKeys } from '../../../../utils/cache';
 
 interface CreateCollectionBody {
   name: string;
@@ -140,6 +141,9 @@ export default defineEventHandler(async (event) => {
       resourceId: newCollection.id,
       resourceName: trimmedName,
     });
+
+    // Invalidate cache for the user
+    cache.delete(CacheKeys.workspaceTree(user.id));
 
     return newCollection;
   } catch (error: any) {
