@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp, check } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, timestamp, check, index } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { folders } from './folder';
 import { collections } from './collection';
@@ -64,6 +64,9 @@ export const savedRequests = pgTable('saved_requests', {
     .notNull()
     .defaultNow()
 }, (table) => ({
+  folderIdx: index('idx_requests_folder').on(table.folderId),
+  collectionIdx: index('idx_requests_collection').on(table.collectionId),
+  orderIdx: index('idx_requests_order').on(table.order),
   folderOrCollectionCheck: check('folder_or_collection_check', 
     sql`${table.folderId} IS NOT NULL OR ${table.collectionId} IS NOT NULL`
   ),
