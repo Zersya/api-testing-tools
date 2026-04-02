@@ -2761,8 +2761,8 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
             </button>
           </div>
 
-          <div v-else class="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-2 gap-6 pb-4">
-            <div v-for="environment in environmentSettingsEnvironments" :key="environment.id" class="bg-bg-secondary border border-border-default rounded-xl overflow-hidden">
+          <div v-else class="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-2 gap-6 pb-4 content-start">
+            <div v-for="environment in environmentSettingsEnvironments" :key="environment.id" class="bg-bg-secondary border border-border-default rounded-xl overflow-hidden flex flex-col max-h-[500px]">
               <div class="p-4 border-b border-border-default">
                 <div class="flex items-center justify-between">
                   <div class="flex items-center gap-3">
@@ -2811,8 +2811,8 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
                 </div>
               </div>
 
-              <div class="p-4">
-                <div class="flex items-center justify-between mb-3">
+              <div class="p-4 flex flex-col flex-1 min-h-0">
+                <div class="flex items-center justify-between mb-3 shrink-0">
                   <span class="text-xs font-medium text-text-secondary uppercase tracking-wide">{{ environment.variables.length }} Variable{{ environment.variables.length !== 1 ? 's' : '' }}</span>
                   <button class="flex items-center gap-1 text-xs font-medium text-accent-blue border-none bg-transparent cursor-pointer transition-all duration-fast hover:text-accent-blue/80" @click="addVariableFromSettings(environment)">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -2823,11 +2823,11 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
                   </button>
                 </div>
 
-                <div v-if="environment.variables.length === 0" class="py-8 text-center">
+                <div v-if="environment.variables.length === 0" class="py-8 text-center shrink-0">
                   <p class="text-xs text-text-muted">No variables defined for this environment</p>
                 </div>
 
-                <div v-else class="space-y-2">
+                <div v-else class="space-y-2 overflow-y-auto">
                   <div v-for="variable in environment.variables" :key="variable.id" class="flex items-center gap-2 group">
                     <input
                       v-model="variable.key"
