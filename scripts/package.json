@@ -1,23 +1,47 @@
 {
   "name": "mock-api-local-proxy",
   "version": "1.0.0",
-  "description": "Local proxy for testing local APIs with Mock API Service",
-  "main": "local-proxy.js",
+  "description": "Local development proxy for Mock API Service - Test your local APIs from the cloud",
+  "main": "mock-api-proxy.js",
   "bin": {
-    "mock-api-local-proxy": "./local-proxy.js"
+    "mock-api-proxy": "./mock-api-proxy.js"
   },
   "scripts": {
-    "start": "node local-proxy.js"
+    "start": "node mock-api-proxy.js",
+    "test": "echo 'Tests not implemented yet' && exit 0"
   },
   "keywords": [
     "mock-api",
     "proxy",
     "local-development",
-    "api-testing"
+    "api-testing",
+    "development-tools",
+    "cors",
+    "pna",
+    "private-network"
   ],
-  "author": "",
+  "author": "Mock API Service Team",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Zersya/api-testing-tools.git",
+    "directory": "scripts"
+  },
+  "bugs": {
+    "url": "https://github.com/Zersya/api-testing-tools/issues"
+  },
+  "homepage": "https://api-mock.transtrack.id/docs/proxy",
   "engines": {
     "node": ">=14.0.0"
-  }
+  },
+  "preferGlobal": true,
+  "files": [
+    "mock-api-proxy.js",
+    "README.md"
+  ],
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ]
 }
