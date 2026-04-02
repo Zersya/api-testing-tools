@@ -70,7 +70,7 @@ interface HttpRequest {
   updatedAt: Date;
 }
 
-interface ProxyResponse {
+export interface ProxyResponse {
   success: boolean;
   status: number;
   statusText: string;
@@ -83,7 +83,7 @@ interface ProxyResponse {
   };
 }
 
-interface ProxyErrorResponse {
+export interface ProxyErrorResponse {
   success: false;
   error: {
     message: string;
@@ -97,11 +97,11 @@ interface ProxyErrorResponse {
   };
 }
 
-type TabType = 'params' | 'headers' | 'body' | 'auth' | 'preScript' | 'postScript' | 'mock' | 'examples' | 'response';
+export type TabType = 'params' | 'headers' | 'body' | 'auth' | 'preScript' | 'postScript' | 'mock' | 'examples' | 'response';
 type BodyFormat = 'none' | 'json' | 'form-data' | 'urlencoded' | 'raw' | 'binary';
 type ResponseViewType = 'pretty' | 'preview' | 'raw' | 'headers' | 'cookies' | 'imagePreview' | 'console';
 
-interface RequestDraftSnapshot {
+export interface RequestDraftSnapshot {
   method: string;
   url: string;
   headers: Record<string, string> | null;
