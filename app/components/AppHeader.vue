@@ -214,9 +214,9 @@ watch(() => authState.value?.user?.email, async (newEmail) => {
 
     <!-- Right Section -->
     <div class="flex items-center gap-2">
-      <!-- Workspace Switcher -->
+      <!-- Workspace Switcher - Hidden when Mocks sidebar is active -->
       <WorkspaceSwitcher
-        v-if="!isEnvironmentsPage"
+        v-if="!isEnvironmentsPage && !isMockSidebarActive"
         :workspaces="workspaces"
         :selected-workspace-id="selectedWorkspaceId"
         :current-user-email="currentUserEmail"
@@ -227,11 +227,11 @@ watch(() => authState.value?.user?.email, async (newEmail) => {
         @delete="emit('deleteWorkspace', $event)"
       />
 
-      <div class="w-px h-6 bg-border-default mx-1"></div>
+      <div v-if="!isEnvironmentsPage && !isMockSidebarActive" class="w-px h-6 bg-border-default mx-1"></div>
 
-      <!-- Environment Switcher -->
+      <!-- Environment Switcher - Hidden when Mocks sidebar is active -->
       <EnvironmentSwitcher
-        v-if="!isEnvironmentsPage"
+        v-if="!isEnvironmentsPage && !isMockSidebarActive"
         :environments="environments"
         :active-environment-id="activeEnvironmentId"
         @update:active-environment-id="emit('activateEnvironment', $event)"
@@ -239,9 +239,9 @@ watch(() => authState.value?.user?.email, async (newEmail) => {
         @create="emit('createEnvironment')"
       />
 
-      <!-- Import Button -->
+      <!-- Import Button - Hidden when Mocks sidebar is active -->
       <button
-        v-if="showActions && !isEnvironmentsPage"
+        v-if="showActions && !isEnvironmentsPage && !isMockSidebarActive"
         class="inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 bg-bg-tertiary text-text-secondary border border-border-default rounded-md cursor-pointer text-[13px] font-medium transition-all duration-fast hover:bg-bg-hover hover:text-text-primary hover:border-accent-orange"
         @click="emit('importOpenAPI')"
         title="Import OpenAPI"
@@ -254,9 +254,9 @@ watch(() => authState.value?.user?.email, async (newEmail) => {
         <span>Import</span>
       </button>
 
-      <!-- Export Button -->
+      <!-- Export Button - Hidden when Mocks sidebar is active -->
       <button
-        v-if="showActions && !isEnvironmentsPage"
+        v-if="showActions && !isEnvironmentsPage && !isMockSidebarActive"
         class="inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 bg-bg-tertiary text-text-secondary border border-border-default rounded-md cursor-pointer text-[13px] font-medium transition-all duration-fast hover:bg-bg-hover hover:text-text-primary hover:border-accent-orange"
         @click="emit('exportOpenAPI')"
         title="Export OpenAPI"
@@ -269,7 +269,7 @@ watch(() => authState.value?.user?.email, async (newEmail) => {
         <span>Export</span>
       </button>
 
-      <!-- Settings Button -->
+      <!-- Settings Button - Only shown when Mocks sidebar is active -->
       <button
         v-if="showActions && !isEnvironmentsPage && isMockSidebarActive"
         class="inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 bg-transparent text-text-secondary border-none rounded-md cursor-pointer text-[13px] font-medium transition-all duration-fast hover:bg-bg-hover hover:text-text-primary"
