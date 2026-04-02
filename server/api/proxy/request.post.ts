@@ -90,6 +90,27 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
   const scriptLogs: ScriptLogEntry[] = [];
   const scriptErrors: string[] = [];
 
+  // Set CORS headers for Private Network Access support
+  // This allows the frontend (public domain) to proxy requests to local network addresses
+  const origin = getHeader(event, 'origin') || getHeader(event, 'Origin') || '*';
+  setResponseHeader(event, 'Access-Control-Allow-Origin', origin);
+  setResponseHeader(event, 'Access-Control-Allow-Credentials', 'true');
+  setResponseHeader(event, 'Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD');
+  setResponseHeader(event, 'Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+  
+  // Handle Private Network Access (PNA) - crucial for allowing requests to localhost/192.168.x.x
+  const isPrivateNetworkRequest = getHeader(event, 'access-control-request-private-network') === 'true';
+  if (isPrivateNetworkRequest) {
+    setResponseHeader(event, 'Access-Control-Allow-Private-Network', 'true');
+    console.log('[Proxy] Granting Private Network Access permission');
+  }
+
+  // Handle preflight OPTIONS request
+  if (event.method === 'OPTIONS') {
+    setResponseStatus(event, 200);
+    return '' as any;
+  }
+
   // Variables to hold script-modified request data
   let scriptModifiedUrl: string | undefined;
   let scriptModifiedHeaders: Record<string, string> | undefined;
