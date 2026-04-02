@@ -1,7 +1,16 @@
 import { db } from '../../db';
-import { workspaces, projects, collections, folders, savedRequests } from '../../db/schema';
+import { workspaces, projects, collections, folders, savedRequests, requestExamples } from '../../db/schema';
 import { eq, desc, asc, inArray } from 'drizzle-orm';
 import { getAccessibleWorkspaceIds, getWorkspacePermissionsBatch } from '../../utils/permissions';
+
+interface RequestExampleItem {
+  id: string;
+  name: string;
+  statusCode: number;
+  headers: Record<string, string> | null;
+  body: Record<string, unknown> | string | null;
+  isDefault: boolean;
+}
 
 interface RequestItem {
   id: string;
@@ -29,6 +38,7 @@ interface RequestItem {
   order: number;
   createdAt: Date;
   updatedAt: Date;
+  examples: RequestExampleItem[];
 }
 
 interface FolderWithRequestsAndChildren {
@@ -158,16 +168,39 @@ export default defineEventHandler(async (event) => {
       .from(savedRequests)
       .orderBy(asc(savedRequests.order));
 
-    // Parse JSON fields from text columns
+    // Fetch all examples
+    const allExamplesRaw = await db
+      .select()
+      .from(requestExamples);
+
+    // Parse JSON fields from text columns for examples (keep requestId for filtering)
+    const allExamples = allExamplesRaw.map(ex => ({
+      ...ex,
+      headers: parseJsonField<Record<string, string>>(ex.headers),
+      body: parseJsonField<Record<string, unknown> | string>(ex.body)
+    }));
+
+    // Parse JSON fields from text columns and associate examples with requests
     const allRequests: RequestItem[] = allRequestsRaw.map(req => {
       const parsedHeaders = parseJsonField<Record<string, string>>(req.headers);
+      const requestExamplesList = allExamples
+        .filter(ex => ex.requestId === req.id)
+        .map(ex => ({
+          id: ex.id,
+          name: ex.name,
+          statusCode: ex.statusCode,
+          headers: ex.headers,
+          body: ex.body,
+          isDefault: ex.isDefault
+        }));
       return {
         ...req,
         headers: parsedHeaders,
         body: parseJsonField<Record<string, unknown> | string>(req.body),
         auth: parseJsonField<RequestItem['auth']>(req.auth),
         mockConfig: parseJsonField<RequestItem['mockConfig']>(req.mockConfig),
-        pathVariables: parseJsonField<RequestItem['pathVariables']>(req.pathVariables)
+        pathVariables: parseJsonField<RequestItem['pathVariables']>(req.pathVariables),
+        examples: requestExamplesList
       };
     });
 
