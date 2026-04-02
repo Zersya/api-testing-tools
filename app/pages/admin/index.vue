@@ -332,7 +332,8 @@ const normalizeOpenTab = (tab: Partial<OpenTab> | null | undefined): OpenTab | n
     response: (tab as OpenTab).response,
     activeBuilderTab: (tab as OpenTab).activeBuilderTab,
     scriptLogs: (tab as OpenTab).scriptLogs,
-    draftSnapshot: (tab as OpenTab).draftSnapshot
+    draftSnapshot: (tab as OpenTab).draftSnapshot,
+    expandedNodes: (tab as OpenTab).expandedNodes
   };
 };
 
@@ -349,7 +350,8 @@ const serializeOpenTabs = (): PersistedTabSession => ({
     response: tab.response,
     activeBuilderTab: tab.activeBuilderTab,
     scriptLogs: tab.scriptLogs,
-    draftSnapshot: tab.draftSnapshot
+    draftSnapshot: tab.draftSnapshot,
+    expandedNodes: tab.expandedNodes
   })) as OpenTab[],
   activeTabKey: activeTabKey.value
 });
@@ -380,6 +382,8 @@ const hydrateOpenTabs = (session: PersistedTabSession | null | undefined) => {
       tab.activeBuilderTab = persistedTab.activeBuilderTab;
       tab.scriptLogs = persistedTab.scriptLogs;
       tab.draftSnapshot = persistedTab.draftSnapshot;
+      tab.expandedNodes = persistedTab.expandedNodes;
+      console.log('[DEBUG] hydrateOpenTabs - restored expandedNodes for tab', tab.key, ':', tab.expandedNodes?.length || 0, 'paths');
     }
   });
 
@@ -1813,9 +1817,11 @@ const handleBuilderStateChange = (state: {
   response: any;
   activeTab: string;
   scriptLogs: any[];
+  expandedNodes: string[];
 }) => {
   const tab = openTabs.value.find(t => t.key === activeTabKey.value);
   if (!tab) {
+    console.log('[DEBUG] handleBuilderStateChange: No active tab found');
     return;
   }
 
@@ -1823,6 +1829,9 @@ const handleBuilderStateChange = (state: {
   tab.response = state.response;
   tab.activeBuilderTab = state.activeTab as any;
   tab.scriptLogs = state.scriptLogs;
+  tab.expandedNodes = state.expandedNodes;
+  
+  console.log('[DEBUG] handleBuilderStateChange - expandedNodes saved:', state.expandedNodes?.length || 0, 'paths');
 };
 
 const handleSaveRequest = async (request: any) => {
@@ -3355,6 +3364,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
                 :initial-response="getActiveOpenTab()?.response"
                 :initial-active-tab="getActiveOpenTab()?.activeBuilderTab"
                 :initial-script-logs="getActiveOpenTab()?.scriptLogs"
+                :initial-expanded-nodes="getActiveOpenTab()?.expandedNodes"
                 :is-shared-workspace="isSharedWorkspace"
                 @save-request="handleSaveRequest"
                 @save-as-request="handleSaveAsRequest"

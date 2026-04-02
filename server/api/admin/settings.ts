@@ -5,6 +5,11 @@ interface PersistedRequestTab {
   key: string;
   request: Record<string, unknown>;
   hasUnsavedChanges: boolean;
+  response?: unknown;
+  activeBuilderTab?: string;
+  scriptLogs?: unknown[];
+  draftSnapshot?: Record<string, unknown>;
+  expandedNodes?: string[];
 }
 
 interface PersistedRequestTabsSession {

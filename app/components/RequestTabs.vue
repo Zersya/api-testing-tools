@@ -48,6 +48,7 @@ export interface OpenTab {
   activeBuilderTab?: TabType;
   scriptLogs?: Array<{ phase: 'pre' | 'post'; type: 'log' | 'error' | 'warn'; message: string; timestamp: number }>;
   draftSnapshot?: RequestDraftSnapshot;
+  expandedNodes?: string[];
 }
 
 // Persisted version of OpenTab with serializable types for storage
@@ -59,6 +60,7 @@ export type PersistedOpenTab = {
   activeBuilderTab?: string; // Serialized tab type as string
   scriptLogs?: any[]; // Serialized script logs
   draftSnapshot?: RequestDraftSnapshot;
+  expandedNodes?: string[]; // Serialized expanded node paths
 };
 
 // Types imported from RequestBuilder.vue to avoid duplication:
