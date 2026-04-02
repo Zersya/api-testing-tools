@@ -1,11 +1,35 @@
 import { db, schema } from '../../../../db';
-import { desc, sql } from 'drizzle-orm';
+import { desc, sql, inArray, eq } from 'drizzle-orm';
 import { isSuperAdmin } from '../../../../utils/permissions';
+import type { FeedbackStatus } from '../../../../db/schema/feedback';
 
 interface SubmissionFilters {
   startDate?: string;
   endDate?: string;
   workspaceId?: string;
+  status?: string; // comma-separated statuses
+}
+
+interface StatusHistoryRecord {
+  id: string;
+  fromStatus: FeedbackStatus;
+  toStatus: FeedbackStatus;
+  changedBy: string;
+  changedAt: string;
+}
+
+interface SubmissionWithHistory {
+  id: string;
+  userId: string | null;
+  userEmail: string | null;
+  workspaceId: string | null;
+  responses: Record<string, unknown>;
+  rating: number | null;
+  comment: string | null;
+  status: FeedbackStatus;
+  createdAt: string;
+  userAgent: string | null;
+  recentHistory: StatusHistoryRecord[];
 }
 
 interface Analytics {
@@ -14,6 +38,7 @@ interface Analytics {
   ratingDistribution: Record<number, number>;
   submissionsByDay: Array<{ date: string; count: number }>;
   submissionsByWorkspace: Array<{ workspaceId: string | null; count: number }>;
+  submissionsByStatus: Array<{ status: FeedbackStatus; count: number }>;
 }
 
 export default defineEventHandler(async (event) => {
@@ -31,7 +56,8 @@ export default defineEventHandler(async (event) => {
     const filters: SubmissionFilters = {
       startDate: query.startDate as string,
       endDate: query.endDate as string,
-      workspaceId: query.workspaceId as string
+      workspaceId: query.workspaceId as string,
+      status: query.status as string
     };
     
     // Build base query
@@ -61,7 +87,60 @@ export default defineEventHandler(async (event) => {
       );
     }
     
+    // Apply status filter (multi-select support)
+    if (filters.status) {
+      const statuses = filters.status.split(',').filter(s => s.trim()) as FeedbackStatus[];
+      if (statuses.length > 0) {
+        submissionsQuery = submissionsQuery.where(
+          inArray(schema.feedbackSubmissions.status, statuses)
+        );
+      }
+    }
+    
     const submissions = await submissionsQuery;
+    
+    // Fetch recent status history for all submissions (last 3 changes per submission)
+    const submissionIds = submissions.map(s => s.id);
+    let historyMap = new Map<string, StatusHistoryRecord[]>();
+    
+    if (submissionIds.length > 0) {
+      const historyRecords = await db
+        .select({
+          id: schema.feedbackStatusHistory.id,
+          submissionId: schema.feedbackStatusHistory.submissionId,
+          fromStatus: schema.feedbackStatusHistory.fromStatus,
+          toStatus: schema.feedbackStatusHistory.toStatus,
+          changedBy: schema.feedbackStatusHistory.changedBy,
+          changedAt: schema.feedbackStatusHistory.changedAt
+        })
+        .from(schema.feedbackStatusHistory)
+        .where(inArray(schema.feedbackStatusHistory.submissionId, submissionIds))
+        .orderBy(desc(schema.feedbackStatusHistory.changedAt));
+      
+      // Group by submissionId, keeping only recent 3 per submission
+      for (const record of historyRecords) {
+        if (!historyMap.has(record.submissionId)) {
+          historyMap.set(record.submissionId, []);
+        }
+        const list = historyMap.get(record.submissionId)!;
+        if (list.length < 3) {
+          list.push({
+            id: record.id,
+            fromStatus: record.fromStatus as FeedbackStatus,
+            toStatus: record.toStatus as FeedbackStatus,
+            changedBy: record.changedBy,
+            changedAt: record.changedAt.toISOString()
+          });
+        }
+      }
+    }
+    
+    // Combine submissions with their recent history
+    const submissionsWithHistory: SubmissionWithHistory[] = submissions.map(sub => ({
+      ...sub,
+      createdAt: sub.createdAt.toISOString(),
+      recentHistory: historyMap.get(sub.id) || []
+    }));
     
     // Calculate analytics
     const analytics: Analytics = {
@@ -69,7 +148,8 @@ export default defineEventHandler(async (event) => {
       averageRating: null,
       ratingDistribution: {},
       submissionsByDay: [],
-      submissionsByWorkspace: []
+      submissionsByWorkspace: [],
+      submissionsByStatus: []
     };
     
     // Rating analytics
@@ -106,10 +186,21 @@ export default defineEventHandler(async (event) => {
       .map(([workspaceId, count]) => ({ workspaceId, count }))
       .sort((a, b) => b.count - a.count);
     
+    // Submissions by status
+    const statusMap = new Map<FeedbackStatus, number>();
+    submissions.forEach(sub => {
+      const status = sub.status as FeedbackStatus;
+      statusMap.set(status, (statusMap.get(status) || 0) + 1);
+    });
+    analytics.submissionsByStatus = Array.from(statusMap.entries())
+      .map(([status, count]) => ({ status, count }))
+      .sort((a, b) => b.count - a.count);
+    
     return {
-      submissions,
+      submissions: submissionsWithHistory,
       analytics,
-      filters
+      filters,
+      availableStatuses: ['open', 'pending', 'process', 'resolved', 'closed']
     };
   } catch (error: any) {
     console.error('[Feedback Submissions GET] Error:', error);
