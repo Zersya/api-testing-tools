@@ -19,6 +19,75 @@
             class="px-2 py-1 text-[12px] bg-bg-tertiary border border-border-default rounded focus:ring-1 focus:ring-accent-orange focus:border-accent-orange text-text-primary"
           />
         </div>
+        
+        <!-- Status Filter (Multi-Select) -->
+        <div class="flex items-center gap-2">
+          <label class="text-[11px] font-medium text-text-secondary uppercase">Status:</label>
+          <div class="relative status-dropdown-container">
+            <button
+              @click.stop="toggleStatusDropdown"
+              class="px-2 py-1 text-[12px] bg-bg-tertiary border border-border-default rounded min-w-[140px] text-left flex items-center justify-between gap-2 hover:bg-bg-hover transition-colors"
+            >
+              <span class="truncate">{{ selectedStatusLabels }}</span>
+              <svg 
+                width="12" 
+                height="12" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                stroke-width="2"
+                :class="['transition-transform', showStatusDropdown ? 'rotate-180' : '']"
+              >
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </button>
+            
+            <!-- Status Dropdown -->
+            <div
+              v-if="showStatusDropdown"
+              class="absolute top-full left-0 mt-1 min-w-[180px] bg-bg-secondary border border-border-default rounded-lg shadow-lg py-2 z-50"
+            >
+              <div class="px-3 py-1.5 text-[11px] text-text-muted border-b border-border-default">
+                Select multiple
+              </div>
+              <div class="max-h-[200px] overflow-y-auto">
+                <label
+                  v-for="status in availableStatuses"
+                  :key="status"
+                  class="flex items-center gap-2 px-3 py-2 hover:bg-bg-hover cursor-pointer transition-colors"
+                >
+                  <input
+                    type="checkbox"
+                    :value="status"
+                    v-model="selectedStatuses"
+                    class="w-3.5 h-3.5 rounded border-border-default text-accent-orange focus:ring-accent-orange"
+                  />
+                  <span 
+                    class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium capitalize"
+                    :class="[statusColors[status].bg, statusColors[status].text]"
+                  >
+                    {{ status }}
+                  </span>
+                </label>
+              </div>
+              <div class="px-3 py-2 border-t border-border-default flex justify-between">
+                <button
+                  @click="selectedStatuses = []"
+                  class="text-[11px] text-text-muted hover:text-text-primary"
+                >
+                  Clear
+                </button>
+                <button
+                  @click="selectAllStatuses"
+                  class="text-[11px] text-accent-orange hover:text-accent-orange-hover"
+                >
+                  Select All
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        
         <button
           @click="applyFilters"
           class="inline-flex items-center gap-1 px-3 py-1.5 bg-accent-orange text-white rounded text-[11px] font-medium hover:bg-accent-orange-hover transition-colors"
@@ -55,7 +124,7 @@
     <!-- Content -->
     <template v-else>
       <!-- Summary Cards -->
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
         <div class="bg-bg-secondary p-3 rounded-lg border border-border-default">
           <div class="flex items-center gap-2 mb-1">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-text-muted">
@@ -100,6 +169,53 @@
             <p class="text-[11px] text-text-muted uppercase">Response Rate</p>
           </div>
           <p class="text-xl font-bold text-text-primary">{{ responseRate }}%</p>
+        </div>
+
+        <!-- Open Tickets Card -->
+        <div class="bg-bg-secondary p-3 rounded-lg border border-border-default">
+          <div class="flex items-center gap-2 mb-1">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-amber-500">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 6v6l4 2"/>
+            </svg>
+            <p class="text-[11px] text-text-muted uppercase">Open Tickets</p>
+          </div>
+          <p class="text-xl font-bold text-amber-500">{{ openTicketsCount }}</p>
+        </div>
+      </div>
+
+      <!-- Status Distribution -->
+      <div class="bg-bg-secondary p-4 rounded-lg border border-border-default">
+        <h3 class="text-[13px] font-medium text-text-primary mb-3 flex items-center gap-2">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-text-muted">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+          Status Distribution
+        </h3>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div
+            v-for="stat in analytics?.submissionsByStatus || []"
+            :key="stat.status"
+            class="p-3 rounded-lg border border-border-default hover:bg-bg-hover cursor-pointer transition-colors"
+            :class="{ 'bg-bg-hover ring-1 ring-accent-orange': selectedStatuses.includes(stat.status) }"
+            @click="toggleStatus(stat.status)"
+          >
+            <div class="flex items-center justify-between mb-1">
+              <span 
+                class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium capitalize"
+                :class="[statusColors[stat.status].bg, statusColors[stat.status].text]"
+              >
+                {{ stat.status }}
+              </span>
+              <span class="text-[12px] font-semibold text-text-primary">{{ stat.count }}</span>
+            </div>
+            <div class="text-[10px] text-text-muted">
+              {{ ((stat.count / (analytics?.totalSubmissions || 1)) * 100).toFixed(0) }}%
+            </div>
+          </div>
+          <div v-if="!analytics?.submissionsByStatus?.length" class="col-span-full text-center py-4 text-text-muted text-[12px]">
+            No status data available
+          </div>
         </div>
       </div>
 
@@ -217,6 +333,7 @@
                 <th class="px-4 py-2 text-left text-[10px] font-medium text-text-muted uppercase tracking-wider">Date</th>
                 <th class="px-4 py-2 text-left text-[10px] font-medium text-text-muted uppercase tracking-wider">User</th>
                 <th class="px-4 py-2 text-left text-[10px] font-medium text-text-muted uppercase tracking-wider">Rating</th>
+                <th class="px-4 py-2 text-left text-[10px] font-medium text-text-muted uppercase tracking-wider">Status</th>
                 <th class="px-4 py-2 text-left text-[10px] font-medium text-text-muted uppercase tracking-wider">Comment</th>
                 <th class="px-4 py-2 text-left text-[10px] font-medium text-text-muted uppercase tracking-wider">Actions</th>
               </tr>
@@ -234,6 +351,47 @@
                     {{ submission.rating }} ★
                   </span>
                   <span v-else class="text-text-muted">-</span>
+                </td>
+                <td class="px-4 py-2 whitespace-nowrap">
+                  <div class="flex items-center gap-2">
+                    <span 
+                      class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium capitalize"
+                      :class="[statusColors[submission.status].bg, statusColors[submission.status].text]"
+                    >
+                      {{ submission.status }}
+                    </span>
+                    <!-- Quick Status Change Dropdown -->
+                    <div class="relative quick-status-dropdown">
+                      <button
+                        @click.stop="toggleQuickStatus(submission.id)"
+                        class="p-1 text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
+                        title="Change status"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <polyline points="6 9 12 15 18 9"/>
+                        </svg>
+                      </button>
+                      <div
+                        v-if="quickStatusOpen === submission.id"
+                        class="absolute top-full left-0 mt-1 w-[140px] bg-bg-secondary border border-border-default rounded-lg shadow-lg py-1 z-50"
+                      >
+                        <button
+                          v-for="status in availableStatuses"
+                          :key="status"
+                          @click.stop="initiateStatusChange(submission, status)"
+                          class="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-bg-hover transition-colors"
+                          :class="{ 'bg-bg-hover': submission.status === status }"
+                        >
+                          <span 
+                            class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium capitalize"
+                            :class="[statusColors[status].bg, statusColors[status].text]"
+                          >
+                            {{ status }}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </td>
                 <td class="px-4 py-2 text-[11px] text-text-secondary max-w-xs truncate">
                   {{ submission.comment || '-' }}
@@ -274,6 +432,68 @@
       </div>
     </template>
 
+    <!-- Status Change Confirmation Dialog -->
+    <Teleport to="body">
+      <div
+        v-if="confirmStatusChange.visible"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+        @click.self="cancelStatusChange"
+      >
+        <div class="w-full max-w-sm bg-bg-secondary rounded-lg shadow-xl border border-border-default p-4">
+          <div class="flex items-center gap-2 mb-4">
+            <div class="w-8 h-8 rounded-full bg-accent-orange/10 flex items-center justify-center">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-accent-orange">
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+              </svg>
+            </div>
+            <h3 class="text-[14px] font-medium text-text-primary">Confirm Status Change</h3>
+          </div>
+          
+          <p class="text-[12px] text-text-secondary mb-4">
+            Are you sure you want to change the status from 
+            <span 
+              class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium capitalize mx-1"
+              :class="[statusColors[confirmStatusChange.from].bg, statusColors[confirmStatusChange.from].text]"
+            >
+              {{ confirmStatusChange.from }}
+            </span> 
+            to 
+            <span 
+              class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium capitalize mx-1"
+              :class="[statusColors[confirmStatusChange.to].bg, statusColors[confirmStatusChange.to].text]"
+            >
+              {{ confirmStatusChange.to }}
+            </span>?
+          </p>
+          
+          <div v-if="confirmStatusChange.submission" class="mb-4 p-3 bg-bg-tertiary rounded border border-border-default">
+            <div class="text-[11px] text-text-muted mb-1">Submission</div>
+            <div class="text-[12px] text-text-primary truncate">
+              {{ confirmStatusChange.submission.userEmail || confirmStatusChange.submission.userId || 'Anonymous' }}
+            </div>
+            <div class="text-[11px] text-text-muted">
+              {{ formatDate(confirmStatusChange.submission.createdAt) }}
+            </div>
+          </div>
+          
+          <div class="flex justify-end gap-2">
+            <button
+              @click="cancelStatusChange"
+              class="px-3 py-1.5 text-[12px] border border-border-default rounded hover:bg-bg-hover text-text-secondary transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              @click="confirmStatusChangeAction"
+              class="px-3 py-1.5 text-[12px] bg-accent-orange text-white rounded hover:bg-accent-orange-hover transition-colors"
+            >
+              Confirm Change
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
     <!-- Submission Detail Modal -->
     <Teleport to="body">
       <div
@@ -296,7 +516,45 @@
               </svg>
             </button>
           </div>
-          <div class="p-4 space-y-3">
+          <div class="p-4 space-y-4">
+            <!-- Current Status Section -->
+            <div class="p-3 bg-bg-tertiary rounded-lg border border-border-default">
+              <div class="flex items-center justify-between mb-3">
+                <label class="text-[11px] font-medium text-text-muted uppercase">Current Status</label>
+                <span 
+                  class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium capitalize"
+                  :class="[statusColors[selectedSubmission.status].bg, statusColors[selectedSubmission.status].text]"
+                >
+                  {{ selectedSubmission.status }}
+                </span>
+              </div>
+              
+              <!-- Status Change Dropdown -->
+              <div class="flex items-center gap-2">
+                <span class="text-[12px] text-text-secondary">Change to:</span>
+                <select
+                  v-model="selectedNewStatus"
+                  class="px-2 py-1.5 text-[12px] bg-bg-secondary border border-border-default rounded focus:ring-1 focus:ring-accent-orange focus:border-accent-orange text-text-primary"
+                >
+                  <option value="">Select status...</option>
+                  <option 
+                    v-for="status in availableStatuses.filter(s => s !== selectedSubmission?.status)" 
+                    :key="status" 
+                    :value="status"
+                  >
+                    {{ status.charAt(0).toUpperCase() + status.slice(1) }}
+                  </option>
+                </select>
+                <button
+                  v-if="selectedNewStatus"
+                  @click="initiateStatusChangeFromModal"
+                  class="px-3 py-1.5 text-[12px] bg-accent-orange text-white rounded hover:bg-accent-orange-hover transition-colors"
+                >
+                  Update
+                </button>
+              </div>
+            </div>
+
             <div class="grid grid-cols-2 gap-3">
               <div class="p-2 bg-bg-tertiary rounded border border-border-default">
                 <label class="text-[10px] font-medium text-text-muted uppercase">Submitted</label>
@@ -333,6 +591,70 @@
                 </div>
               </div>
             </div>
+            
+            <!-- Status History Section (Collapsible) -->
+            <div class="border border-border-default rounded-lg overflow-hidden">
+              <button
+                @click="showHistory = !showHistory"
+                class="w-full px-3 py-2.5 bg-bg-tertiary flex items-center justify-between hover:bg-bg-hover transition-colors"
+              >
+                <div class="flex items-center gap-2">
+                  <svg 
+                    width="14" 
+                    height="14" 
+                    viewBox="0 0 24 24" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    stroke-width="2" 
+                    class="text-text-muted"
+                    :class="{ 'rotate-90': showHistory }"
+                  >
+                    <polyline points="9 18 15 12 9 6"/>
+                  </svg>
+                  <span class="text-[12px] font-medium text-text-primary">Status History</span>
+                  <span class="text-[11px] text-text-muted">({{ statusHistory.length }})</span>
+                </div>
+                <div v-if="loadingHistory" class="w-4 h-4 border-2 border-border-default border-t-accent-orange rounded-full animate-spin" />
+              </button>
+              
+              <div v-show="showHistory" class="p-3 bg-bg-secondary">
+                <div v-if="loadingHistory" class="py-4 text-center text-text-muted text-[12px]">
+                  Loading history...
+                </div>
+                <div v-else-if="statusHistory.length === 0" class="py-4 text-center text-text-muted text-[12px]">
+                  No status changes yet
+                </div>
+                <div v-else class="space-y-2">
+                  <div
+                    v-for="record in statusHistory"
+                    :key="record.id"
+                    class="p-2.5 bg-bg-tertiary rounded border border-border-default"
+                  >
+                    <div class="flex items-center justify-between mb-1.5">
+                      <span class="text-[11px] text-text-muted">{{ formatDateFull(record.changedAt) }}</span>
+                      <span class="text-[11px] text-text-secondary">by {{ record.changedBy }}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <span 
+                        class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium capitalize"
+                        :class="[statusColors[record.fromStatus].bg, statusColors[record.fromStatus].text]"
+                      >
+                        {{ record.fromStatus }}
+                      </span>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-text-muted">
+                        <polyline points="9 18 15 12 9 6"/>
+                      </svg>
+                      <span 
+                        class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium capitalize"
+                        :class="[statusColors[record.toStatus].bg, statusColors[record.toStatus].text]"
+                      >
+                        {{ record.toStatus }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -341,7 +663,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch, onUnmounted } from 'vue';
+
+type FeedbackStatus = 'open' | 'pending' | 'process' | 'resolved' | 'closed';
+
+interface StatusHistoryRecord {
+  id: string;
+  submissionId: string;
+  fromStatus: FeedbackStatus;
+  toStatus: FeedbackStatus;
+  changedBy: string;
+  changedAt: string;
+}
 
 interface Submission {
   id: string;
@@ -351,8 +684,10 @@ interface Submission {
   responses: Record<string, unknown>;
   rating: number | null;
   comment: string | null;
+  status: FeedbackStatus;
   createdAt: string;
   userAgent: string | null;
+  recentHistory?: StatusHistoryRecord[];
 }
 
 interface Analytics {
@@ -361,7 +696,17 @@ interface Analytics {
   ratingDistribution: Record<number, number>;
   submissionsByDay: Array<{ date: string; count: number }>;
   submissionsByWorkspace: Array<{ workspaceId: string | null; count: number }>;
+  submissionsByStatus: Array<{ status: FeedbackStatus; count: number }>;
 }
+
+// Status badge colors
+const statusColors: Record<FeedbackStatus, { bg: string; text: string }> = {
+  open: { bg: 'bg-amber-500/10', text: 'text-amber-500' },
+  pending: { bg: 'bg-orange-500/10', text: 'text-orange-500' },
+  process: { bg: 'bg-blue-500/10', text: 'text-blue-500' },
+  resolved: { bg: 'bg-green-500/10', text: 'text-green-500' },
+  closed: { bg: 'bg-gray-500/10', text: 'text-gray-500' }
+};
 
 const filters = ref({
   startDate: '',
@@ -375,6 +720,31 @@ const error = ref<string | null>(null);
 const currentPage = ref(1);
 const itemsPerPage = 10;
 const selectedSubmission = ref<Submission | null>(null);
+const showHistory = ref(false);
+const statusHistory = ref<StatusHistoryRecord[]>([]);
+const loadingHistory = ref(false);
+const selectedNewStatus = ref<FeedbackStatus | ''>('');
+
+// Status filter
+const showStatusDropdown = ref(false);
+const availableStatuses: FeedbackStatus[] = ['open', 'pending', 'process', 'resolved', 'closed'];
+const selectedStatuses = ref<FeedbackStatus[]>([]);
+
+// Quick status change in table
+const quickStatusOpen = ref<string | null>(null);
+
+// Confirmation dialog
+const confirmStatusChange = ref<{
+  visible: boolean;
+  submission: Submission | null;
+  from: FeedbackStatus | '';
+  to: FeedbackStatus | '';
+}>({
+  visible: false,
+  submission: null,
+  from: '',
+  to: ''
+});
 
 const totalPages = computed(() => Math.ceil(submissions.value.length / itemsPerPage));
 
@@ -397,6 +767,19 @@ const responseRate = computed(() => {
   return Math.min(100, Math.round((analytics.value?.totalSubmissions || 0) * 2));
 });
 
+const openTicketsCount = computed(() => {
+  return analytics.value?.submissionsByStatus?.find(s => s.status === 'open')?.count || 0;
+});
+
+const selectedStatusLabels = computed(() => {
+  if (selectedStatuses.value.length === 0) return 'All Statuses';
+  if (selectedStatuses.value.length === availableStatuses.length) return 'All Statuses';
+  if (selectedStatuses.value.length === 1) {
+    return selectedStatuses.value[0].charAt(0).toUpperCase() + selectedStatuses.value[0].slice(1);
+  }
+  return `${selectedStatuses.value.length} selected`;
+});
+
 const fetchData = async () => {
   isLoading.value = true;
   error.value = null;
@@ -405,10 +788,12 @@ const fetchData = async () => {
     const params: Record<string, string> = {};
     if (filters.value.startDate) params.startDate = filters.value.startDate;
     if (filters.value.endDate) params.endDate = filters.value.endDate;
+    if (selectedStatuses.value.length > 0) params.status = selectedStatuses.value.join(',');
     
     const response = await $fetch<{
       submissions: Submission[];
       analytics: Analytics;
+      availableStatuses: FeedbackStatus[];
     }>('/api/admin/super/feedback/submissions', { params });
     
     submissions.value = response.submissions;
@@ -422,19 +807,35 @@ const fetchData = async () => {
   }
 };
 
+const fetchStatusHistory = async (submissionId: string) => {
+  loadingHistory.value = true;
+  try {
+    const response = await $fetch<{
+      history: StatusHistoryRecord[];
+    }>(`/api/admin/super/feedback/submissions/${submissionId}/history`);
+    statusHistory.value = response.history;
+  } catch (e) {
+    console.error('Failed to fetch status history:', e);
+    statusHistory.value = [];
+  } finally {
+    loadingHistory.value = false;
+  }
+};
+
 const applyFilters = () => {
   fetchData();
 };
 
 const exportData = () => {
   const csv = [
-    ['Date', 'User', 'Email', 'Workspace', 'Rating', 'Comment', 'Responses'].join(','),
+    ['Date', 'User', 'Email', 'Workspace', 'Rating', 'Status', 'Comment', 'Responses'].join(','),
     ...submissions.value.map(s => [
       s.createdAt,
       s.userId || '',
       s.userEmail || '',
       s.workspaceId || '',
       s.rating || '',
+      s.status,
       `"${(s.comment || '').replace(/"/g, '""')}"`,
       `"${JSON.stringify(s.responses).replace(/"/g, '""')}"`
     ].join(','))
@@ -480,9 +881,137 @@ const formatDateFull = (date: string): string => {
 
 const viewDetails = (submission: Submission) => {
   selectedSubmission.value = submission;
+  showHistory.value = false;
+  statusHistory.value = [];
+  selectedNewStatus.value = '';
+  
+  // If we have recent history from the list, use it
+  if (submission.recentHistory && submission.recentHistory.length > 0) {
+    statusHistory.value = submission.recentHistory;
+  }
 };
+
+// Status dropdown handlers
+const toggleStatusDropdown = () => {
+  showStatusDropdown.value = !showStatusDropdown.value;
+  // Close quick status dropdown if open
+  quickStatusOpen.value = null;
+};
+
+const toggleStatus = (status: FeedbackStatus) => {
+  const index = selectedStatuses.value.indexOf(status);
+  if (index > -1) {
+    selectedStatuses.value.splice(index, 1);
+  } else {
+    selectedStatuses.value.push(status);
+  }
+};
+
+const selectAllStatuses = () => {
+  selectedStatuses.value = [...availableStatuses];
+};
+
+// Quick status change in table
+const toggleQuickStatus = (submissionId: string) => {
+  if (quickStatusOpen.value === submissionId) {
+    quickStatusOpen.value = null;
+  } else {
+    quickStatusOpen.value = submissionId;
+  }
+};
+
+// Status change confirmation
+const initiateStatusChange = (submission: Submission, newStatus: FeedbackStatus) => {
+  confirmStatusChange.value = {
+    visible: true,
+    submission,
+    from: submission.status,
+    to: newStatus
+  };
+  quickStatusOpen.value = null;
+};
+
+const initiateStatusChangeFromModal = () => {
+  if (!selectedSubmission.value || !selectedNewStatus.value) return;
+  
+  confirmStatusChange.value = {
+    visible: true,
+    submission: selectedSubmission.value,
+    from: selectedSubmission.value.status,
+    to: selectedNewStatus.value
+  };
+};
+
+const cancelStatusChange = () => {
+  confirmStatusChange.value.visible = false;
+  confirmStatusChange.value.submission = null;
+  confirmStatusChange.value.from = '';
+  confirmStatusChange.value.to = '';
+};
+
+const confirmStatusChangeAction = async () => {
+  if (!confirmStatusChange.value.submission || !confirmStatusChange.value.to) return;
+  
+  try {
+    const response = await $fetch(`/api/admin/super/feedback/submissions/${confirmStatusChange.value.submission.id}`, {
+      method: 'PUT',
+      body: { status: confirmStatusChange.value.to }
+    });
+    
+    if (response.success) {
+      // Update local state
+      const index = submissions.value.findIndex(s => s.id === confirmStatusChange.value.submission?.id);
+      if (index > -1) {
+        submissions.value[index].status = confirmStatusChange.value.to;
+        submissions.value[index].recentHistory = response.statusHistory?.slice(0, 3) || [];
+      }
+      
+      // Update selected submission if open in modal
+      if (selectedSubmission.value?.id === confirmStatusChange.value.submission.id) {
+        selectedSubmission.value.status = confirmStatusChange.value.to;
+        if (response.statusHistory) {
+          statusHistory.value = response.statusHistory;
+        }
+        selectedNewStatus.value = '';
+      }
+      
+      // Refresh analytics
+      await fetchData();
+      
+      // Close confirmation
+      cancelStatusChange();
+    }
+  } catch (e) {
+    console.error('Failed to update status:', e);
+    alert('Failed to update status. Please try again.');
+  }
+};
+
+// Close dropdowns when clicking outside
+const handleClickOutside = (e: MouseEvent) => {
+  const target = e.target as HTMLElement;
+  if (!target.closest('.status-dropdown-container')) {
+    showStatusDropdown.value = false;
+  }
+  if (!target.closest('.quick-status-dropdown')) {
+    quickStatusOpen.value = null;
+  }
+};
+
+// Watch for modal open to load full history
+watch(showHistory, async (newVal) => {
+  if (newVal && selectedSubmission.value && statusHistory.value.length === 0) {
+    await fetchStatusHistory(selectedSubmission.value.id);
+  }
+});
 
 onMounted(() => {
   fetchData();
+  document.addEventListener('click', handleClickOutside);
+});
+
+// Clean up
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside);
 });
 </script>
