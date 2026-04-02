@@ -15,6 +15,7 @@ export type RequestHeaders = Record<string, string>;
 export type RequestBody = Record<string, unknown> | string | null;
 export type RequestAuth = {
   type: 'none' | 'basic' | 'bearer' | 'api-key' | 'oauth2';
+  inherit?: boolean;
   credentials?: Record<string, string>;
 } | null;
 
