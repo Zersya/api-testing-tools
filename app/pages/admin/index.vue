@@ -88,8 +88,10 @@ interface RequestDraftSnapshot {
   body: Record<string, unknown> | string | null;
   auth: {
     type: string;
+    inherit?: boolean;
     credentials?: Record<string, string>;
   } | null;
+  inheritAuth?: number;
   mockConfig?: HttpRequest['mockConfig'];
   preScript?: string | null;
   postScript?: string | null;
@@ -288,6 +290,7 @@ const normalizeRequestForTab = (request: Partial<HttpRequest>): HttpRequest => {
   auth: request.auth && typeof request.auth === 'object'
     ? request.auth as HttpRequest['auth']
     : null,
+  inheritAuth: typeof request.inheritAuth === 'number' ? request.inheritAuth : 0,
   mockConfig: request.mockConfig && typeof request.mockConfig === 'object'
     ? request.mockConfig as NonNullable<HttpRequest['mockConfig']>
     : null,
@@ -1037,6 +1040,7 @@ const buildPersistedRequestFromDraft = (request: HttpRequest, draft?: RequestDra
     headers: draft.headers ?? null,
     body: draft.body ?? null,
     auth: draft.auth ?? null,
+    inheritAuth: draft.inheritAuth ?? normalizedRequest.inheritAuth ?? 0,
     mockConfig: draft.mockConfig ?? null,
     preScript: draft.preScript ?? '',
     postScript: draft.postScript ?? '',
