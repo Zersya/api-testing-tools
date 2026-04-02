@@ -136,10 +136,12 @@ interface Props {
   initialResponse?: ProxyResponse | ProxyErrorResponse | null
   initialActiveTab?: TabType
   initialScriptLogs?: Array<{ phase: 'pre' | 'post'; type: 'log' | 'error' | 'warn'; message: string; timestamp: number }>
+  isSharedWorkspace?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  readOnly: false
+  readOnly: false,
+  isSharedWorkspace: false
 });
 
 const emit = defineEmits<{
@@ -2565,6 +2567,20 @@ defineExpose({
               class="w-2 h-2 rounded-full bg-accent-orange"
               title="Unsaved changes"
             ></span>
+            <!-- Shared workspace badge -->
+            <span 
+              v-if="isSharedWorkspace"
+              class="flex items-center gap-1 px-2 py-0.5 bg-accent-purple/15 text-accent-purple text-[10px] font-semibold rounded-full"
+              title="This request is in a shared collection visible to all team members"
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+              </svg>
+              Shared
+            </span>
           </h2>
           <span 
             class="text-[10px] font-semibold px-1.5 py-0.5 rounded"

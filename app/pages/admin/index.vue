@@ -12,6 +12,7 @@ import ResponseComparison from '~/components/ResponseComparison.vue';
 import KeyboardShortcutsHelpModal from '~/components/KeyboardShortcutsHelpModal.vue';
 import RenameWorkspaceModal from '~/components/RenameWorkspaceModal.vue';
 import ShareWorkspaceModal from '~/components/ShareWorkspaceModal.vue';
+import TeamCollectionWarningDialog from '~/components/TeamCollectionWarningDialog.vue';
 import VariableInput from '~/components/VariableInput.vue';
 import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
 import { useExampleData } from '~/composables/useExampleData';
@@ -927,6 +928,41 @@ const findCollectionByFolderId = (folderId: string): { collectionId: string; fol
   return null;
 };
 
+// Helper to check if a request belongs to a shared workspace (not owned by current user)
+const checkIfRequestIsInSharedWorkspace = (request: any): boolean => {
+  if (!request || !workspaces.value) return false;
+  
+  for (const workspace of workspaces.value) {
+    for (const project of workspace.projects) {
+      for (const collection of project.collections) {
+        // Check if request is in this collection's root requests
+        if (collection.requests?.some((r: any) => r.id === request.id)) {
+          return workspace.isShared === true || workspace.isOwner === false;
+        }
+        
+        // Check if request is in any folder
+        const findInFolders = (folders: any[]): boolean => {
+          for (const folder of folders) {
+            if (folder.requests?.some((r: any) => r.id === request.id)) {
+              return true;
+            }
+            if (folder.children?.length) {
+              const found = findInFolders(folder.children);
+              if (found) return true;
+            }
+          }
+          return false;
+        };
+        
+        if (findInFolders(collection.folders || [])) {
+          return workspace.isShared === true || workspace.isOwner === false;
+        }
+      }
+    }
+  }
+  return false;
+};
+
 const syncWorkspaceSelectionForRequest = (request: Partial<HttpRequest> | null | undefined) => {
   if (!request || !workspaces.value?.length) {
     return;
@@ -1193,6 +1229,11 @@ watch([openTabs, activeTabKey], () => {
 }, { deep: true });
 
 onMounted(async () => {
+  // Check localStorage for hide warning preference
+  if (typeof window !== 'undefined') {
+    hideTeamWarningForever.value = localStorage.getItem('hideTeamCollectionSaveWarning') === 'true';
+  }
+  
   await loadPersistedRequestTabs();
   window.addEventListener('beforeunload', handleWindowBeforeUnload);
   document.addEventListener('visibilitychange', handleWindowVisibilityChange);
@@ -1210,6 +1251,12 @@ const createTabKey = () => `tab-${crypto.randomUUID()}`;
 // Save dialog state
 const requestToSave = ref<any>(null);
 const requestToSaveAs = ref<any>(null);
+
+// Team collection warning dialog state
+const showTeamWarningDialog = ref(false);
+const pendingSaveRequest = ref<any>(null);
+const hideTeamWarningForever = ref(false);
+const isSharedWorkspace = ref(false);
 
 const resourceForm = ref({
   name: '',
@@ -1747,6 +1794,25 @@ const handleBuilderStateChange = (state: {
 };
 
 const handleSaveRequest = async (request: any) => {
+  // Check if this is a shared workspace and warning not disabled
+  const isShared = checkIfRequestIsInSharedWorkspace(request);
+  
+  if (isShared && !hideTeamWarningForever.value) {
+    // Store request and show warning dialog
+    pendingSaveRequest.value = request;
+    isSharedWorkspace.value = true;
+    showTeamWarningDialog.value = true;
+    return;
+  }
+  
+  isSharedWorkspace.value = isShared;
+  
+  // Proceed with actual save
+  await executeSave(request);
+};
+
+// Execute the actual save after warning confirmation or if no warning needed
+const executeSave = async (request: any) => {
   requestToSave.value = request;
   
   console.log('[Frontend Save] Request mockConfig:', request.mockConfig);
@@ -1842,6 +1908,31 @@ const handleSaveAsRequest = (request: any) => {
   }
   
   showSaveAsDialog.value = true;
+};
+
+// Team Collection Warning Dialog handlers
+const onTeamWarningConfirm = async () => {
+  showTeamWarningDialog.value = false;
+  if (pendingSaveRequest.value) {
+    await executeSave(pendingSaveRequest.value);
+    pendingSaveRequest.value = null;
+  }
+};
+
+const onTeamWarningCancel = () => {
+  showTeamWarningDialog.value = false;
+  pendingSaveRequest.value = null;
+};
+
+const onHideForeverChange = (value: boolean) => {
+  hideTeamWarningForever.value = value;
+  if (typeof window !== 'undefined') {
+    if (value) {
+      localStorage.setItem('hideTeamCollectionSaveWarning', 'true');
+    } else {
+      localStorage.removeItem('hideTeamCollectionSaveWarning');
+    }
+  }
 };
 
 const handleSave = async (data: any) => {
@@ -3226,6 +3317,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
                 :initial-response="getActiveOpenTab()?.response"
                 :initial-active-tab="getActiveOpenTab()?.activeBuilderTab"
                 :initial-script-logs="getActiveOpenTab()?.scriptLogs"
+                :is-shared-workspace="isSharedWorkspace"
                 @save-request="handleSaveRequest"
                 @save-as-request="handleSaveAsRequest"
                 @unsaved-changes="updateTabUnsavedStatus"
@@ -3731,6 +3823,14 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
         <button class="btn btn-primary" @click="renameItem">Rename</button>
       </template>
     </Modal>
+
+    <!-- Team Collection Warning Dialog -->
+    <TeamCollectionWarningDialog
+      v-model="showTeamWarningDialog"
+      @confirm="onTeamWarningConfirm"
+      @cancel="onTeamWarningCancel"
+      @update:hideForever="onHideForeverChange"
+    />
 
     <!-- Save Request Dialog -->
     <SaveRequestDialog
