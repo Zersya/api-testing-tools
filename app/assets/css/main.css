@@ -459,3 +459,30 @@
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* ============================================
+   JSONC Syntax Highlighting
+   ============================================ */
+.jsonc-comment {
+  color: var(--text-muted);
+}
+
+.jsonc-key {
+  color: var(--accent-yellow);
+}
+
+.jsonc-string {
+  color: var(--accent-green);
+}
+
+.jsonc-number {
+  color: var(--accent-blue);
+}
+
+.jsonc-boolean {
+  color: var(--accent-orange);
+}
+
+.jsonc-null {
+  color: var(--accent-purple);
+}

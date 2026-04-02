@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { computed, nextTick, watch } from 'vue';
-import { debounce } from 'perfect-debounce';
-import JsonNode from './JsonNode.vue';
-import VariableInput from './VariableInput.vue';
-import VariableTextarea from './VariableTextarea.vue';
-import RequestExampleManager from './RequestExampleManager.vue';
-import MockConfiguration from './MockConfiguration.vue';
-import { useUsageTracking } from '~/composables/useUsageTracking';
-import { useClientRequest, isLocalUrl } from '~/composables/useClientRequest';
+import { computed, nextTick, watch } from 'vue'
+import { debounce } from 'perfect-debounce'
+import JsonNode from './JsonNode.vue'
+import VariableInput from './VariableInput.vue'
+import VariableTextarea from './VariableTextarea.vue'
+import RequestExampleManager from './RequestExampleManager.vue'
+import MockConfiguration from './MockConfiguration.vue'
+import { useUsageTracking } from '~/composables/useUsageTracking'
+import { useClientRequest, isLocalUrl } from '~/composables/useClientRequest'
+import { stripComments, validateJSONC } from '~/utils/jsonc'
 
 interface Variable {
   id: string;
@@ -124,18 +125,17 @@ export interface RequestDraftSnapshot {
 }
 
 interface Props {
-  request: HttpRequest;
-  workspaceId?: string;
-  environmentId?: string;
-  collectionId?: string;
-  projectId?: string;
-  readOnly?: boolean;
-  // Tab key for identifying unique tab instance (handles multiple tabs with same request.id)
-  tabKey?: string;
-  // Initial state props for persistence
-  initialResponse?: ProxyResponse | ProxyErrorResponse | null;
-  initialActiveTab?: TabType;
-  initialScriptLogs?: Array<{ phase: 'pre' | 'post'; type: 'log' | 'error' | 'warn'; message: string; timestamp: number }>;
+  request: HttpRequest
+  workspaceId?: string
+  environmentId?: string
+  collectionId?: string
+  projectId?: string
+  projectName?: string
+  readOnly?: boolean
+  tabKey?: string
+  initialResponse?: ProxyResponse | ProxyErrorResponse | null
+  initialActiveTab?: TabType
+  initialScriptLogs?: Array<{ phase: 'pre' | 'post'; type: 'log' | 'error' | 'warn'; message: string; timestamp: number }>
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -247,10 +247,13 @@ const oauth2 = ref({
   grantType: 'authorization_code' as 'authorization_code' | 'client_credentials',
   PKCE: false
 });
-const isGettingToken = ref(false);
-const tokenError = ref('');
-const inheritFromParent = ref(false);
-const expandedNodes = ref(new Set<string>());
+const isGettingToken = ref(false)
+const tokenError = ref('')
+const inheritFromParent = ref(false)
+const collectionAuth = ref<any>(null)
+const collectionName = ref<string>('')
+const collectionAuthLoading = ref(false)
+const expandedNodes = ref(new Set<string>())
 const showSearch = ref(false);
 const searchQuery = ref('');
 const responseContentRef = ref<HTMLElement | null>(null);
@@ -976,69 +979,94 @@ const handleBinaryFileSelect = (event: Event) => {
 };
 
 const validateJson = (jsonString: string): { valid: boolean; error?: string } => {
-  try {
-    if (jsonString.trim() === '') {
-      return { valid: true };
-    }
-    JSON.parse(jsonString);
-    return { valid: true };
-  } catch (error: any) {
-    return { valid: false, error: error.message };
-  }
-};
+  return validateJSONC(jsonString)
+}
 
 const buildBody = (): any => {
   switch (bodyFormat.value) {
     case 'none':
-      return undefined;
+      return undefined
     case 'json':
       try {
-        return JSON.parse(jsonBody.value);
+        const cleanJson = stripComments(jsonBody.value)
+        return JSON.parse(cleanJson)
       } catch {
-        return jsonBody.value;
+        return jsonBody.value
       }
     case 'form-data':
-      const formData = new FormData();
+      const formData = new FormData()
       formDataParams.value.forEach(param => {
         if (param.enabled && param.key) {
-          formData.append(param.key, param.value);
+          formData.append(param.key, param.value)
         }
-      });
-      return formData;
+      })
+      return formData
     case 'urlencoded':
-      const enabledParams = formDataParams.value.filter(p => p.enabled && p.key);
-      const params = new URLSearchParams();
+      const enabledParams = formDataParams.value.filter(p => p.enabled && p.key)
+      const params = new URLSearchParams()
       enabledParams.forEach(param => {
-        params.append(param.key, param.value);
-      });
-      return params.toString();
+        params.append(param.key, param.value)
+      })
+      return params.toString()
     case 'raw':
-      return rawBody.value;
+      return rawBody.value
     case 'binary':
-      return binaryFile.value;
+      return binaryFile.value
     default:
-      return undefined;
+      return undefined
   }
-};
+}
 
 const buildAuthHeaders = (): Record<string, string> => {
-  const authHeaders: Record<string, string> = {};
-
-  if (authType.value === 'api-key') {
-    if (apiKey.value.addTo === 'header' && apiKey.value.key) {
-      authHeaders[apiKey.value.key] = apiKey.value.value;
+  const authHeaders: Record<string, string> = {}
+  
+  const effectiveAuth = inheritFromParent.value ? collectionAuth.value : null
+  const effectiveAuthType = inheritFromParent.value ? (effectiveAuth?.type || 'none') : authType.value
+  
+  if (effectiveAuthType === 'api-key') {
+    const keyConfig = inheritFromParent.value 
+      ? (effectiveAuth?.credentials || {})
+      : apiKey.value
+    if (keyConfig.addTo === 'header' && keyConfig.key) {
+      authHeaders[keyConfig.key] = keyConfig.value
     }
-  } else if (authType.value === 'bearer' && bearerToken.value) {
-    authHeaders['Authorization'] = `Bearer ${bearerToken.value}`;
-  } else if (authType.value === 'basic' && basicAuth.value.username) {
-    const credentials = btoa(`${basicAuth.value.username}:${basicAuth.value.password}`);
-    authHeaders['Authorization'] = `Basic ${credentials}`;
-  } else if (authType.value === 'oauth2' && oauth2.value.accessToken) {
-    authHeaders['Authorization'] = `${oauth2.value.tokenType} ${oauth2.value.accessToken}`;
+  } else if (effectiveAuthType === 'bearer') {
+    const token = inheritFromParent.value 
+      ? (effectiveAuth?.credentials?.token || '')
+      : bearerToken.value
+    if (token) {
+      authHeaders['Authorization'] = `Bearer ${token}`
+    }
+  } else if (effectiveAuthType === 'basic') {
+    const creds = inheritFromParent.value 
+      ? (effectiveAuth?.credentials || {})
+      : basicAuth.value
+    if (creds.username) {
+      const credentials = btoa(`${creds.username}:${creds.password}`)
+      authHeaders['Authorization'] = `Basic ${credentials}`
+    }
+  } else if (effectiveAuthType === 'oauth2') {
+    const oauthConfig = inheritFromParent.value 
+      ? (effectiveAuth?.credentials || {})
+      : oauth2.value
+    if (oauthConfig.accessToken) {
+      authHeaders['Authorization'] = `${oauthConfig.tokenType || 'Bearer'} ${oauthConfig.accessToken}`
+    }
+  } else if (!inheritFromParent.value && authType.value === 'api-key') {
+    if (apiKey.value.addTo === 'header' && apiKey.value.key) {
+      authHeaders[apiKey.value.key] = apiKey.value.value
+    }
+  } else if (!inheritFromParent.value && authType.value === 'bearer' && bearerToken.value) {
+    authHeaders['Authorization'] = `Bearer ${bearerToken.value}`
+  } else if (!inheritFromParent.value && authType.value === 'basic' && basicAuth.value.username) {
+    const credentials = btoa(`${basicAuth.value.username}:${basicAuth.value.password}`)
+    authHeaders['Authorization'] = `Basic ${credentials}`
+  } else if (!inheritFromParent.value && authType.value === 'oauth2' && oauth2.value.accessToken) {
+    authHeaders['Authorization'] = `${oauth2.value.tokenType} ${oauth2.value.accessToken}`
   }
-
-  return authHeaders;
-};
+  
+  return authHeaders
+}
 
 const buildAuthQueryParams = (): Record<string, string> => {
   const queryParams: Record<string, string> = {};
@@ -1082,7 +1110,24 @@ const parseAuthFromRequest = (authConfig: any) => {
     oauth2.value.grantType = authConfig.credentials.grantType || 'authorization_code';
     oauth2.value.PKCE = authConfig.credentials.PKCE || false;
   }
-};
+}
+
+const fetchCollectionAuth = async () => {
+  if (!props.collectionId) return
+  
+  collectionAuthLoading.value = true
+  try {
+    const result = await $fetch(`/api/admin/collections/${props.collectionId}/auth`)
+    collectionAuth.value = result.authConfig
+    collectionName.value = result.collectionName
+  } catch (error) {
+    console.error('Failed to fetch collection auth:', error)
+    collectionAuth.value = null
+    collectionName.value = ''
+  } finally {
+    collectionAuthLoading.value = false
+  }
+}
 
 const isTokenExpired = computed(() => {
   if (!oauth2.value.expiresAt) return false;
@@ -2262,8 +2307,18 @@ onMounted(() => {
 });
 
 watch(() => props.environmentId, () => {
-  fetchEnvironmentVariables();
-});
+  fetchEnvironmentVariables()
+})
+
+watch(() => props.collectionId, () => {
+  fetchCollectionAuth()
+})
+
+watch(inheritFromParent, (newValue) => {
+  if (newValue && props.collectionId) {
+    fetchCollectionAuth()
+  }
+})
 
 const sendRequest = async () => {
   if (!form.value.url) return;
@@ -2757,20 +2812,21 @@ defineExpose({
                   v-model="jsonBody"
                   :variables="environmentVariables"
                   :rows="12"
+                  :enable-jsonc="true"
                   placeholder="{
   &quot;key&quot;: &quot;value&quot;
 }"
                   class="w-full"
                 />
-                <div v-if="validateJson(jsonBody).valid" class="absolute top-2 right-2 px-2 py-0.5 bg-accent-green/15 text-accent-green text-[10px] font-semibold rounded">
+                <div v-if="validateJSONC(jsonBody).valid" class="absolute top-2 right-2 px-2 py-0.5 bg-accent-green/15 text-accent-green text-[10px] font-semibold rounded">
                   Valid JSON
                 </div>
                 <div v-else-if="jsonBody.trim()" class="absolute top-2 right-2 px-2 py-0.5 bg-accent-red/15 text-accent-red text-[10px] font-semibold rounded">
                   Invalid JSON
                 </div>
               </div>
-              <div v-if="!validateJson(jsonBody).valid && jsonBody.trim()" class="text-xs text-accent-red">
-                {{ validateJson(jsonBody).error }}
+              <div v-if="!validateJSONC(jsonBody).valid && jsonBody.trim()" class="text-xs text-accent-red">
+                {{ validateJSONC(jsonBody).error }}
               </div>
             </div>
 
@@ -2936,7 +2992,8 @@ defineExpose({
                 <label class="text-xs font-medium text-text-secondary">Auth Type</label>
                 <select
                   v-model="authType"
-                  class="w-full py-2 px-3 bg-bg-input border border-border-default rounded text-text-primary text-sm focus:outline-none focus:border-accent-blue"
+                  :disabled="inheritFromParent"
+                  class="w-full py-2 px-3 bg-bg-input border border-border-default rounded text-text-primary text-sm focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <option value="none">No Auth</option>
                   <option value="basic">Basic Auth</option>
@@ -2950,12 +3007,28 @@ defineExpose({
                 <input
                   type="checkbox"
                   v-model="inheritFromParent"
+                  :disabled="!collectionId || collectionAuthLoading"
                   class="w-4 h-4 rounded border-border-default bg-bg-input text-accent-blue focus:ring-accent-blue focus:ring-offset-bg-secondary cursor-pointer"
                 />
                 <span class="text-xs text-text-secondary">Inherit from parent</span>
               </label>
+              
+              <div v-if="inheritFromParent && collectionName" class="p-2 bg-bg-tertiary rounded border border-border-default">
+                <div class="text-xs text-text-muted">
+                  Inherited from: <span class="text-text-secondary font-medium">{{ projectName || 'Project' }} > {{ collectionName }}</span>
+                </div>
+                <div v-if="collectionAuth" class="mt-1 text-xs text-text-muted">
+                  Auth type: <span class="text-accent-blue">{{ collectionAuth.type }}</span>
+                </div>
+              </div>
+              
+              <div v-if="inheritFromParent && !collectionAuth" class="p-2 bg-bg-tertiary rounded border border-border-default">
+                <div class="text-xs text-text-muted">
+                  No auth configured at collection level
+                </div>
+              </div>
 
-              <div v-if="authType === 'api-key'" class="space-y-3 p-3 bg-bg-tertiary rounded border border-border-default">
+              <div v-if="authType === 'api-key' && !inheritFromParent" class="space-y-3 p-3 bg-bg-tertiary rounded border border-border-default">
                 <div class="space-y-2">
                   <label class="text-xs font-medium text-text-secondary">Key</label>
                   <VariableInput
@@ -3004,7 +3077,7 @@ defineExpose({
                 </div>
               </div>
 
-              <div v-if="authType === 'bearer'" class="space-y-3 p-3 bg-bg-tertiary rounded border border-border-default">
+              <div v-if="authType === 'bearer' && !inheritFromParent" class="space-y-3 p-3 bg-bg-tertiary rounded border border-border-default">
                 <div class="space-y-2">
                   <label class="text-xs font-medium text-text-secondary">Token</label>
                   <VariableInput
@@ -3020,7 +3093,7 @@ defineExpose({
                 </div>
               </div>
 
-              <div v-if="authType === 'basic'" class="space-y-3 p-3 bg-bg-tertiary rounded border border-border-default">
+              <div v-if="authType === 'basic' && !inheritFromParent" class="space-y-3 p-3 bg-bg-tertiary rounded border border-border-default">
                 <div class="space-y-2">
                   <label class="text-xs font-medium text-text-secondary">Username</label>
                   <VariableInput
@@ -3045,7 +3118,7 @@ defineExpose({
                 </div>
               </div>
 
-              <div v-if="authType === 'oauth2'" class="space-y-4">
+              <div v-if="authType === 'oauth2' && !inheritFromParent" class="space-y-4">
                 <div class="flex items-center justify-between">
                   <h4 class="text-xs font-semibold text-text-primary">OAuth 2.0 Configuration</h4>
                   <div class="flex items-center gap-2">
