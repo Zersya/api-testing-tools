@@ -1747,7 +1747,7 @@ const hasUnsavedChanges = computed(() => {
   const currentHeaders = buildHeadersRecord();
   const currentBody = buildBody();
   
-  // Normalize auth for comparison - treat missing inherit as false
+  // Normalize auth for comparison - make aware of inheritAuth for accurate comparisons
   const rawCurrentAuth = {
     type: authType.value,
     inherit: inheritFromParent.value,
@@ -1762,17 +1762,25 @@ const hasUnsavedChanges = computed(() => {
       } : undefined
   } || null;
   
-  // Normalize both auth objects for comparison
-  const normalizeAuth = (auth: any) => {
-    if (!auth) return null;
+  // Normalize auth for comparison - aware of inheritAuth setting
+  // This ensures null auth with inheritAuth=1 compares equal to {type:'none', inherit:true}
+  const normalizeAuth = (auth: any, inheritAuth: number = 0) => {
+    if (!auth) {
+      // Return canonical "no auth" object that respects inheritAuth
+      return {
+        type: 'none',
+        inherit: inheritAuth === 1
+      };
+    }
     return {
       ...auth,
-      inherit: auth.inherit ?? false
+      // Use auth.inherit if present, otherwise fall back to inheritAuth
+      inherit: auth.inherit ?? (inheritAuth === 1)
     };
   };
   
-  const currentAuth = normalizeAuth(rawCurrentAuth);
   const currentInheritAuth = inheritFromParent.value ? 1 : 0;
+  const currentAuth = normalizeAuth(rawCurrentAuth, currentInheritAuth);
   const currentPathVariables = buildPathVariablesRecord();
 
   // Use lastSavedState if available (after a save), otherwise use originalRequestState (captured on load)
@@ -1783,7 +1791,7 @@ const hasUnsavedChanges = computed(() => {
     url: props.request.url,
     headers: props.request.headers ? JSON.parse(JSON.stringify(props.request.headers)) : {},
     body: props.request.body ? JSON.parse(JSON.stringify(props.request.body)) : null,
-    auth: props.request.auth ? JSON.parse(JSON.stringify(props.request.auth)) : {},
+    auth: props.request.auth ? JSON.parse(JSON.stringify(props.request.auth)) : null,
     inheritAuth: (props.request as any).inheritAuth || 0,
     mockConfig: props.request.mockConfig ? JSON.parse(JSON.stringify(props.request.mockConfig)) : null,
     preScript: props.request.preScript,
@@ -1797,7 +1805,7 @@ const hasUnsavedChanges = computed(() => {
   const normalizedCurrentBody = currentBody === undefined ? null : currentBody;
   const normalizedOriginalBody = compareState.body === undefined ? null : compareState.body;
   const bodyChanged = JSON.stringify(normalizedCurrentBody) !== JSON.stringify(normalizedOriginalBody);
-  const normalizedCompareAuth = normalizeAuth(compareState.auth);
+  const normalizedCompareAuth = normalizeAuth(compareState.auth, compareState.inheritAuth || 0);
   const authChanged = JSON.stringify(currentAuth) !== JSON.stringify(normalizedCompareAuth);
   const inheritAuthChanged = currentInheritAuth !== (compareState.inheritAuth || 0);
   const mockConfigChanged = JSON.stringify(mockConfig.value) !== JSON.stringify(compareState.mockConfig || null);
