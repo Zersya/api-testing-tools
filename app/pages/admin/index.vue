@@ -1817,8 +1817,13 @@ const updateTabUnsavedStatus = (
     
     // Only update selectedRequest if it's the active tab and actually different
     if (activeTabKey.value === tab.key && selectedRequest.value?.id === nextRequest.id) {
+      // Capture the expected tab key before deferring
+      const expectedKey = tab.key;
       // Use nextTick to avoid circular updates during Vue's render cycle
       nextTick(() => {
+        // Verify the tab is still active before mutating selection
+        // This prevents setting selectedRequest back to a prior tab if user switched tabs
+        if (activeTabKey.value !== expectedKey) return;
         selectedRequest.value = nextRequest;
         isSharedWorkspace.value = checkIfRequestIsInSharedWorkspace(nextRequest);
       });
