@@ -335,6 +335,9 @@ const lastLoadedRequestSnapshot = ref<string>('');
 // Track whether we're currently loading request data to prevent false change detection
 const isLoadingRequestData = ref(false);
 
+// Track the current load operation to prevent race conditions with overlapping calls
+let currentLoadId = 0;
+
 // Track if component is mounted to prevent emits during mount/unmount
 const isMounted = ref(false);
 
@@ -453,6 +456,9 @@ const isFirstLoad = ref(true);
 
 // Function to load request data into form state
 const loadRequestData = (request: HttpRequest) => {
+  // Increment load ID to track this specific load operation
+  const loadId = ++currentLoadId;
+  
   // Set flag to prevent change detection during loading
   isLoadingRequestData.value = true;
   
@@ -755,8 +761,11 @@ const loadRequestData = (request: HttpRequest) => {
   } finally {
     // Clear loading flag after a small delay to allow all reactive updates to settle
     // Use setTimeout to ensure we're outside of Vue's update cycle
+    // Check loadId to prevent clearing flag if a newer load operation started
     setTimeout(() => {
-      isLoadingRequestData.value = false;
+      if (currentLoadId === loadId) {
+        isLoadingRequestData.value = false;
+      }
     }, 0);
   }
 };
