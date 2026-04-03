@@ -22,6 +22,7 @@ interface RequestItem {
   body: Record<string, unknown> | string | null;
   auth: {
     type: string;
+    inherit?: boolean;
     credentials?: Record<string, string>;
   } | null;
   mockConfig: {
