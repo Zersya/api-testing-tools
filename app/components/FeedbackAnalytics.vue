@@ -943,7 +943,7 @@ const viewDetails = (submission: Submission) => {
 const toggleStatusDropdown = () => {
   showStatusDropdown.value = !showStatusDropdown.value;
   // Close quick status dropdown if open
-  quickStatusOpen.value = null;
+  closeQuickStatusDropdown();
 };
 
 const toggleStatus = (status: FeedbackStatus) => {
@@ -1027,9 +1027,7 @@ const computeQuickStatusPosition = (buttonRect: DOMRect) => {
 // Toggle quick status dropdown
 const toggleQuickStatus = (submissionId: string, event?: MouseEvent) => {
   if (quickStatusOpen.value === submissionId) {
-    quickStatusOpen.value = null;
-    removeQuickStatusListeners();
-    quickStatusToggleRef.value = null;
+    closeQuickStatusDropdown();
     return;
   }
 
@@ -1061,9 +1059,7 @@ const updateQuickStatusPosition = () => {
 
   // If button is no longer visible (scrolled out of view), close dropdown
   if (buttonRect.bottom < 0 || buttonRect.top > window.innerHeight) {
-    quickStatusOpen.value = null;
-    removeQuickStatusListeners();
-    quickStatusToggleRef.value = null;
+    closeQuickStatusDropdown();
     return;
   }
 
@@ -1083,6 +1079,14 @@ const removeQuickStatusListeners = () => {
   window.removeEventListener('resize', updateQuickStatusPosition);
 };
 
+// Centralized helper to close quick status dropdown and clean up resources
+// Ensures listeners are removed and refs are cleared to prevent memory leaks
+const closeQuickStatusDropdown = () => {
+  quickStatusOpen.value = null;
+  removeQuickStatusListeners();
+  quickStatusToggleRef.value = null;
+};
+
 // Status change confirmation
 const initiateStatusChange = (submission: Submission, newStatus: FeedbackStatus) => {
   confirmStatusChange.value = {
@@ -1092,7 +1096,7 @@ const initiateStatusChange = (submission: Submission, newStatus: FeedbackStatus)
     to: newStatus,
     loading: false
   };
-  quickStatusOpen.value = null;
+  closeQuickStatusDropdown();
 };
 
 const initiateStatusChangeFromModal = () => {
@@ -1172,7 +1176,7 @@ const handleClickOutside = (e: MouseEvent) => {
   const isClickOnDropdown = quickStatusDropdownRef.value?.contains(target);
   const isClickOnToggle = target.closest('.quick-status-dropdown');
   if (!isClickOnDropdown && !isClickOnToggle) {
-    quickStatusOpen.value = null;
+    closeQuickStatusDropdown();
   }
 };
 
