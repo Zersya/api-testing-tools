@@ -64,6 +64,7 @@ interface HttpRequest {
   body: Record<string, unknown> | string | null;
   auth: {
     type: string;
+    inherit?: boolean;
     credentials?: Record<string, string>;
   } | null;
   mockConfig?: import('../../server/db/schema/savedRequest').MockConfig | null;
@@ -571,7 +572,7 @@ const loadRequestData = (request: HttpRequest) => {
   } else {
     const type = authConfig.type as AuthType;
     authType.value = type;
-    inheritFromParent.value = authConfig.inherit || false;
+    inheritFromParent.value = authConfig.inherit ?? false;
 
     if (type === 'api-key' && authConfig.credentials) {
       apiKey.value.key = authConfig.credentials.key || '';
@@ -1197,7 +1198,7 @@ const parseAuthFromRequest = (authConfig: any) => {
 
   const type = authConfig.type as AuthType;
   authType.value = type;
-  inheritFromParent.value = authConfig.inherit || false;
+  inheritFromParent.value = authConfig.inherit ?? false;
 
   if (type === 'api-key' && authConfig.credentials) {
     apiKey.value.key = authConfig.credentials.key || '';
@@ -1674,7 +1675,9 @@ const hasUnsavedChanges = computed(() => {
   const currentMethod = form.value.method;
   const currentHeaders = buildHeadersRecord();
   const currentBody = buildBody();
-  const currentAuth = {
+  
+  // Normalize auth for comparison - treat missing inherit as false
+  const rawCurrentAuth = {
     type: authType.value,
     inherit: inheritFromParent.value,
     credentials: authType.value === 'api-key' ? {
@@ -1687,6 +1690,17 @@ const hasUnsavedChanges = computed(() => {
         password: basicAuth.value.password
       } : undefined
   } || null;
+  
+  // Normalize both auth objects for comparison
+  const normalizeAuth = (auth: any) => {
+    if (!auth) return null;
+    return {
+      ...auth,
+      inherit: auth.inherit ?? false
+    };
+  };
+  
+  const currentAuth = normalizeAuth(rawCurrentAuth);
   const currentInheritAuth = inheritFromParent.value ? 1 : 0;
   const currentPathVariables = buildPathVariablesRecord();
 
@@ -1710,7 +1724,8 @@ const hasUnsavedChanges = computed(() => {
   const normalizedCurrentBody = currentBody === undefined ? null : currentBody;
   const normalizedOriginalBody = compareState.body === undefined ? null : compareState.body;
   const bodyChanged = JSON.stringify(normalizedCurrentBody) !== JSON.stringify(normalizedOriginalBody);
-  const authChanged = JSON.stringify(currentAuth) !== JSON.stringify(compareState.auth || {});
+  const normalizedCompareAuth = normalizeAuth(compareState.auth);
+  const authChanged = JSON.stringify(currentAuth) !== JSON.stringify(normalizedCompareAuth);
   const inheritAuthChanged = currentInheritAuth !== (compareState.inheritAuth || 0);
   const mockConfigChanged = JSON.stringify(mockConfig.value) !== JSON.stringify(compareState.mockConfig || null);
   const preScriptChanged = (preScript.value || '') !== (compareState.preScript || '');
