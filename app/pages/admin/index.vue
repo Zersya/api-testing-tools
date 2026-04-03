@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { watch, type Ref } from 'vue';
+import { watch, nextTick, type Ref } from 'vue';
 import { debounce } from 'perfect-debounce';
 import RequestBuilder from '~/components/RequestBuilder.vue';
 import CodeExamples from '~/components/CodeExamples.vue';
@@ -383,7 +383,6 @@ const hydrateOpenTabs = (session: PersistedTabSession | null | undefined) => {
       tab.scriptLogs = persistedTab.scriptLogs;
       tab.draftSnapshot = persistedTab.draftSnapshot;
       tab.expandedNodes = persistedTab.expandedNodes;
-      console.log('[DEBUG] hydrateOpenTabs - restored expandedNodes for tab', tab.key, ':', tab.expandedNodes?.length || 0, 'paths');
     }
   });
 
@@ -1788,11 +1787,12 @@ const updateTabUnsavedStatus = (
   hasUnsavedChanges: boolean,
   draft?: RequestDraftSnapshot
 ) => {
-  const tab = openTabs.value.find(t => t.key === activeTabKey.value);
-  if (!tab) {
+  const tabIndex = openTabs.value.findIndex(t => t.key === activeTabKey.value);
+  if (tabIndex === -1) {
     return;
   }
 
+  const tab = openTabs.value[tabIndex];
   const isMatchingRequest = request.id
     ? tab.request.id === request.id
     : true;
@@ -1801,14 +1801,33 @@ const updateTabUnsavedStatus = (
     return;
   }
 
-  const nextRequest = buildPersistedRequestFromDraft(request, draft);
-
-  tab.hasUnsavedChanges = hasUnsavedChanges;
-  tab.request = nextRequest;
-
-  if (activeTabKey.value === tab.key) {
-    selectedRequest.value = nextRequest;
-    isSharedWorkspace.value = checkIfRequestIsInSharedWorkspace(nextRequest);
+  // Update the unsaved changes flag - create new object to trigger reactivity
+  openTabs.value[tabIndex] = {
+    ...tab,
+    hasUnsavedChanges
+  };
+  
+  // Only update request data if draft is provided (actual changes)
+  if (draft) {
+    const nextRequest = buildPersistedRequestFromDraft(request, draft);
+    openTabs.value[tabIndex] = {
+      ...openTabs.value[tabIndex],
+      request: nextRequest
+    };
+    
+    // Only update selectedRequest if it's the active tab and actually different
+    if (activeTabKey.value === tab.key && selectedRequest.value?.id === nextRequest.id) {
+      // Capture the expected tab key before deferring
+      const expectedKey = tab.key;
+      // Use nextTick to avoid circular updates during Vue's render cycle
+      nextTick(() => {
+        // Verify the tab is still active before mutating selection
+        // This prevents setting selectedRequest back to a prior tab if user switched tabs
+        if (activeTabKey.value !== expectedKey) return;
+        selectedRequest.value = nextRequest;
+        isSharedWorkspace.value = checkIfRequestIsInSharedWorkspace(nextRequest);
+      });
+    }
   }
 };
 
@@ -1821,7 +1840,6 @@ const handleBuilderStateChange = (state: {
 }) => {
   const tab = openTabs.value.find(t => t.key === activeTabKey.value);
   if (!tab) {
-    console.log('[DEBUG] handleBuilderStateChange: No active tab found');
     return;
   }
 
@@ -1830,8 +1848,6 @@ const handleBuilderStateChange = (state: {
   tab.activeBuilderTab = state.activeTab as any;
   tab.scriptLogs = state.scriptLogs;
   tab.expandedNodes = state.expandedNodes;
-  
-  console.log('[DEBUG] handleBuilderStateChange - expandedNodes saved:', state.expandedNodes?.length || 0, 'paths');
 };
 
 const handleSaveRequest = async (request: any) => {
