@@ -722,17 +722,18 @@ const loadRequestData = (request: HttpRequest) => {
     
     // Capture original request state for change detection
     // This prevents comparison against mutated props.request
+    // IMPORTANT: Deep clone mutable objects to ensure the baseline cannot be mutated indirectly
     originalRequestState.value = {
       method: request.method,
       url: request.url,
-      headers: request.headers,
-      body: request.body,
-      auth: request.auth,
+      headers: request.headers ? JSON.parse(JSON.stringify(request.headers)) : {},
+      body: request.body ? JSON.parse(JSON.stringify(request.body)) : null,
+      auth: request.auth ? JSON.parse(JSON.stringify(request.auth)) : {},
       inheritAuth: (request as any).inheritAuth || 0,
-      mockConfig: request.mockConfig,
+      mockConfig: request.mockConfig ? JSON.parse(JSON.stringify(request.mockConfig)) : null,
       preScript: request.preScript,
       postScript: request.postScript,
-      pathVariables: request.pathVariables
+      pathVariables: request.pathVariables ? JSON.parse(JSON.stringify(request.pathVariables)) : {}
     };
     
     // Reset saved state to ensure fresh comparison for the newly loaded request
@@ -1745,17 +1746,18 @@ const hasUnsavedChanges = computed(() => {
 
   // Use lastSavedState if available (after a save), otherwise use originalRequestState (captured on load)
   // NEVER use props.request directly as it can be mutated by parent component
+  // Deep clone fallback objects to ensure immutability consistency with originalRequestState
   const compareState = lastSavedState.value || originalRequestState.value || {
     method: props.request.method,
     url: props.request.url,
-    headers: props.request.headers,
-    body: props.request.body,
-    auth: props.request.auth,
+    headers: props.request.headers ? JSON.parse(JSON.stringify(props.request.headers)) : {},
+    body: props.request.body ? JSON.parse(JSON.stringify(props.request.body)) : null,
+    auth: props.request.auth ? JSON.parse(JSON.stringify(props.request.auth)) : {},
     inheritAuth: (props.request as any).inheritAuth || 0,
-    mockConfig: props.request.mockConfig,
+    mockConfig: props.request.mockConfig ? JSON.parse(JSON.stringify(props.request.mockConfig)) : null,
     preScript: props.request.preScript,
     postScript: props.request.postScript,
-    pathVariables: props.request.pathVariables
+    pathVariables: props.request.pathVariables ? JSON.parse(JSON.stringify(props.request.pathVariables)) : {}
   };
 
   const urlChanged = currentUrl !== compareState.url;
