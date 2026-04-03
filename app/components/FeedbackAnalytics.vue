@@ -773,6 +773,7 @@ const selectedStatuses = ref<FeedbackStatus[]>([]);
 const quickStatusOpen = ref<string | null>(null);
 const quickStatusPosition = ref({ x: 0, y: 0, maxHeight: 200, isAbove: false });
 const quickStatusDropdownRef = ref<HTMLElement | null>(null);
+const quickStatusToggleRef = ref<HTMLElement | null>(null); // Store ref to active toggle button
 const quickStatusSubmission = computed(() => {
   if (!quickStatusOpen.value) return null;
   return submissions.value.find(s => s.id === quickStatusOpen.value) || null;
@@ -962,13 +963,22 @@ const selectAllStatuses = () => {
 const toggleQuickStatus = (submissionId: string, event?: MouseEvent) => {
   if (quickStatusOpen.value === submissionId) {
     quickStatusOpen.value = null;
+    removeQuickStatusListeners();
+    quickStatusToggleRef.value = null;
     return;
+  }
+  
+  // Close any existing dropdown first and clean up
+  if (quickStatusOpen.value) {
+    removeQuickStatusListeners();
   }
   
   quickStatusOpen.value = submissionId;
   
   if (event) {
     const button = event.currentTarget as HTMLElement;
+    quickStatusToggleRef.value = button; // Store ref to button for repositioning
+    
     const buttonRect = button.getBoundingClientRect();
     
     const itemHeight = 32; // Height per status item (button height)
@@ -1011,7 +1021,7 @@ const toggleQuickStatus = (submissionId: string, event?: MouseEvent) => {
       isAbove = true;
     }
     
-    // Ensure dropdown stays within viewport
+    // Ensure dropdown stays within viewport vertically
     if (dropdownY < margin) {
       dropdownY = margin;
     }
@@ -1019,13 +1029,105 @@ const toggleQuickStatus = (submissionId: string, event?: MouseEvent) => {
       maxHeight = viewportHeight - margin - dropdownY;
     }
     
+    // Horizontal constraint: ensure dropdown doesn't go off-screen
+    const dropdownWidth = 140;
+    let dropdownX = buttonRect.left;
+    // Clamp X to stay within viewport with margin
+    dropdownX = Math.min(dropdownX, window.innerWidth - dropdownWidth - margin);
+    dropdownX = Math.max(dropdownX, margin);
+    
     quickStatusPosition.value = {
-      x: buttonRect.left,
+      x: dropdownX,
       y: dropdownY,
       maxHeight: maxHeight,
       isAbove: isAbove
     };
+    
+    // Add scroll/resize listeners to keep dropdown positioned correctly
+    addQuickStatusListeners();
   }
+};
+
+// Update dropdown position based on stored toggle button reference
+const updateQuickStatusPosition = () => {
+  if (!quickStatusToggleRef.value || !quickStatusOpen.value) return;
+  
+  const button = quickStatusToggleRef.value;
+  const buttonRect = button.getBoundingClientRect();
+  
+  // If button is no longer visible (scrolled out of view), close dropdown
+  if (buttonRect.bottom < 0 || buttonRect.top > window.innerHeight) {
+    quickStatusOpen.value = null;
+    removeQuickStatusListeners();
+    quickStatusToggleRef.value = null;
+    return;
+  }
+  
+  const itemHeight = 32;
+  const padding = 16;
+  const naturalDropdownHeight = itemHeight * availableStatuses.length + padding;
+  
+  const viewportHeight = window.innerHeight;
+  const margin = 8;
+  const gap = 1;
+  
+  const spaceBelow = viewportHeight - buttonRect.bottom - margin;
+  const spaceAbove = buttonRect.top - margin;
+  
+  let dropdownY: number;
+  let maxHeight: number;
+  let isAbove = false;
+  
+  if (spaceBelow >= naturalDropdownHeight) {
+    dropdownY = buttonRect.bottom + gap;
+    maxHeight = naturalDropdownHeight;
+    isAbove = false;
+  } else if (spaceAbove >= naturalDropdownHeight) {
+    dropdownY = buttonRect.top - naturalDropdownHeight - gap;
+    maxHeight = naturalDropdownHeight;
+    isAbove = true;
+  } else if (spaceBelow >= spaceAbove) {
+    dropdownY = buttonRect.bottom + gap;
+    maxHeight = Math.max(itemHeight * 2 + padding, spaceBelow);
+    isAbove = false;
+  } else {
+    maxHeight = Math.max(itemHeight * 2 + padding, spaceAbove);
+    dropdownY = buttonRect.top - maxHeight - gap;
+    isAbove = true;
+  }
+  
+  if (dropdownY < margin) {
+    dropdownY = margin;
+  }
+  if (dropdownY + maxHeight > viewportHeight - margin) {
+    maxHeight = viewportHeight - margin - dropdownY;
+  }
+  
+  // Horizontal constraint: ensure dropdown doesn't go off-screen
+  const dropdownWidth = 140;
+  let dropdownX = buttonRect.left;
+  // Clamp X to stay within viewport with margin
+  dropdownX = Math.min(dropdownX, window.innerWidth - dropdownWidth - margin);
+  dropdownX = Math.max(dropdownX, margin);
+  
+  quickStatusPosition.value = {
+    x: dropdownX,
+    y: dropdownY,
+    maxHeight: maxHeight,
+    isAbove: isAbove
+  };
+};
+
+// Add scroll/resize listeners when dropdown opens
+const addQuickStatusListeners = () => {
+  window.addEventListener('scroll', updateQuickStatusPosition, true); // capture phase for nested scrolls
+  window.addEventListener('resize', updateQuickStatusPosition);
+};
+
+// Remove scroll/resize listeners when dropdown closes
+const removeQuickStatusListeners = () => {
+  window.removeEventListener('scroll', updateQuickStatusPosition, true);
+  window.removeEventListener('resize', updateQuickStatusPosition);
 };
 
 // Status change confirmation
@@ -1094,6 +1196,11 @@ const confirmStatusChangeAction = async () => {
       
       // Close confirmation
       cancelStatusChange();
+    } else {
+      // Handle failure case - reset loading so user can retry or close modal
+      console.error('Failed to update status:', response);
+      alert('Failed to update status. Please try again.');
+      confirmStatusChange.value.loading = false;
     }
   } catch (e) {
     console.error('Failed to update status:', e);
@@ -1131,5 +1238,7 @@ onMounted(() => {
 // Clean up
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside);
+  // Clean up quick status dropdown listeners if still active
+  removeQuickStatusListeners();
 });
 </script>
