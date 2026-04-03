@@ -64,6 +64,7 @@ interface HttpRequest {
   body: Record<string, unknown> | string | null;
   auth: {
     type: string;
+    inherit?: boolean;
     credentials?: Record<string, string>;
   } | null;
   mockConfig?: import('../../server/db/schema/savedRequest').MockConfig | null;
@@ -596,7 +597,7 @@ const loadRequestData = (request: HttpRequest) => {
     } else {
       const type = authConfig.type as AuthType;
       authType.value = type;
-      inheritFromParent.value = authConfig.inherit || false;
+      inheritFromParent.value = authConfig.inherit ?? false;
 
       if (type === 'api-key' && authConfig.credentials) {
         apiKey.value.key = authConfig.credentials.key || '';
@@ -619,9 +620,9 @@ const loadRequestData = (request: HttpRequest) => {
         oauth2.value.expiresAt = authConfig.credentials.expiresAt || null;
         oauth2.value.tokenType = authConfig.credentials.tokenType || 'Bearer';
         oauth2.value.grantType = authConfig.credentials.grantType || 'authorization_code';
-        oauth2.value.PKCE = authConfig.credentials.PKCE || false;
-      }
+      oauth2.value.PKCE = authConfig.credentials.PKCE || false;
     }
+  }
 
     // Load inheritAuth setting
     inheritFromParent.value = (request as any).inheritAuth === 1;
@@ -1263,7 +1264,7 @@ const parseAuthFromRequest = (authConfig: any) => {
 
   const type = authConfig.type as AuthType;
   authType.value = type;
-  inheritFromParent.value = authConfig.inherit || false;
+  inheritFromParent.value = authConfig.inherit ?? false;
 
   if (type === 'api-key' && authConfig.credentials) {
     apiKey.value.key = authConfig.credentials.key || '';
@@ -1745,7 +1746,9 @@ const hasUnsavedChanges = computed(() => {
   const currentMethod = form.value.method;
   const currentHeaders = buildHeadersRecord();
   const currentBody = buildBody();
-  const currentAuth = {
+  
+  // Normalize auth for comparison - make aware of inheritAuth for accurate comparisons
+  const rawCurrentAuth = {
     type: authType.value,
     inherit: inheritFromParent.value,
     credentials: authType.value === 'api-key' ? {
@@ -1758,7 +1761,26 @@ const hasUnsavedChanges = computed(() => {
         password: basicAuth.value.password
       } : undefined
   } || null;
+  
+  // Normalize auth for comparison - aware of inheritAuth setting
+  // This ensures null auth with inheritAuth=1 compares equal to {type:'none', inherit:true}
+  const normalizeAuth = (auth: any, inheritAuth: number = 0) => {
+    if (!auth) {
+      // Return canonical "no auth" object that respects inheritAuth
+      return {
+        type: 'none',
+        inherit: inheritAuth === 1
+      };
+    }
+    return {
+      ...auth,
+      // Use auth.inherit if present, otherwise fall back to inheritAuth
+      inherit: auth.inherit ?? (inheritAuth === 1)
+    };
+  };
+  
   const currentInheritAuth = inheritFromParent.value ? 1 : 0;
+  const currentAuth = normalizeAuth(rawCurrentAuth, currentInheritAuth);
   const currentPathVariables = buildPathVariablesRecord();
 
   // Use lastSavedState if available (after a save), otherwise use originalRequestState (captured on load)
@@ -1769,7 +1791,7 @@ const hasUnsavedChanges = computed(() => {
     url: props.request.url,
     headers: props.request.headers ? JSON.parse(JSON.stringify(props.request.headers)) : {},
     body: props.request.body ? JSON.parse(JSON.stringify(props.request.body)) : null,
-    auth: props.request.auth ? JSON.parse(JSON.stringify(props.request.auth)) : {},
+    auth: props.request.auth ? JSON.parse(JSON.stringify(props.request.auth)) : null,
     inheritAuth: (props.request as any).inheritAuth || 0,
     mockConfig: props.request.mockConfig ? JSON.parse(JSON.stringify(props.request.mockConfig)) : null,
     preScript: props.request.preScript,
@@ -1783,7 +1805,8 @@ const hasUnsavedChanges = computed(() => {
   const normalizedCurrentBody = currentBody === undefined ? null : currentBody;
   const normalizedOriginalBody = compareState.body === undefined ? null : compareState.body;
   const bodyChanged = JSON.stringify(normalizedCurrentBody) !== JSON.stringify(normalizedOriginalBody);
-  const authChanged = JSON.stringify(currentAuth) !== JSON.stringify(compareState.auth || {});
+  const normalizedCompareAuth = normalizeAuth(compareState.auth, compareState.inheritAuth || 0);
+  const authChanged = JSON.stringify(currentAuth) !== JSON.stringify(normalizedCompareAuth);
   const inheritAuthChanged = currentInheritAuth !== (compareState.inheritAuth || 0);
   const mockConfigChanged = JSON.stringify(mockConfig.value) !== JSON.stringify(compareState.mockConfig || null);
   const preScriptChanged = (preScript.value || '') !== (compareState.preScript || '');
