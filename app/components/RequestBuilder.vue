@@ -341,8 +341,8 @@ let currentLoadId = 0;
 // Track if component is mounted to prevent emits during mount/unmount
 const isMounted = ref(false);
 
-// Store original request state to prevent comparison against mutated props
-const originalRequestState = ref<{
+// Shared type for request comparison state used by both originalRequestState and lastSavedState
+interface RequestCompareState {
   method: string;
   url: string;
   headers: Record<string, string> | null;
@@ -350,21 +350,16 @@ const originalRequestState = ref<{
   auth: any;
   inheritAuth: number;
   mockConfig: import('../../server/db/schema/savedRequest').MockConfig | null;
-  preScript: string | null;
-  postScript: string | null;
-  pathVariables: any;
-} | null>(null);
+  preScript: string;
+  postScript: string;
+  pathVariables: import('../../server/db/schema/savedRequest').RequestPathVariables | null;
+}
+
+// Store original request state to prevent comparison against mutated props
+const originalRequestState = ref<RequestCompareState | null>(null);
 
 // Track the last saved state to detect unsaved changes after save
-const lastSavedState = ref<{
-  method: string;
-  url: string;
-  headers: Record<string, string> | null;
-  body: any;
-  auth: any;
-  inheritAuth: number;
-  mockConfig: import('../../server/db/schema/savedRequest').MockConfig | null;
-} | null>(null);
+const lastSavedState = ref<RequestCompareState | null>(null);
 
 // Function to capture current state as saved
 const captureCurrentStateAsSaved = () => {
