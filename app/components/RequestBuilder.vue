@@ -720,20 +720,33 @@ const loadRequestData = (request: HttpRequest) => {
     lastLoadedRequestId.value = request.id;
     lastLoadedRequestSnapshot.value = snapshot;
     
-    // Capture original request state for change detection
-    // This prevents comparison against mutated props.request
-    // IMPORTANT: Deep clone mutable objects to ensure the baseline cannot be mutated indirectly
+    // Capture original request state for change detection using NORMALIZED form values
+    // This ensures the baseline matches what hasUnsavedChanges computes, preventing dirty-on-load
+    // We use the same build functions that hasUnsavedChanges uses for consistency
+    const builtBody = buildBody();
     originalRequestState.value = {
-      method: request.method,
-      url: request.url,
-      headers: request.headers ? JSON.parse(JSON.stringify(request.headers)) : {},
-      body: request.body ? JSON.parse(JSON.stringify(request.body)) : null,
-      auth: request.auth ? JSON.parse(JSON.stringify(request.auth)) : {},
-      inheritAuth: (request as any).inheritAuth || 0,
-      mockConfig: request.mockConfig ? JSON.parse(JSON.stringify(request.mockConfig)) : null,
-      preScript: request.preScript,
-      postScript: request.postScript,
-      pathVariables: request.pathVariables ? JSON.parse(JSON.stringify(request.pathVariables)) : {}
+      method: form.value.method,
+      url: form.value.url,
+      headers: JSON.parse(JSON.stringify(buildHeadersRecord())),
+      body: builtBody === undefined ? null : JSON.parse(JSON.stringify(builtBody)),
+      auth: JSON.parse(JSON.stringify({
+        type: authType.value,
+        inherit: inheritFromParent.value,
+        credentials: authType.value === 'api-key' ? {
+          key: apiKey.value.key,
+          value: apiKey.value.value,
+          addTo: apiKey.value.addTo
+        } : authType.value === 'bearer' ? { token: bearerToken.value }
+          : authType.value === 'basic' ? {
+            username: basicAuth.value.username,
+            password: basicAuth.value.password
+          } : undefined
+      })) || {},
+      inheritAuth: inheritFromParent.value ? 1 : 0,
+      mockConfig: mockConfig.value ? JSON.parse(JSON.stringify(mockConfig.value)) : null,
+      preScript: preScript.value || '',
+      postScript: postScript.value || '',
+      pathVariables: JSON.parse(JSON.stringify(buildPathVariablesRecord()))
     };
     
     // Reset saved state to ensure fresh comparison for the newly loaded request
