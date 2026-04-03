@@ -332,6 +332,26 @@ const lastLoadedRequestId = ref<string | null>(null);
 // Track the serialized version of the last loaded request to detect changes
 const lastLoadedRequestSnapshot = ref<string>('');
 
+// Track whether we're currently loading request data to prevent false change detection
+const isLoadingRequestData = ref(false);
+
+// Track if component is mounted to prevent emits during mount/unmount
+const isMounted = ref(false);
+
+// Store original request state to prevent comparison against mutated props
+const originalRequestState = ref<{
+  method: string;
+  url: string;
+  headers: Record<string, string> | null;
+  body: any;
+  auth: any;
+  inheritAuth: number;
+  mockConfig: import('../../server/db/schema/savedRequest').MockConfig | null;
+  preScript: string | null;
+  postScript: string | null;
+  pathVariables: any;
+} | null>(null);
+
 // Track the last saved state to detect unsaved changes after save
 const lastSavedState = ref<{
   method: string;
@@ -433,288 +453,317 @@ const isFirstLoad = ref(true);
 
 // Function to load request data into form state
 const loadRequestData = (request: HttpRequest) => {
-  // Create a snapshot of key fields to detect changes
-  const snapshot = JSON.stringify({
-    id: request.id,
-    url: request.url,
-    headers: request.headers,
-    body: request.body,
-    auth: request.auth
-  });
+  // Set flag to prevent change detection during loading
+  isLoadingRequestData.value = true;
   
-  // Skip if exactly the same as what we loaded
-  if (snapshot === lastLoadedRequestSnapshot.value && lastLoadedRequestId.value === request.id && !isFirstLoad.value) {
-    return;
-  }
+  try {
+    // Create a snapshot of key fields to detect changes
+    const snapshot = JSON.stringify({
+      id: request.id,
+      url: request.url,
+      headers: request.headers,
+      body: request.body,
+      auth: request.auth
+    });
+    
+    // Skip if exactly the same as what we loaded
+    if (snapshot === lastLoadedRequestSnapshot.value && lastLoadedRequestId.value === request.id && !isFirstLoad.value) {
+      return;
+    }
+    
+    // Reset all form state first to prevent stale data
+    form.value.method = request.method as typeof HTTP_METHODS[number];
+    form.value.url = request.url;
   
-  // Reset all form state first to prevent stale data
-  form.value.method = request.method as typeof HTTP_METHODS[number];
-  form.value.url = request.url;
-  
-  // Reset query params
-  queryParams.value = parseUrlQuery(request.url);
-  
-  // Reset headers
-  if (request.headers) {
-    try {
-      let headersObj: Record<string, string>;
-      
-      if (typeof request.headers === 'string') {
-        headersObj = JSON.parse(request.headers);
-      } else {
-        headersObj = request.headers as Record<string, string>;
-      }
-      
-      // Validate that headersObj is actually an object, not an array or other type
-      if (headersObj && typeof headersObj === 'object' && !Array.isArray(headersObj)) {
-        headers.value = Object.entries(headersObj).map(([key, value]) => {
-          let strValue = String(value);
-          // Strip surrounding quotes if present (handles double-quoted strings from import)
-          if (strValue.startsWith('"') && strValue.endsWith('"') && strValue.length >= 2) {
-            try {
-              strValue = JSON.parse(strValue);
-            } catch {
-              // If parsing fails, keep original value
+    // Reset query params
+    queryParams.value = parseUrlQuery(request.url);
+    
+    // Reset headers
+    if (request.headers) {
+      try {
+        let headersObj: Record<string, string>;
+        
+        if (typeof request.headers === 'string') {
+          headersObj = JSON.parse(request.headers);
+        } else {
+          headersObj = request.headers as Record<string, string>;
+        }
+        
+        // Validate that headersObj is actually an object, not an array or other type
+        if (headersObj && typeof headersObj === 'object' && !Array.isArray(headersObj)) {
+          headers.value = Object.entries(headersObj).map(([key, value]) => {
+            let strValue = String(value);
+            // Strip surrounding quotes if present (handles double-quoted strings from import)
+            if (strValue.startsWith('"') && strValue.endsWith('"') && strValue.length >= 2) {
+              try {
+                strValue = JSON.parse(strValue);
+              } catch {
+                // If parsing fails, keep original value
+              }
             }
-          }
-          return {
-            id: crypto.randomUUID(),
-            key,
-            value: strValue,
-            enabled: true
-          };
-        });
-      } else {
-        console.warn('Invalid headers format:', headersObj);
+            return {
+              id: crypto.randomUUID(),
+              key,
+              value: strValue,
+              enabled: true
+            };
+          });
+        } else {
+          console.warn('Invalid headers format:', headersObj);
+          headers.value = [];
+        }
+      } catch (e) {
+        console.warn('Failed to parse headers:', e);
         headers.value = [];
       }
-    } catch (e) {
-      console.warn('Failed to parse headers:', e);
+    } else {
       headers.value = [];
     }
-  } else {
-    headers.value = [];
-  }
-  
-  // Reset ALL body-related state first
-  jsonBody.value = '';
-  rawBody.value = '';
-  formDataParams.value = [];
-  binaryFile.value = null;
-  bodyFormat.value = 'none';
-  
-  // Load ALL body state from request if it exists
-  const persistedBodyFormat = (request as HttpRequest & RequestDraftSnapshot).bodyFormat;
-  if (persistedBodyFormat && BODY_FORMATS.includes(persistedBodyFormat)) {
-    bodyFormat.value = persistedBodyFormat;
-  }
+    
+    // Reset ALL body-related state first
+    jsonBody.value = '';
+    rawBody.value = '';
+    formDataParams.value = [];
+    binaryFile.value = null;
+    bodyFormat.value = 'none';
+    
+    // Load ALL body state from request if it exists
+    const persistedBodyFormat = (request as HttpRequest & RequestDraftSnapshot).bodyFormat;
+    if (persistedBodyFormat && BODY_FORMATS.includes(persistedBodyFormat)) {
+      bodyFormat.value = persistedBodyFormat;
+    }
 
-  const persistedJsonBody = (request as HttpRequest & RequestDraftSnapshot).jsonBody;
-  if (typeof persistedJsonBody === 'string') {
-    jsonBody.value = persistedJsonBody;
-  }
+    const persistedJsonBody = (request as HttpRequest & RequestDraftSnapshot).jsonBody;
+    if (typeof persistedJsonBody === 'string') {
+      jsonBody.value = persistedJsonBody;
+    }
 
-  const persistedRawBody = (request as HttpRequest & RequestDraftSnapshot).rawBody;
-  if (typeof persistedRawBody === 'string') {
-    rawBody.value = persistedRawBody;
-  }
+    const persistedRawBody = (request as HttpRequest & RequestDraftSnapshot).rawBody;
+    if (typeof persistedRawBody === 'string') {
+      rawBody.value = persistedRawBody;
+    }
 
-  const persistedRawContentType = (request as HttpRequest & RequestDraftSnapshot).rawContentType;
-  if (typeof persistedRawContentType === 'string' && persistedRawContentType) {
-    rawContentType.value = persistedRawContentType;
-  }
+    const persistedRawContentType = (request as HttpRequest & RequestDraftSnapshot).rawContentType;
+    if (typeof persistedRawContentType === 'string' && persistedRawContentType) {
+      rawContentType.value = persistedRawContentType;
+    }
 
-  const persistedFormDataParams = (request as HttpRequest & RequestDraftSnapshot).formDataParams;
-  if (Array.isArray(persistedFormDataParams)) {
-    formDataParams.value = persistedFormDataParams.map(param => ({
-      id: crypto.randomUUID(),
-      key: param.key || '',
-      value: param.value || '',
-      enabled: param.enabled !== false,
-      type: param.type === 'file' ? 'file' : 'text'
-    }));
-  }
+    const persistedFormDataParams = (request as HttpRequest & RequestDraftSnapshot).formDataParams;
+    if (Array.isArray(persistedFormDataParams)) {
+      formDataParams.value = persistedFormDataParams.map(param => ({
+        id: crypto.randomUUID(),
+        key: param.key || '',
+        value: param.value || '',
+        enabled: param.enabled !== false,
+        type: param.type === 'file' ? 'file' : 'text'
+      }));
+    }
 
-  // Then set body from request if it exists
-  if (request.body !== null && request.body !== undefined) {
-    try {
-      if (typeof request.body === 'string') {
-        // Try to parse as JSON
-        try {
-          const bodyObj = JSON.parse(request.body);
-          jsonBody.value = JSON.stringify(bodyObj, null, 2);
+    // Then set body from request if it exists
+    if (request.body !== null && request.body !== undefined) {
+      try {
+        if (typeof request.body === 'string') {
+          // Try to parse as JSON
+          try {
+            const bodyObj = JSON.parse(request.body);
+            jsonBody.value = JSON.stringify(bodyObj, null, 2);
+            bodyFormat.value = 'json';
+          } catch {
+            // Not JSON, treat as raw
+            rawBody.value = request.body;
+            bodyFormat.value = 'raw';
+          }
+        } else if (typeof request.body === 'object') {
+          jsonBody.value = JSON.stringify(request.body, null, 2);
           bodyFormat.value = 'json';
-        } catch {
-          // Not JSON, treat as raw
-          rawBody.value = request.body;
-          bodyFormat.value = 'raw';
         }
-      } else if (typeof request.body === 'object') {
-        jsonBody.value = JSON.stringify(request.body, null, 2);
-        bodyFormat.value = 'json';
+      } catch (e) {
+        console.error('Error setting body:', e);
+        bodyFormat.value = 'none';
+        jsonBody.value = '';
       }
-    } catch (e) {
-      console.error('Error setting body:', e);
-      bodyFormat.value = 'none';
-      jsonBody.value = '';
+    } 
+    
+    // Reset auth state
+    const authConfig = request.auth;
+    if (!authConfig) {
+      authType.value = 'none';
+      inheritFromParent.value = false;
+      apiKey.value = { key: '', value: '', addTo: 'header' };
+      bearerToken.value = '';
+      basicAuth.value = { username: '', password: '' };
+    } else {
+      const type = authConfig.type as AuthType;
+      authType.value = type;
+      inheritFromParent.value = authConfig.inherit || false;
+
+      if (type === 'api-key' && authConfig.credentials) {
+        apiKey.value.key = authConfig.credentials.key || '';
+        apiKey.value.value = authConfig.credentials.value || '';
+        apiKey.value.addTo = (authConfig.credentials.addTo as 'header' | 'query') || 'header';
+      } else if (type === 'bearer' && authConfig.credentials) {
+        bearerToken.value = authConfig.credentials.token || '';
+      } else if (type === 'basic' && authConfig.credentials) {
+        basicAuth.value.username = authConfig.credentials.username || '';
+        basicAuth.value.password = authConfig.credentials.password || '';
+      } else if (type === 'oauth2' && authConfig.credentials) {
+        oauth2.value.authUrl = authConfig.credentials.authUrl || '';
+        oauth2.value.tokenUrl = authConfig.credentials.tokenUrl || '';
+        oauth2.value.clientId = authConfig.credentials.clientId || '';
+        oauth2.value.clientSecret = authConfig.credentials.clientSecret || '';
+        oauth2.value.scopes = authConfig.credentials.scopes || '';
+        oauth2.value.callbackUrl = authConfig.credentials.callbackUrl || '';
+        oauth2.value.accessToken = authConfig.credentials.accessToken || '';
+        oauth2.value.refreshToken = authConfig.credentials.refreshToken || '';
+        oauth2.value.expiresAt = authConfig.credentials.expiresAt || null;
+        oauth2.value.tokenType = authConfig.credentials.tokenType || 'Bearer';
+        oauth2.value.grantType = authConfig.credentials.grantType || 'authorization_code';
+        oauth2.value.PKCE = authConfig.credentials.PKCE || false;
+      }
     }
-  } 
-  
-  // Reset auth state
-  const authConfig = request.auth;
-  if (!authConfig) {
-    authType.value = 'none';
-    inheritFromParent.value = false;
-    apiKey.value = { key: '', value: '', addTo: 'header' };
-    bearerToken.value = '';
-    basicAuth.value = { username: '', password: '' };
-  } else {
-    const type = authConfig.type as AuthType;
-    authType.value = type;
-    inheritFromParent.value = authConfig.inherit || false;
 
-    if (type === 'api-key' && authConfig.credentials) {
-      apiKey.value.key = authConfig.credentials.key || '';
-      apiKey.value.value = authConfig.credentials.value || '';
-      apiKey.value.addTo = (authConfig.credentials.addTo as 'header' | 'query') || 'header';
-    } else if (type === 'bearer' && authConfig.credentials) {
-      bearerToken.value = authConfig.credentials.token || '';
-    } else if (type === 'basic' && authConfig.credentials) {
-      basicAuth.value.username = authConfig.credentials.username || '';
-      basicAuth.value.password = authConfig.credentials.password || '';
-    } else if (type === 'oauth2' && authConfig.credentials) {
-      oauth2.value.authUrl = authConfig.credentials.authUrl || '';
-      oauth2.value.tokenUrl = authConfig.credentials.tokenUrl || '';
-      oauth2.value.clientId = authConfig.credentials.clientId || '';
-      oauth2.value.clientSecret = authConfig.credentials.clientSecret || '';
-      oauth2.value.scopes = authConfig.credentials.scopes || '';
-      oauth2.value.callbackUrl = authConfig.credentials.callbackUrl || '';
-      oauth2.value.accessToken = authConfig.credentials.accessToken || '';
-      oauth2.value.refreshToken = authConfig.credentials.refreshToken || '';
-      oauth2.value.expiresAt = authConfig.credentials.expiresAt || null;
-      oauth2.value.tokenType = authConfig.credentials.tokenType || 'Bearer';
-      oauth2.value.grantType = authConfig.credentials.grantType || 'authorization_code';
-      oauth2.value.PKCE = authConfig.credentials.PKCE || false;
+    // Load inheritAuth setting
+    inheritFromParent.value = (request as any).inheritAuth === 1;
+
+    // Load mock configuration
+    if (request.mockConfig) {
+      mockConfig.value = request.mockConfig;
+    } else {
+      mockConfig.value = null;
     }
-  }
 
-  // Load inheritAuth setting
-  inheritFromParent.value = (request as any).inheritAuth === 1;
+    // Load scripts
+    preScript.value = request.preScript || '';
+    postScript.value = request.postScript || '';
 
-  // Load mock configuration
-  if (request.mockConfig) {
-    mockConfig.value = request.mockConfig;
-  } else {
-    mockConfig.value = null;
-  }
+    // Load path variables
+    pathVariables.value = [];
+    if (request.pathVariables) {
+      try {
+        const pathVarsObj = typeof request.pathVariables === 'string'
+          ? JSON.parse(request.pathVariables)
+          : request.pathVariables;
 
-  // Load scripts
-  preScript.value = request.preScript || '';
-  postScript.value = request.postScript || '';
+        if (pathVarsObj && typeof pathVarsObj === 'object' && !Array.isArray(pathVarsObj)) {
+          pathVariables.value = Object.entries(pathVarsObj).map(([key, config]) => {
+            const varConfig = config as { value?: string; description?: string };
+            return {
+              id: crypto.randomUUID(),
+              key,
+              value: varConfig?.value || '',
+              enabled: true,
+              description: varConfig?.description || ''
+            };
+          });
+        }
+      } catch (e) {
+        console.warn('Failed to parse path variables:', e);
+        pathVariables.value = [];
+      }
+    }
 
-  // Load path variables
-  pathVariables.value = [];
-  if (request.pathVariables) {
-    try {
-      const pathVarsObj = typeof request.pathVariables === 'string'
-        ? JSON.parse(request.pathVariables)
-        : request.pathVariables;
-
-      if (pathVarsObj && typeof pathVarsObj === 'object' && !Array.isArray(pathVarsObj)) {
-        pathVariables.value = Object.entries(pathVarsObj).map(([key, config]) => {
-          const varConfig = config as { value?: string; description?: string };
-          return {
-            id: crypto.randomUUID(),
-            key,
-            value: varConfig?.value || '',
-            enabled: true,
-            description: varConfig?.description || ''
-          };
+    // Auto-detect path variables from URL
+    const detectedVars = extractPathVariablesFromUrl(request.url);
+    detectedVars.forEach(varName => {
+      const existingVar = pathVariables.value.find(v => v.key === varName);
+      if (!existingVar) {
+        pathVariables.value.push({
+          id: crypto.randomUUID(),
+          key: varName,
+          value: '',
+          enabled: true,
+          description: ''
         });
       }
-    } catch (e) {
-      console.warn('Failed to parse path variables:', e);
-      pathVariables.value = [];
+    });
+
+    // Only clear response and script logs on first load if no initial state provided
+    // This preserves state when switching between tabs
+    if (isFirstLoad.value) {
+      if (props.initialResponse !== undefined) {
+        response.value = props.initialResponse;
+      } else {
+        response.value = null;
+      }
+      
+      if (props.initialScriptLogs !== undefined) {
+        scriptLogs.value = props.initialScriptLogs;
+      } else {
+        scriptLogs.value = [];
+      }
+      
+      if (props.initialActiveTab !== undefined) {
+        activeTab.value = props.initialActiveTab;
+      } else {
+        activeTab.value = 'params';
+      }
+
+      // Restore expanded nodes state for JSON pretty view
+      if (props.initialExpandedNodes !== undefined && props.initialExpandedNodes.length > 0) {
+        // Restore saved expansion state
+        expandedNodes.value = new Set(props.initialExpandedNodes);
+      } else if (props.initialResponse && 'success' in props.initialResponse && props.initialResponse.body) {
+        // If there's a persisted response but no saved expansion state, expand all by default
+        nextTick(() => {
+          if (responseViewType.value === 'pretty') {
+            expandAll();
+          }
+        });
+      } else {
+        expandedNodes.value.clear();
+      }
+      
+      isFirstLoad.value = false;
     }
+    
+    // Mark as loaded with snapshot
+    lastLoadedRequestId.value = request.id;
+    lastLoadedRequestSnapshot.value = snapshot;
+    
+    // Capture original request state for change detection
+    // This prevents comparison against mutated props.request
+    originalRequestState.value = {
+      method: request.method,
+      url: request.url,
+      headers: request.headers,
+      body: request.body,
+      auth: request.auth,
+      inheritAuth: (request as any).inheritAuth || 0,
+      mockConfig: request.mockConfig,
+      preScript: request.preScript,
+      postScript: request.postScript,
+      pathVariables: request.pathVariables
+    };
+    
+    // Reset saved state to ensure fresh comparison for the newly loaded request
+    // This prevents stale saved state from previous tabs affecting change detection
+    lastSavedState.value = null;
+  } finally {
+    // Clear loading flag after a small delay to allow all reactive updates to settle
+    // Use setTimeout to ensure we're outside of Vue's update cycle
+    setTimeout(() => {
+      isLoadingRequestData.value = false;
+    }, 0);
   }
-
-  // Auto-detect path variables from URL
-  const detectedVars = extractPathVariablesFromUrl(request.url);
-  detectedVars.forEach(varName => {
-    const existingVar = pathVariables.value.find(v => v.key === varName);
-    if (!existingVar) {
-      pathVariables.value.push({
-        id: crypto.randomUUID(),
-        key: varName,
-        value: '',
-        enabled: true,
-        description: ''
-      });
-    }
-  });
-
-  // Only clear response and script logs on first load if no initial state provided
-  // This preserves state when switching between tabs
-  if (isFirstLoad.value) {
-    if (props.initialResponse !== undefined) {
-      response.value = props.initialResponse;
-    } else {
-      response.value = null;
-    }
-    
-    if (props.initialScriptLogs !== undefined) {
-      scriptLogs.value = props.initialScriptLogs;
-    } else {
-      scriptLogs.value = [];
-    }
-    
-    if (props.initialActiveTab !== undefined) {
-      activeTab.value = props.initialActiveTab;
-    } else {
-      activeTab.value = 'params';
-    }
-
-    // Restore expanded nodes state for JSON pretty view
-    if (props.initialExpandedNodes !== undefined && props.initialExpandedNodes.length > 0) {
-      // Restore saved expansion state
-      expandedNodes.value = new Set(props.initialExpandedNodes);
-    } else if (props.initialResponse && 'success' in props.initialResponse && props.initialResponse.body) {
-      // If there's a persisted response but no saved expansion state, expand all by default
-      nextTick(() => {
-        if (responseViewType.value === 'pretty') {
-          expandAll();
-        }
-      });
-    } else {
-      expandedNodes.value.clear();
-    }
-    
-    isFirstLoad.value = false;
-  }
-  
-  // Mark as loaded with snapshot
-  lastLoadedRequestId.value = request.id;
-  lastLoadedRequestSnapshot.value = snapshot;
 };
 
 // Watch for tab key changes - this ensures proper triggering on every tab switch
 // Using tabKey instead of request.id to handle multiple tabs with same request (e.g., unsaved tabs with id: '')
+// Note: { immediate: true } removed - initial load handled in onMounted to ensure isMounted is set first
 watch(() => props.tabKey, () => {
   isFirstLoad.value = true;
   loadRequestData(props.request);
-}, { immediate: true });
+});
 
 // Watch for initialExpandedNodes changes to restore state when it becomes available
 // This handles the case where the parent's tabs are still loading when this component mounts
 watch(() => props.initialExpandedNodes, (newVal) => {
-  console.log('[DEBUG] initialExpandedNodes changed:', newVal?.length || 0, 'paths');
   if (!response.value) return;
   
   if (newVal !== undefined && newVal.length > 0) {
     // Restore saved expansion state
     expandedNodes.value = new Set(newVal);
     expandedNodesVersion++;
-    console.log('[DEBUG] Restored expandedNodes from prop');
   } else if (newVal !== undefined && newVal.length === 0) {
     // If explicitly empty array (persisted but no expansion state), expand all by default
     nextTick(() => {
@@ -760,7 +809,6 @@ watch(
       newState.expandedNodesVer !== oldState?.expandedNodesVer
     ) {
       const expandedNodesArray = Array.from(expandedNodes.value);
-      console.log('[DEBUG] Emitting stateChange with expandedNodes:', expandedNodesArray.length, 'paths');
       emitStateChange({
         response: newState.response,
         activeTab: newState.activeTab,
@@ -1670,6 +1718,11 @@ const parseResponseCookies = () => {
 const responseCookies = computed(() => parseResponseCookies());
 
 const hasUnsavedChanges = computed(() => {
+  // Don't detect changes while loading request data to prevent false positives
+  if (isLoadingRequestData.value) {
+    return false;
+  }
+  
   const currentUrl = form.value.url;
   const currentMethod = form.value.method;
   const currentHeaders = buildHeadersRecord();
@@ -1690,8 +1743,9 @@ const hasUnsavedChanges = computed(() => {
   const currentInheritAuth = inheritFromParent.value ? 1 : 0;
   const currentPathVariables = buildPathVariablesRecord();
 
-  // Use lastSavedState if available (after a save), otherwise use props.request
-  const compareState = lastSavedState.value || {
+  // Use lastSavedState if available (after a save), otherwise use originalRequestState (captured on load)
+  // NEVER use props.request directly as it can be mutated by parent component
+  const compareState = lastSavedState.value || originalRequestState.value || {
     method: props.request.method,
     url: props.request.url,
     headers: props.request.headers,
@@ -2080,7 +2134,6 @@ const toggleNode = (path: string) => {
   }
   
   expandedNodesVersion++;
-  console.log('[DEBUG] toggleNode - path:', path, 'expanded:', expandedNodes.value.has(path), 'total:', expandedNodes.value.size);
   updateSearchMatches(false);
 };
 
@@ -2425,13 +2478,21 @@ watch(bodyFormat, (newFormat) => {
   }
 });
 
-watch(hasUnsavedChanges, (newValue) => {
+watch(hasUnsavedChanges, (newValue, oldValue) => {
+  // Don't emit if not mounted, during loading, or if value hasn't changed
+  if (!isMounted.value || isLoadingRequestData.value || newValue === oldValue) {
+    return;
+  }
   emit('unsavedChanges', props.request, newValue, buildDraftSnapshot());
 });
 
 onMounted(() => {
-  headers.value = parseHeadersFromRequest(props.request.headers);
-  parseAuthFromRequest(props.request.auth);
+  isMounted.value = true;
+  
+  // Load initial request data (this handles headers, auth, body, etc.)
+  loadRequestData(props.request);
+  
+  // Other initialization that's not part of request data loading
   checkForOAuthCallback();
   fetchEnvironmentVariables();
   
@@ -2599,6 +2660,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  isMounted.value = false;
   window.removeEventListener('keydown', handleKeydown);
 });
 
