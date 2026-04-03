@@ -363,7 +363,7 @@
                     <!-- Quick Status Change Dropdown -->
                     <div class="relative quick-status-dropdown">
                       <button
-                        @click.stop="toggleQuickStatus(submission.id)"
+                        @click.stop="toggleQuickStatus(submission.id, $event)"
                         class="p-1 text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
                         title="Change status"
                       >
@@ -371,25 +371,6 @@
                           <polyline points="6 9 12 15 18 9"/>
                         </svg>
                       </button>
-                      <div
-                        v-if="quickStatusOpen === submission.id"
-                        class="absolute top-full left-0 mt-1 w-[140px] bg-bg-secondary border border-border-default rounded-lg shadow-lg py-1 z-50"
-                      >
-                        <button
-                          v-for="status in availableStatuses"
-                          :key="status"
-                          @click.stop="initiateStatusChange(submission, status)"
-                          class="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-bg-hover transition-colors"
-                          :class="{ 'bg-bg-hover': submission.status === status }"
-                        >
-                          <span 
-                            class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium capitalize"
-                            :class="[statusColors[status].bg, statusColors[status].text]"
-                          >
-                            {{ status }}
-                          </span>
-                        </button>
-                      </div>
                     </div>
                   </div>
                 </td>
@@ -430,6 +411,50 @@
           </button>
         </div>
       </div>
+
+      <!-- Quick Status Dropdown Portal -->
+      <Teleport to="body">
+        <div
+          v-if="quickStatusOpen && quickStatusSubmission"
+          ref="quickStatusDropdownRef"
+          class="fixed z-[100]"
+          :style="{ 
+            left: quickStatusPosition.x + 'px', 
+            top: quickStatusPosition.y + 'px'
+          }"
+        >
+          <!-- Small arrow pointing to the button -->
+          <div 
+            class="absolute left-3 w-2 h-2 bg-bg-secondary border-l border-t border-border-default transform rotate-45 z-[101]"
+            :class="quickStatusPosition.isAbove ? 'bottom-[-5px]' : 'top-[-5px]'"
+          ></div>
+          
+          <div 
+            class="bg-bg-secondary border border-border-default rounded-lg shadow-lg py-1 relative z-[102]"
+            :style="{ 
+              width: '140px',
+              maxHeight: quickStatusPosition.maxHeight + 'px'
+            }"
+          >
+            <div class="overflow-y-auto" :style="{ maxHeight: (quickStatusPosition.maxHeight - 10) + 'px' }">
+              <button
+                v-for="status in availableStatuses"
+                :key="status"
+                @click.stop="initiateStatusChange(quickStatusSubmission, status)"
+                class="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-bg-hover transition-colors shrink-0"
+                :class="{ 'bg-bg-hover': quickStatusSubmission.status === status }"
+              >
+                <span 
+                  class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium capitalize"
+                  :class="[statusColors[status].bg, statusColors[status].text]"
+                >
+                  {{ status }}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </Teleport>
     </template>
 
     <!-- Status Change Confirmation Dialog -->
@@ -479,15 +504,29 @@
           <div class="flex justify-end gap-2">
             <button
               @click="cancelStatusChange"
-              class="px-3 py-1.5 text-[12px] border border-border-default rounded hover:bg-bg-hover text-text-secondary transition-colors"
+              :disabled="confirmStatusChange.loading"
+              class="px-3 py-1.5 text-[12px] border border-border-default rounded hover:bg-bg-hover text-text-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Cancel
             </button>
             <button
               @click="confirmStatusChangeAction"
-              class="px-3 py-1.5 text-[12px] bg-accent-orange text-white rounded hover:bg-accent-orange-hover transition-colors"
+              :disabled="confirmStatusChange.loading"
+              class="px-3 py-1.5 text-[12px] bg-accent-orange text-white rounded hover:bg-accent-orange-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
             >
-              Confirm Change
+              <svg 
+                v-if="confirmStatusChange.loading" 
+                class="animate-spin" 
+                width="14" 
+                height="14" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                stroke-width="2"
+              >
+                <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/>
+              </svg>
+              <span>{{ confirmStatusChange.loading ? 'Updating...' : 'Confirm Change' }}</span>
             </button>
           </div>
         </div>
@@ -732,6 +771,12 @@ const selectedStatuses = ref<FeedbackStatus[]>([]);
 
 // Quick status change in table
 const quickStatusOpen = ref<string | null>(null);
+const quickStatusPosition = ref({ x: 0, y: 0, maxHeight: 200, isAbove: false });
+const quickStatusDropdownRef = ref<HTMLElement | null>(null);
+const quickStatusSubmission = computed(() => {
+  if (!quickStatusOpen.value) return null;
+  return submissions.value.find(s => s.id === quickStatusOpen.value) || null;
+});
 
 // Confirmation dialog
 const confirmStatusChange = ref<{
@@ -739,11 +784,13 @@ const confirmStatusChange = ref<{
   submission: Submission | null;
   from: FeedbackStatus | '';
   to: FeedbackStatus | '';
+  loading: boolean;
 }>({
   visible: false,
   submission: null,
   from: '',
-  to: ''
+  to: '',
+  loading: false
 });
 
 const totalPages = computed(() => Math.ceil(submissions.value.length / itemsPerPage));
@@ -912,11 +959,72 @@ const selectAllStatuses = () => {
 };
 
 // Quick status change in table
-const toggleQuickStatus = (submissionId: string) => {
+const toggleQuickStatus = (submissionId: string, event?: MouseEvent) => {
   if (quickStatusOpen.value === submissionId) {
     quickStatusOpen.value = null;
-  } else {
-    quickStatusOpen.value = submissionId;
+    return;
+  }
+  
+  quickStatusOpen.value = submissionId;
+  
+  if (event) {
+    const button = event.currentTarget as HTMLElement;
+    const buttonRect = button.getBoundingClientRect();
+    
+    const itemHeight = 32; // Height per status item (button height)
+    const padding = 16; // Total padding (py-1 = 4px top + 4px bottom, plus some buffer)
+    const naturalDropdownHeight = itemHeight * availableStatuses.length + padding; // ~176px for 5 items
+    
+    const viewportHeight = window.innerHeight;
+    const margin = 8;
+    const gap = 1; // Very small gap between button and dropdown
+    
+    // Available space
+    const spaceBelow = viewportHeight - buttonRect.bottom - margin;
+    const spaceAbove = buttonRect.top - margin;
+    
+    // Determine position and height
+    let dropdownY: number;
+    let maxHeight: number;
+    let isAbove = false;
+    
+    // Always prefer positioning below if there's enough room
+    if (spaceBelow >= naturalDropdownHeight) {
+      // Position below the button
+      dropdownY = buttonRect.bottom + gap;
+      maxHeight = naturalDropdownHeight;
+      isAbove = false;
+    } else if (spaceAbove >= naturalDropdownHeight) {
+      // Position above the button (very close gap)
+      dropdownY = buttonRect.top - naturalDropdownHeight - gap;
+      maxHeight = naturalDropdownHeight;
+      isAbove = true;
+    } else if (spaceBelow >= spaceAbove) {
+      // Not enough space either way, but more space below
+      dropdownY = buttonRect.bottom + gap;
+      maxHeight = Math.max(itemHeight * 2 + padding, spaceBelow);
+      isAbove = false;
+    } else {
+      // Not enough space either way, but more space above
+      maxHeight = Math.max(itemHeight * 2 + padding, spaceAbove);
+      dropdownY = buttonRect.top - maxHeight - gap;
+      isAbove = true;
+    }
+    
+    // Ensure dropdown stays within viewport
+    if (dropdownY < margin) {
+      dropdownY = margin;
+    }
+    if (dropdownY + maxHeight > viewportHeight - margin) {
+      maxHeight = viewportHeight - margin - dropdownY;
+    }
+    
+    quickStatusPosition.value = {
+      x: buttonRect.left,
+      y: dropdownY,
+      maxHeight: maxHeight,
+      isAbove: isAbove
+    };
   }
 };
 
@@ -926,7 +1034,8 @@ const initiateStatusChange = (submission: Submission, newStatus: FeedbackStatus)
     visible: true,
     submission,
     from: submission.status,
-    to: newStatus
+    to: newStatus,
+    loading: false
   };
   quickStatusOpen.value = null;
 };
@@ -938,7 +1047,8 @@ const initiateStatusChangeFromModal = () => {
     visible: true,
     submission: selectedSubmission.value,
     from: selectedSubmission.value.status,
-    to: selectedNewStatus.value
+    to: selectedNewStatus.value,
+    loading: false
   };
 };
 
@@ -947,10 +1057,14 @@ const cancelStatusChange = () => {
   confirmStatusChange.value.submission = null;
   confirmStatusChange.value.from = '';
   confirmStatusChange.value.to = '';
+  confirmStatusChange.value.loading = false;
 };
 
 const confirmStatusChangeAction = async () => {
   if (!confirmStatusChange.value.submission || !confirmStatusChange.value.to) return;
+  
+  // Set loading state
+  confirmStatusChange.value.loading = true;
   
   try {
     const response = await $fetch(`/api/admin/super/feedback/submissions/${confirmStatusChange.value.submission.id}`, {
@@ -984,6 +1098,7 @@ const confirmStatusChangeAction = async () => {
   } catch (e) {
     console.error('Failed to update status:', e);
     alert('Failed to update status. Please try again.');
+    confirmStatusChange.value.loading = false;
   }
 };
 
@@ -993,7 +1108,10 @@ const handleClickOutside = (e: MouseEvent) => {
   if (!target.closest('.status-dropdown-container')) {
     showStatusDropdown.value = false;
   }
-  if (!target.closest('.quick-status-dropdown')) {
+  // Close quick status dropdown when clicking outside (not on the toggle button or the teleported dropdown)
+  const isClickOnDropdown = quickStatusDropdownRef.value?.contains(target);
+  const isClickOnToggle = target.closest('.quick-status-dropdown');
+  if (!isClickOnDropdown && !isClickOnToggle) {
     quickStatusOpen.value = null;
   }
 };
