@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import Modal from './Modal.vue';
+import { usePermissionBadge } from '../composables/usePermissionBadge';
+
+const { getPermissionBadge } = usePermissionBadge();
 
 interface MemberInfo {
   id: string;
@@ -316,13 +319,9 @@ watch(() => props.workspaceId, (newVal) => {
 
                   <span :class="[
                     'px-2 py-0.5 rounded text-[10px] font-semibold uppercase',
-                    member.permission === 'owner'
-                      ? 'bg-accent-purple/15 text-accent-purple'
-                      : member.permission === 'edit'
-                        ? 'bg-accent-orange/15 text-accent-orange'
-                        : 'bg-accent-blue/15 text-accent-blue'
+                    getPermissionBadge(member.permission).className
                   ]">
-                    {{ member.permission === 'owner' ? 'Owner' : member.permission === 'edit' ? 'Editor' : 'Viewer' }}
+                    {{ getPermissionBadge(member.permission).text }}
                   </span>
                 </div>
 
