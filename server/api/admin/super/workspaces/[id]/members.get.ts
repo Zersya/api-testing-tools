@@ -1,7 +1,7 @@
 import { db } from '../../../../../db';
 import { workspaces, workspaceMembers } from '../../../../../db/schema';
 import { eq, desc } from 'drizzle-orm';
-import { isSuperAdmin } from '../../../../../utils/permissions';
+import { isSuperAdmin, getOriginalOwnerId } from '../../../../../utils/permissions';
 
 export default defineEventHandler(async (event) => {
   const workspaceId = getRouterParam(event, 'id');
@@ -60,10 +60,14 @@ export default defineEventHandler(async (event) => {
       .where(eq(workspaceMembers.workspaceId, workspaceId))
       .orderBy(desc(workspaceMembers.invitedAt));
 
+    // Get original owner ID for UI protection
+    const originalOwnerId = await getOriginalOwnerId(workspaceId);
+
     return {
       members: members.map(member => ({
         ...member,
-        isCurrentUser: member.userId === user.id || member.email === user.email
+        isCurrentUser: member.userId === user.id || member.email === user.email,
+        isOriginalOwner: member.userId === originalOwnerId
       })),
       isOwner: true // Super Admin acts as owner for UI purposes
     };

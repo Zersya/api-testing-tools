@@ -1,7 +1,7 @@
 import { db } from '../../../../db';
 import { workspaces, workspaceMembers } from '../../../../db/schema';
 import { eq, and, desc } from 'drizzle-orm';
-import { isWorkspaceOwner, canAccessWorkspace } from '../../../../utils/permissions';
+import { isWorkspaceOwnerViaMember, canAccessWorkspace, getOriginalOwnerId } from '../../../../utils/permissions';
 
 export default defineEventHandler(async (event) => {
   const workspaceId = getRouterParam(event, 'id');
@@ -36,7 +36,7 @@ export default defineEventHandler(async (event) => {
   }
 
   // Check if user can access this workspace
-  const canAccess = await canAccessWorkspace(user.id, workspaceId);
+  const canAccess = await canAccessWorkspace(user.id, workspaceId, user.email);
   if (!canAccess) {
     throw createError({
       statusCode: 403,
@@ -62,12 +62,16 @@ export default defineEventHandler(async (event) => {
       .orderBy(desc(workspaceMembers.invitedAt));
 
     // Check if current user is owner (for UI permissions)
-    const isOwner = await isWorkspaceOwner(user.id, workspaceId);
+    const isOwner = await isWorkspaceOwnerViaMember(user.id, workspaceId);
+    
+    // Get original owner ID for UI protection
+    const originalOwnerId = await getOriginalOwnerId(workspaceId);
 
     return {
       members: members.map(member => ({
         ...member,
-        isCurrentUser: member.userId === user.id || member.email === user.email
+        isCurrentUser: member.userId === user.id || member.email === user.email,
+        isOriginalOwner: member.userId === originalOwnerId
       })),
       isOwner
     };

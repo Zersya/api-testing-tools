@@ -58,6 +58,45 @@ export async function isWorkspaceOwner(userId: string, workspaceId: string): Pro
 }
 
 /**
+ * Check if user is an owner of a workspace via member permission
+ * This checks both the workspace.ownerId AND workspaceMembers with owner permission
+ */
+export async function isWorkspaceOwnerViaMember(userId: string, workspaceId: string): Promise<boolean> {
+  // First check if user is the original owner
+  const isOriginalOwner = await isWorkspaceOwner(userId, workspaceId);
+  if (isOriginalOwner) return true;
+
+  // Check if user has owner permission in workspaceMembers
+  const member = await db
+    .select({ permission: workspaceMembers.permission })
+    .from(workspaceMembers)
+    .where(
+      and(
+        eq(workspaceMembers.workspaceId, workspaceId),
+        eq(workspaceMembers.userId, userId),
+        eq(workspaceMembers.status, 'accepted')
+      )
+    )
+    .limit(1);
+
+  return member.length > 0 && member[0].permission === 'owner';
+}
+
+/**
+ * Get the original workspace owner ID
+ * This is the user in workspaces.ownerId
+ */
+export async function getOriginalOwnerId(workspaceId: string): Promise<string | null> {
+  const workspace = await db
+    .select({ ownerId: workspaces.ownerId })
+    .from(workspaces)
+    .where(eq(workspaces.id, workspaceId))
+    .limit(1);
+
+  return workspace.length ? workspace[0].ownerId : null;
+}
+
+/**
  * Check if user is a member of a workspace via explicit email invitation
  */
 export async function hasMemberAccess(userId: string, userEmail: string, workspaceId: string): Promise<MemberPermission | null> {
@@ -235,8 +274,8 @@ export async function getWorkspacePermissionsBatch(
 /**
  * Check if user can access (view) a workspace
  */
-export async function canAccessWorkspace(userId: string, workspaceId: string): Promise<boolean> {
-  const permission = await getWorkspacePermission(userId, workspaceId);
+export async function canAccessWorkspace(userId: string, workspaceId: string, userEmail?: string): Promise<boolean> {
+  const permission = await getWorkspacePermission(userId, workspaceId, userEmail);
   return permission !== null;
 }
 
@@ -252,7 +291,14 @@ export async function canEditWorkspace(userId: string, workspaceId: string, user
  * Check if user can manage shares (only owner)
  */
 export async function canManageShares(userId: string, workspaceId: string): Promise<boolean> {
-  return await isWorkspaceOwner(userId, workspaceId);
+  return await isWorkspaceOwnerViaMember(userId, workspaceId);
+}
+
+/**
+ * Check if user can invite/manage members (owners only)
+ */
+export async function canInviteMembers(userId: string, workspaceId: string): Promise<boolean> {
+  return await isWorkspaceOwnerViaMember(userId, workspaceId);
 }
 
 /**

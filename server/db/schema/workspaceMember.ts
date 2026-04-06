@@ -4,7 +4,7 @@ import { workspaces } from './workspace';
 /**
  * Member permission levels for workspace sharing
  */
-export type MemberPermission = 'view' | 'edit';
+export type MemberPermission = 'view' | 'edit' | 'owner';
 
 /**
  * Invitation status for workspace members

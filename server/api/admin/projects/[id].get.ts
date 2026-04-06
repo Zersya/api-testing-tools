@@ -37,7 +37,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // Check if user has access to this workspace
-    const accessibleIds = await getAccessibleWorkspaceIds(user.id);
+    const accessibleIds = await getAccessibleWorkspaceIds(user.id, user.email);
     if (!accessibleIds.includes(project.workspaceId)) {
       throw createError({
         statusCode: 403,
