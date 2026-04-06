@@ -225,7 +225,7 @@ const removeMember = async (memberId: string) => {
   }
 };
 
-const updateMemberPermission = async (memberId: string, newPermission: 'view' | 'edit') => {
+const updateMemberPermission = async (memberId: string, newPermission: 'view' | 'edit' | 'owner') => {
   error.value = '';
   
   try {
