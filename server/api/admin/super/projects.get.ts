@@ -220,27 +220,42 @@ export default defineEventHandler(async (event) => {
     const query = getQuery(event);
     const searchTerm = (query.search as string) || '';
 
-    // Execute all queries in parallel to reduce connection hold time
-    const [
-      allWorkspaces,
-      allProjects,
-      allCollections,
-      allFolders,
-      allRequestsRaw,
-      allEnvironments,
-      allEnvironmentVariables,
-      allMembers,
-      allShares
-] = await Promise.all([
+    // Batch queries to reduce concurrent connection usage (max 3 connections per batch)
+    // Batch 1: Fetch top-level workspace data
+    const [allWorkspaces, allMembers, allShares] = await Promise.all([
       db.select().from(workspaces).orderBy(desc(workspaces.createdAt)),
-      db.select().from(projects),
-      db.select().from(collections),
-      db.select().from(folders),
-      db.select().from(savedRequests).orderBy(asc(savedRequests.order)),
-      db.select().from(environments).orderBy(desc(environments.createdAt)),
-      db.select().from(environmentVariables),
       db.select().from(workspaceMembers),
       db.select().from(workspaceShares)
+    ]);
+
+    // Batch 2: Fetch projects for all workspaces
+    const workspaceIds = allWorkspaces.map(w => w.id);
+    const allProjects = workspaceIds.length > 0 
+      ? await db.select().from(projects).where(inArray(projects.workspaceId, workspaceIds))
+      : [];
+
+    // Batch 3: Fetch collections and environments for all projects
+    const projectIds = allProjects.map(p => p.id);
+    const [allCollections, allEnvironments] = projectIds.length > 0
+      ? await Promise.all([
+          db.select().from(collections).where(inArray(collections.projectId, projectIds)),
+          db.select().from(environments).where(inArray(environments.projectId, projectIds)).orderBy(desc(environments.createdAt))
+        ])
+      : [[], []];
+
+    // Batch 4: Fetch folders, requests, and environment variables
+    const collectionIds = allCollections.map(c => c.id);
+    const environmentIds = allEnvironments.map(e => e.id);
+    const [allFolders, allRequestsRaw, allEnvironmentVariables] = await Promise.all([
+      collectionIds.length > 0 
+        ? db.select().from(folders).where(inArray(folders.collectionId, collectionIds))
+        : [],
+      collectionIds.length > 0
+        ? db.select().from(savedRequests).where(inArray(savedRequests.collectionId, collectionIds)).orderBy(asc(savedRequests.order))
+        : [],
+      environmentIds.length > 0
+        ? db.select().from(environmentVariables).where(inArray(environmentVariables.environmentId, environmentIds))
+        : []
     ]);
 
     // Parse JSON fields from requests
