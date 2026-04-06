@@ -219,30 +219,30 @@ export default defineEventHandler(async (event) => {
     // Get search query
     const query = getQuery(event);
     const searchTerm = (query.search as string) || '';
-    
-    // Fetch all data
-    const allWorkspaces = await db
-      .select()
-      .from(workspaces)
-      .orderBy(desc(workspaces.createdAt));
-    
-    const allProjects = await db
-      .select()
-      .from(projects);
-    
-    const allCollections = await db
-      .select()
-      .from(collections);
-    
-    const allFolders = await db
-      .select()
-      .from(folders);
-    
-    const allRequestsRaw = await db
-      .select()
-      .from(savedRequests)
-      .orderBy(asc(savedRequests.order));
-    
+
+    // Execute all queries in parallel to reduce connection hold time
+    const [
+      allWorkspaces,
+      allProjects,
+      allCollections,
+      allFolders,
+      allRequestsRaw,
+      allEnvironments,
+      allEnvironmentVariables,
+      allMembers,
+      allShares
+] = await Promise.all([
+      db.select().from(workspaces).orderBy(desc(workspaces.createdAt)),
+      db.select().from(projects),
+      db.select().from(collections),
+      db.select().from(folders),
+      db.select().from(savedRequests).orderBy(asc(savedRequests.order)),
+      db.select().from(environments).orderBy(desc(environments.createdAt)),
+      db.select().from(environmentVariables),
+      db.select().from(workspaceMembers),
+      db.select().from(workspaceShares)
+    ]);
+
     // Parse JSON fields from requests
     const allRequests: RequestItem[] = allRequestsRaw.map(req => ({
       ...req,
@@ -252,7 +252,7 @@ export default defineEventHandler(async (event) => {
       mockConfig: parseJsonField<RequestItem['mockConfig']>(req.mockConfig),
       pathVariables: parseJsonField<RequestItem['pathVariables']>(req.pathVariables)
     }));
-    
+
     // Group requests by folder
     const requestsPerFolder = new Map<string, RequestItem[]>();
     for (const request of allRequests) {
@@ -262,18 +262,7 @@ export default defineEventHandler(async (event) => {
         requestsPerFolder.set(request.folderId, existing);
       }
     }
-    
-    // Fetch all environments
-    const allEnvironments = await db
-      .select()
-      .from(environments)
-      .orderBy(desc(environments.createdAt));
-    
-    // Fetch all environment variables
-    const allEnvironmentVariables = await db
-      .select()
-      .from(environmentVariables);
-    
+
     // Group variables by environment
     const variablesPerEnvironment = new Map<string, EnvironmentVariable[]>();
     for (const variable of allEnvironmentVariables) {
@@ -281,16 +270,7 @@ export default defineEventHandler(async (event) => {
       existing.push(variable);
       variablesPerEnvironment.set(variable.environmentId, existing);
     }
-    
-    // Fetch workspace sharing info
-    const allMembers = await db
-      .select()
-      .from(workspaceMembers);
-    
-    const allShares = await db
-      .select()
-      .from(workspaceShares);
-    
+
     // Build the response structure
     const workspacesWithDetails: WorkspaceWithDetails[] = allWorkspaces.map(workspace => {
       // Get owner email
