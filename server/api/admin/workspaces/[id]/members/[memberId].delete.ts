@@ -66,7 +66,7 @@ export default defineEventHandler(async (event) => {
 
   // Check if member is the original workspace owner
   const originalOwnerId = await getOriginalOwnerId(workspaceId);
-  if (member[0].userId === originalOwnerId) {
+  if (originalOwnerId && member[0].userId === originalOwnerId) {
     throw createError({
       statusCode: 403,
       statusMessage: 'Cannot remove the original workspace owner'

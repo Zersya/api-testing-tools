@@ -71,7 +71,7 @@ export default defineEventHandler(async (event) => {
       members: members.map(member => ({
         ...member,
         isCurrentUser: member.userId === user.id || member.email === user.email,
-        isOriginalOwner: member.userId === originalOwnerId
+        isOriginalOwner: originalOwnerId !== null && member.userId === originalOwnerId
       })),
       isOwner
     };
