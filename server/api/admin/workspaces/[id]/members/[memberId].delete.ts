@@ -1,7 +1,7 @@
 import { db } from '../../../../../db';
 import { workspaces, workspaceMembers } from '../../../../../db/schema';
 import { eq, and } from 'drizzle-orm';
-import { isWorkspaceOwner } from '../../../../../utils/permissions';
+import { canInviteMembers, getOriginalOwnerId } from '../../../../../utils/permissions';
 
 export default defineEventHandler(async (event) => {
   const workspaceId = getRouterParam(event, 'id');
@@ -36,12 +36,12 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  // Only workspace owner can remove members
-  const isOwner = await isWorkspaceOwner(user.id, workspaceId);
-  if (!isOwner) {
+  // Only workspace owners can remove members
+  const canRemove = await canInviteMembers(user.id, workspaceId);
+  if (!canRemove) {
     throw createError({
       statusCode: 403,
-      statusMessage: 'Only workspace owner can remove members'
+      statusMessage: 'Only workspace owners can remove members'
     });
   }
 
@@ -61,6 +61,15 @@ export default defineEventHandler(async (event) => {
     throw createError({
       statusCode: 404,
       statusMessage: 'Member not found'
+    });
+  }
+
+  // Check if member is the original workspace owner
+  const originalOwnerId = await getOriginalOwnerId(workspaceId);
+  if (originalOwnerId && member[0].userId === originalOwnerId) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'Cannot remove the original workspace owner'
     });
   }
 
