@@ -17,13 +17,14 @@ interface MemberInfo {
   id: string;
   email: string;
   userId: string | null;
-  permission: 'view' | 'edit';
+  permission: 'view' | 'edit' | 'owner';
   status: 'pending' | 'accepted' | 'revoked';
   invitedBy: string;
   invitedAt: string;
   acceptedAt: string | null;
   revokedAt: string | null;
   isCurrentUser: boolean;
+  isOriginalOwner: boolean;
 }
 
 interface Props {
@@ -71,7 +72,7 @@ const isOwner = ref(false);
 
 const newMemberForm = ref({
   email: '',
-  permission: 'view' as 'view' | 'edit'
+  permission: 'view' as 'view' | 'edit' | 'owner'
 });
 
 // Error and success messages
@@ -543,6 +544,7 @@ watch(() => props.workspaceId, (newVal) => {
               >
                 <option value="view">Viewer</option>
                 <option value="edit">Editor</option>
+                <option value="owner">Owner</option>
               </select>
             </div>
           </div>
@@ -555,7 +557,8 @@ watch(() => props.workspaceId, (newVal) => {
                 <line x1="12" y1="8" x2="12.01" y2="8"></line>
               </svg>
               <span v-if="newMemberForm.permission === 'view'">Viewers can see all requests but cannot edit</span>
-              <span v-else>Editors can view and edit requests, but cannot delete or share</span>
+              <span v-else-if="newMemberForm.permission === 'edit'">Editors can view and edit requests, but cannot manage members</span>
+              <span v-else>Owners can manage members, share links, and workspace settings</span>
             </div>
           </div>
 
@@ -622,11 +625,13 @@ watch(() => props.workspaceId, (newVal) => {
                     
                     <span :class="[
                       'px-2 py-0.5 rounded text-[10px] font-semibold uppercase',
-                      member.permission === 'edit' 
-                        ? 'bg-accent-orange/15 text-accent-orange' 
-                        : 'bg-accent-blue/15 text-accent-blue'
+                      member.permission === 'owner'
+                        ? 'bg-accent-purple/15 text-accent-purple'
+                        : member.permission === 'edit' 
+                          ? 'bg-accent-orange/15 text-accent-orange' 
+                          : 'bg-accent-blue/15 text-accent-blue'
                     ]">
-                      {{ member.permission === 'edit' ? 'Editor' : 'Viewer' }}
+                      {{ member.permission === 'owner' ? 'Owner' : member.permission === 'edit' ? 'Editor' : 'Viewer' }}
                     </span>
                   </div>
                   
@@ -637,16 +642,17 @@ watch(() => props.workspaceId, (newVal) => {
                 </div>
                 
                 <!-- Owner Actions -->
-                <div v-if="isOwner && !member.isCurrentUser && member.status !== 'revoked'" class="flex items-center gap-1">
+                <div v-if="isOwner && !member.isCurrentUser && member.status !== 'revoked' && !member.isOriginalOwner" class="flex items-center gap-1">
                   <!-- Permission Dropdown -->
                   <select
                     v-if="member.status === 'accepted'"
                     :value="member.permission"
-                    @change="updateMemberPermission(member.id, ($event.target as HTMLSelectElement).value as 'view' | 'edit')"
+                    @change="updateMemberPermission(member.id, ($event.target as HTMLSelectElement).value as 'view' | 'edit' | 'owner')"
                     class="py-1 px-2 bg-bg-input border border-border-default rounded text-xs text-text-primary focus:outline-none focus:border-accent-blue"
                   >
                     <option value="view">Viewer</option>
                     <option value="edit">Editor</option>
+                    <option value="owner">Owner</option>
                   </select>
                   
                   <!-- Remove Button -->

@@ -1,6 +1,7 @@
 import { db } from '../../../db';
 import { workspaces } from '../../../db/schema';
 import { eq } from 'drizzle-orm';
+import { isWorkspaceOwnerViaMember } from '../../../utils/permissions';
 
 interface UpdateWorkspaceBody {
   name?: string;
@@ -8,11 +9,19 @@ interface UpdateWorkspaceBody {
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id');
+  const user = event.context.user;
 
   if (!id) {
     throw createError({
       statusCode: 400,
       statusMessage: 'Workspace ID is required'
+    });
+  }
+
+  if (!user?.id) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: 'Unauthorized'
     });
   }
 
@@ -38,6 +47,15 @@ export default defineEventHandler(async (event) => {
       throw createError({
         statusCode: 404,
         statusMessage: 'Workspace not found'
+      });
+    }
+
+    // Check if user is an owner (original owner or owner member)
+    const isOwner = await isWorkspaceOwnerViaMember(user.id, id);
+    if (!isOwner) {
+      throw createError({
+        statusCode: 403,
+        statusMessage: 'Only workspace owners can update workspace settings'
       });
     }
 
