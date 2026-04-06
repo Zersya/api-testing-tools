@@ -219,30 +219,45 @@ export default defineEventHandler(async (event) => {
     // Get search query
     const query = getQuery(event);
     const searchTerm = (query.search as string) || '';
-    
-    // Fetch all data
-    const allWorkspaces = await db
-      .select()
-      .from(workspaces)
-      .orderBy(desc(workspaces.createdAt));
-    
-    const allProjects = await db
-      .select()
-      .from(projects);
-    
-    const allCollections = await db
-      .select()
-      .from(collections);
-    
-    const allFolders = await db
-      .select()
-      .from(folders);
-    
-    const allRequestsRaw = await db
-      .select()
-      .from(savedRequests)
-      .orderBy(asc(savedRequests.order));
-    
+
+    // Batch queries to reduce concurrent connection usage (max 3 connections per batch)
+    // Batch 1: Fetch top-level workspace data
+    const [allWorkspaces, allMembers, allShares] = await Promise.all([
+      db.select().from(workspaces).orderBy(desc(workspaces.createdAt)),
+      db.select().from(workspaceMembers),
+      db.select().from(workspaceShares)
+    ]);
+
+    // Batch 2: Fetch projects for all workspaces
+    const workspaceIds = allWorkspaces.map(w => w.id);
+    const allProjects = workspaceIds.length > 0 
+      ? await db.select().from(projects).where(inArray(projects.workspaceId, workspaceIds))
+      : [];
+
+    // Batch 3: Fetch collections and environments for all projects
+    const projectIds = allProjects.map(p => p.id);
+    const [allCollections, allEnvironments] = projectIds.length > 0
+      ? await Promise.all([
+          db.select().from(collections).where(inArray(collections.projectId, projectIds)),
+          db.select().from(environments).where(inArray(environments.projectId, projectIds)).orderBy(desc(environments.createdAt))
+        ])
+      : [[], []];
+
+    // Batch 4: Fetch folders, requests, and environment variables
+    const collectionIds = allCollections.map(c => c.id);
+    const environmentIds = allEnvironments.map(e => e.id);
+    const [allFolders, allRequestsRaw, allEnvironmentVariables] = await Promise.all([
+      collectionIds.length > 0 
+        ? db.select().from(folders).where(inArray(folders.collectionId, collectionIds))
+        : [],
+      collectionIds.length > 0
+        ? db.select().from(savedRequests).where(inArray(savedRequests.collectionId, collectionIds)).orderBy(asc(savedRequests.order))
+        : [],
+      environmentIds.length > 0
+        ? db.select().from(environmentVariables).where(inArray(environmentVariables.environmentId, environmentIds))
+        : []
+    ]);
+
     // Parse JSON fields from requests
     const allRequests: RequestItem[] = allRequestsRaw.map(req => ({
       ...req,
@@ -252,7 +267,7 @@ export default defineEventHandler(async (event) => {
       mockConfig: parseJsonField<RequestItem['mockConfig']>(req.mockConfig),
       pathVariables: parseJsonField<RequestItem['pathVariables']>(req.pathVariables)
     }));
-    
+
     // Group requests by folder
     const requestsPerFolder = new Map<string, RequestItem[]>();
     for (const request of allRequests) {
@@ -262,18 +277,7 @@ export default defineEventHandler(async (event) => {
         requestsPerFolder.set(request.folderId, existing);
       }
     }
-    
-    // Fetch all environments
-    const allEnvironments = await db
-      .select()
-      .from(environments)
-      .orderBy(desc(environments.createdAt));
-    
-    // Fetch all environment variables
-    const allEnvironmentVariables = await db
-      .select()
-      .from(environmentVariables);
-    
+
     // Group variables by environment
     const variablesPerEnvironment = new Map<string, EnvironmentVariable[]>();
     for (const variable of allEnvironmentVariables) {
@@ -281,16 +285,7 @@ export default defineEventHandler(async (event) => {
       existing.push(variable);
       variablesPerEnvironment.set(variable.environmentId, existing);
     }
-    
-    // Fetch workspace sharing info
-    const allMembers = await db
-      .select()
-      .from(workspaceMembers);
-    
-    const allShares = await db
-      .select()
-      .from(workspaceShares);
-    
+
     // Build the response structure
     const workspacesWithDetails: WorkspaceWithDetails[] = allWorkspaces.map(workspace => {
       // Get owner email
