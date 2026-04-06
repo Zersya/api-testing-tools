@@ -29,28 +29,55 @@ const pool = new Pool({
   keepAliveInitialDelayMillis: 10000 // Check connection health every 10s
 });
 
-// Monitor pool health
-pool.on('connect', () => {
-  console.log('[Database] New connection established');
-});
+// Monitor pool health - only enable verbose logging when explicitly requested
+const enablePoolLogging = process.env.LOG_DB_POOL_STATS === 'true';
 
+if (enablePoolLogging) {
+  pool.on('connect', () => {
+    console.log('[Database] New connection established');
+  });
+
+  pool.on('remove', () => {
+    console.log('[Database] Connection removed from pool');
+  });
+}
+
+// Always log pool errors as they indicate real issues
 pool.on('error', (err) => {
   console.error('[Database] Unexpected error on idle client', err);
 });
 
-pool.on('remove', () => {
-  console.log('[Database] Connection removed from pool');
-});
+// Log pool statistics every 30 seconds for monitoring (only when enabled)
+if (enablePoolLogging) {
+  const poolStatsInterval = setInterval(() => {
+    const stats = {
+      total: pool.totalCount,
+      idle: pool.idleCount,
+      waiting: pool.waitingCount
+    };
+    console.log('[Database Pool Stats]', stats);
+  }, 30000);
+  
+  // Unref the interval so it doesn't keep the event loop active in one-off contexts
+  poolStatsInterval.unref();
+}
 
-// Log pool statistics every 30 seconds for monitoring
-setInterval(() => {
-  const stats = {
-    total: pool.totalCount,
-    idle: pool.idleCount,
-    waiting: pool.waitingCount
+// Graceful shutdown handler
+if (process.env.NODE_ENV === 'production') {
+  const gracefulShutdown = async () => {
+    console.log('[Database] Graceful shutdown initiated, closing pool...');
+    try {
+      await pool.end();
+      console.log('[Database] Pool closed successfully');
+    } catch (err) {
+      console.error('[Database] Error closing pool:', err);
+    }
+    process.exit(0);
   };
-  console.log('[Database Pool Stats]', stats);
-}, 30000);
+
+  process.on('SIGTERM', gracefulShutdown);
+  process.on('SIGINT', gracefulShutdown);
+}
 
 export const db = drizzle(pool, { schema });
 
