@@ -26,6 +26,7 @@ interface QueryParam {
   key: string;
   value: string;
   enabled: boolean;
+  note?: string;
 }
 
 interface HeaderParam {
@@ -33,6 +34,7 @@ interface HeaderParam {
   key: string;
   value: string;
   enabled: boolean;
+  note?: string;
 }
 
 interface BodyParam {
@@ -41,6 +43,7 @@ interface BodyParam {
   value: string;
   enabled: boolean;
   type: 'text' | 'file';
+  note?: string;
 }
 
 interface PersistedBodyParam {
@@ -48,6 +51,7 @@ interface PersistedBodyParam {
   value: string;
   enabled: boolean;
   type: 'text' | 'file';
+  note?: string;
 }
 
 interface PathVariable {
@@ -73,6 +77,7 @@ interface HttpRequest {
   } | null;
   mockConfig?: import('../../server/db/schema/savedRequest').MockConfig | null;
   pathVariables?: import('../../server/db/schema/savedRequest').RequestPathVariables | null;
+  paramNotes?: import('../../server/db/schema/savedRequest').RequestParamNotes | null;
   order: number;
   createdAt: Date;
   updatedAt: Date;
@@ -124,6 +129,7 @@ export interface RequestDraftSnapshot {
   preScript?: string;
   postScript?: string;
   pathVariables?: import('../../server/db/schema/savedRequest').RequestPathVariables | null;
+  paramNotes?: import('../../server/db/schema/savedRequest').RequestParamNotes | null;
   bodyFormat?: BodyFormat;
   jsonBody?: string;
   rawBody?: string;
@@ -358,6 +364,7 @@ interface RequestCompareState {
   preScript: string;
   postScript: string;
   pathVariables: import('../../server/db/schema/savedRequest').RequestPathVariables | null;
+  paramNotes: import('../../server/db/schema/savedRequest').RequestParamNotes | null;
 }
 
 // Store original request state to prevent comparison against mutated props
@@ -390,7 +397,8 @@ const captureCurrentStateAsSaved = () => {
     mockConfig: mockConfig.value,
     preScript: preScript.value,
     postScript: postScript.value,
-    pathVariables: buildPathVariablesRecord()
+    pathVariables: buildPathVariablesRecord(),
+    paramNotes: buildParamNotes()
   };
 };
 
@@ -710,6 +718,52 @@ const loadRequestData = (request: HttpRequest) => {
       }
     });
 
+    // Load param notes
+    if (request.paramNotes) {
+      try {
+        const paramNotesObj = typeof request.paramNotes === 'string'
+          ? JSON.parse(request.paramNotes)
+          : request.paramNotes;
+
+        // Apply notes to query params
+        if (paramNotesObj.queryParams && typeof paramNotesObj.queryParams === 'object') {
+          queryParams.value.forEach(param => {
+            if (paramNotesObj.queryParams[param.key]) {
+              param.note = paramNotesObj.queryParams[param.key];
+            }
+          });
+        }
+
+        // Apply notes to headers
+        if (paramNotesObj.headers && typeof paramNotesObj.headers === 'object') {
+          headers.value.forEach(header => {
+            if (paramNotesObj.headers[header.key]) {
+              header.note = paramNotesObj.headers[header.key];
+            }
+          });
+        }
+
+        // Apply notes to form data / urlencoded
+        if (paramNotesObj.formData && typeof paramNotesObj.formData === 'object') {
+          formDataParams.value.forEach(param => {
+            if (paramNotesObj.formData[param.key]) {
+              param.note = paramNotesObj.formData[param.key];
+            }
+          });
+        }
+
+        if (paramNotesObj.urlencoded && typeof paramNotesObj.urlencoded === 'object') {
+          formDataParams.value.forEach(param => {
+            if (paramNotesObj.urlencoded[param.key]) {
+              param.note = paramNotesObj.urlencoded[param.key];
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('Failed to parse param notes:', e);
+      }
+    }
+
     // Only clear response and script logs on first load if no initial state provided
     // This preserves state when switching between tabs
     if (isFirstLoad.value) {
@@ -757,6 +811,7 @@ const loadRequestData = (request: HttpRequest) => {
     // This ensures the baseline matches what hasUnsavedChanges computes, preventing dirty-on-load
     // We use the same build functions that hasUnsavedChanges uses for consistency
     const builtBody = buildBodyForSave();
+    const builtParamNotes = buildParamNotes();
     originalRequestState.value = {
       method: form.value.method,
       url: form.value.url,
@@ -779,7 +834,8 @@ const loadRequestData = (request: HttpRequest) => {
       mockConfig: mockConfig.value ? JSON.parse(JSON.stringify(mockConfig.value)) : null,
       preScript: preScript.value || '',
       postScript: postScript.value || '',
-      pathVariables: JSON.parse(JSON.stringify(buildPathVariablesRecord()))
+      pathVariables: JSON.parse(JSON.stringify(buildPathVariablesRecord())),
+      paramNotes: builtParamNotes ? JSON.parse(JSON.stringify(builtParamNotes)) : null
     };
     
     // Reset saved state to ensure fresh comparison for the newly loaded request
@@ -1035,6 +1091,44 @@ const buildHeadersRecord = (): Record<string, string> => {
     }
   });
   return headersRecord;
+};
+
+const buildParamNotes = (): import('../../server/db/schema/savedRequest').RequestParamNotes => {
+  const queryParamsNotes: Record<string, string> = {};
+  queryParams.value.forEach(param => {
+    if (param.key && param.note) {
+      queryParamsNotes[param.key] = param.note;
+    }
+  });
+
+  const headersNotes: Record<string, string> = {};
+  headers.value.forEach(header => {
+    if (header.key && header.note) {
+      headersNotes[header.key] = header.note;
+    }
+  });
+
+  const bodyParamNotes: Record<string, string> = {};
+  formDataParams.value.forEach(param => {
+    if (param.key && param.note) {
+      bodyParamNotes[param.key] = param.note;
+    }
+  });
+
+  const notes: import('../../server/db/schema/savedRequest').RequestParamNotes = {};
+  if (Object.keys(queryParamsNotes).length > 0) notes.queryParams = queryParamsNotes;
+  if (Object.keys(headersNotes).length > 0) notes.headers = headersNotes;
+  
+  // Store body param notes in the appropriate key based on body format
+  if (Object.keys(bodyParamNotes).length > 0) {
+    if (bodyFormat.value === 'urlencoded') {
+      notes.urlencoded = bodyParamNotes;
+    } else {
+      notes.formData = bodyParamNotes;
+    }
+  }
+  
+  return notes;
 };
 
 const buildPathVariablesRecord = (): import('../../server/db/schema/savedRequest').RequestPathVariables => {
@@ -1807,6 +1901,7 @@ const hasUnsavedChanges = computed(() => {
   const currentMethod = form.value.method;
   const currentHeaders = buildHeadersRecord();
   const currentBody = buildBodyForSave();
+  const currentParamNotes = buildParamNotes();
   
   // Normalize auth for comparison - make aware of inheritAuth for accurate comparisons
   const rawCurrentAuth = {
@@ -1857,7 +1952,8 @@ const hasUnsavedChanges = computed(() => {
     mockConfig: props.request.mockConfig ? JSON.parse(JSON.stringify(props.request.mockConfig)) : null,
     preScript: props.request.preScript,
     postScript: props.request.postScript,
-    pathVariables: props.request.pathVariables ? JSON.parse(JSON.stringify(props.request.pathVariables)) : {}
+    pathVariables: props.request.pathVariables ? JSON.parse(JSON.stringify(props.request.pathVariables)) : {},
+    paramNotes: (props.request as any).paramNotes ? JSON.parse(JSON.stringify((props.request as any).paramNotes)) : null
   };
 
   const urlChanged = currentUrl !== compareState.url;
@@ -1873,8 +1969,9 @@ const hasUnsavedChanges = computed(() => {
   const preScriptChanged = (preScript.value || '') !== (compareState.preScript || '');
   const postScriptChanged = (postScript.value || '') !== (compareState.postScript || '');
   const pathVarsChanged = JSON.stringify(currentPathVariables) !== JSON.stringify(compareState.pathVariables || {});
+  const paramNotesChanged = JSON.stringify(currentParamNotes) !== JSON.stringify(compareState.paramNotes || null);
 
-  return urlChanged || methodChanged || headersChanged || bodyChanged || authChanged || inheritAuthChanged || mockConfigChanged || preScriptChanged || postScriptChanged || pathVarsChanged;
+  return urlChanged || methodChanged || headersChanged || bodyChanged || authChanged || inheritAuthChanged || mockConfigChanged || preScriptChanged || postScriptChanged || pathVarsChanged || paramNotesChanged;
 });
 
 const getContentType = () => {
@@ -2477,6 +2574,7 @@ const openSaveDialog = () => {
     preScript: preScript.value,
     postScript: postScript.value,
     pathVariables: buildPathVariablesRecord(),
+    paramNotes: buildParamNotes(),
     order: props.request.order,
     createdAt: props.request.createdAt,
     updatedAt: new Date()
@@ -2532,6 +2630,7 @@ const openSaveAsDialog = () => {
     preScript: preScript.value,
     postScript: postScript.value,
     pathVariables: buildPathVariablesRecord(),
+    paramNotes: buildParamNotes(),
     order: props.request.order,
     createdAt: props.request.createdAt,
     updatedAt: new Date()
@@ -2951,6 +3050,13 @@ defineExpose({
                   placeholder="Value"
                   class="flex-1 min-w-0"
                 />
+                <input
+                  :value="param.note"
+                  @input="updateQueryParam(param.id, 'note', ($event.target as HTMLInputElement).value)"
+                  :disabled="!param.enabled"
+                  placeholder="Note"
+                  class="flex-1 min-w-0 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed"
+                />
                 <button 
                   @click="removeQueryParam(param.id)"
                   class="p-1.5 text-text-muted hover:text-accent-red opacity-0 group-hover:opacity-100 transition-all duration-fast focus:opacity-100 focus:outline-none"
@@ -3071,6 +3177,13 @@ defineExpose({
                   :variables="environmentVariables"
                   placeholder="Header Value"
                   class="flex-1 min-w-0"
+                />
+                <input
+                  :value="header.note"
+                  @input="updateHeader(header.id, 'note', ($event.target as HTMLInputElement).value)"
+                  :disabled="!header.enabled"
+                  placeholder="Note"
+                  class="flex-1 min-w-0 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <button
                   @click="removeHeader(header.id)"
@@ -3208,6 +3321,13 @@ defineExpose({
                     class="w-full py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-muted text-xs focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
+                <input
+                  :value="param.note"
+                  @input="updateFormDataParam(param.id, 'note', ($event.target as HTMLInputElement).value)"
+                  :disabled="!param.enabled"
+                  placeholder="Note"
+                  class="flex-1 min-w-0 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed"
+                />
                 <button
                   @click="removeFormDataParam(param.id)"
                   class="p-1.5 text-text-muted hover:text-accent-red opacity-0 group-hover:opacity-100 transition-all duration-fast focus:opacity-100 focus:outline-none"
@@ -3258,6 +3378,13 @@ defineExpose({
                   :variables="environmentVariables"
                   placeholder="Value"
                   class="flex-1 min-w-0"
+                />
+                <input
+                  :value="param.note"
+                  @input="updateFormDataParam(param.id, 'note', ($event.target as HTMLInputElement).value)"
+                  :disabled="!param.enabled"
+                  placeholder="Note"
+                  class="flex-1 min-w-0 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <button
                   @click="removeFormDataParam(param.id)"

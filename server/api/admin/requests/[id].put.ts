@@ -1,5 +1,5 @@
 import { db } from '../../../db';
-import { savedRequests, type HttpMethod, type RequestHeaders, type RequestBody, type RequestAuth, type MockConfig, type RequestPathVariables } from '../../../db/schema';
+import { savedRequests, type HttpMethod, type RequestHeaders, type RequestBody, type RequestAuth, type MockConfig, type RequestPathVariables, type RequestParamNotes } from '../../../db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { trackResourceAction } from '../../../services/usageTracking';
 import { cache, CacheKeys } from '../../../utils/cache';
@@ -16,6 +16,7 @@ interface UpdateRequestBody {
   preScript?: string;
   postScript?: string;
   pathVariables?: RequestPathVariables;
+  paramNotes?: RequestParamNotes;
   order?: number;
 }
 
@@ -72,6 +73,7 @@ export default defineEventHandler(async (event) => {
       preScript: string | null;
       postScript: string | null;
       pathVariables: RequestPathVariables | null;
+      paramNotes: RequestParamNotes | null;
       order: number;
       updatedAt: Date;
     }> = {
@@ -190,6 +192,11 @@ export default defineEventHandler(async (event) => {
       updateData.pathVariables = body.pathVariables;
     } else {
       console.log('[Request PUT] pathVariables is undefined, not updating');
+    }
+
+    // Set paramNotes (can be null or object)
+    if (body.paramNotes !== undefined) {
+      updateData.paramNotes = body.paramNotes;
     }
 
     // Validate and set order
