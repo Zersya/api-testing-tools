@@ -64,6 +64,17 @@ export default defineEventHandler(async (event) => {
     const headers = getRequestHeaders(event);
     const userAgent = headers['user-agent'] || null;
     
+    // NEW: Extract error context from responses
+    const errorContext = body.responses.errorContext as {
+      errorCount?: number;
+      recentErrors?: Array<{ type: string; message: string; timestamp: string }>;
+      sessionId?: string;
+    } | undefined;
+    
+    // Remove errorContext from responses to avoid duplication
+    const cleanResponses = { ...body.responses };
+    delete cleanResponses.errorContext;
+    
     // Create submission
     const submission = await db
       .insert(schema.feedbackSubmissions)
@@ -71,14 +82,29 @@ export default defineEventHandler(async (event) => {
         userId: user.id,
         userEmail: user.email,
         workspaceId: user.workspaceId,
-        responses: body.responses,
+        responses: cleanResponses,
         rating: body.rating,
         comment: body.comment,
         status: 'open', // Default status for new submissions
         userAgent,
-        createdAt: now
+        createdAt: now,
+        
+        // NEW: Add error correlation
+        datadogSessionId: errorContext?.sessionId,
+        errorContext: errorContext ? {
+          errorCount: errorContext.errorCount || 0,
+          recentErrors: errorContext.recentErrors || [],
+        } : null,
       })
       .returning();
+    
+    // NEW: Link error reports to this feedback
+    if (errorContext && errorContext.recentErrors && errorContext.recentErrors.length > 0) {
+      await db
+        .update(schema.errorReports)
+        .set({ feedbackSubmissionId: submission[0].id })
+        .where(eq(schema.errorReports.datadogSessionId, errorContext.sessionId || ''));
+    }
     
     return {
       success: true,

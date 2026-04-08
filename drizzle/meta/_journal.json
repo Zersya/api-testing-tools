@@ -92,6 +92,13 @@
       "when": 1775446649938,
       "tag": "0012_strong_wraith",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1775625102815,
+      "tag": "0013_natural_puppet_master",
+      "breakpoints": true
     }
   ]
 }
