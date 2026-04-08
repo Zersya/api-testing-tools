@@ -2,18 +2,20 @@ import { db } from '../../../../db';
 import { savedRequests, folders, collections, projects } from '../../../../db/schema';
 import { eq } from 'drizzle-orm';
 import { validateShareToken } from '../../../../utils/permissions';
+import type { HttpMethod, RequestHeaders, RequestBody, RequestAuth, RequestPathVariables, MockConfig } from '../../../../db/schema/savedRequest';
 
 interface UpdateRequestBody {
   name?: string;
-  method?: string;
+  method?: HttpMethod;
   url?: string;
-  headers?: Record<string, string> | null;
-  body?: Record<string, unknown> | string | null;
-  auth?: {
-    type: string;
-    credentials?: Record<string, string>;
-  } | null;
-  pathVariables?: Record<string, { value: string; description?: string }> | null;
+  headers?: RequestHeaders | null;
+  body?: RequestBody;
+  auth?: RequestAuth;
+  pathVariables?: RequestPathVariables | null;
+  inheritAuth?: number;
+  mockConfig?: MockConfig;
+  preScript?: string;
+  postScript?: string;
 }
 
 export default defineEventHandler(async (event) => {
@@ -133,10 +135,14 @@ export default defineEventHandler(async (event) => {
     if (body.name !== undefined) updateData.name = body.name;
     if (body.method !== undefined) updateData.method = body.method;
     if (body.url !== undefined) updateData.url = body.url;
-    if (body.headers !== undefined) updateData.headers = JSON.stringify(body.headers);
-    if (body.body !== undefined) updateData.body = typeof body.body === 'string' ? body.body : JSON.stringify(body.body);
-    if (body.auth !== undefined) updateData.auth = JSON.stringify(body.auth);
-    if (body.pathVariables !== undefined) updateData.pathVariables = JSON.stringify(body.pathVariables);
+    if (body.headers !== undefined) updateData.headers = body.headers;
+    if (body.body !== undefined) updateData.body = body.body;
+    if (body.auth !== undefined) updateData.auth = body.auth;
+    if (body.pathVariables !== undefined) updateData.pathVariables = body.pathVariables;
+    if (body.inheritAuth !== undefined) updateData.inheritAuth = body.inheritAuth;
+    if (body.mockConfig !== undefined) updateData.mockConfig = body.mockConfig;
+    if (body.preScript !== undefined) updateData.preScript = body.preScript;
+    if (body.postScript !== undefined) updateData.postScript = body.postScript;
 
     const updatedRequest = await db
       .update(savedRequests)
