@@ -25,6 +25,7 @@ interface RequestItem {
     inherit?: boolean;
     credentials?: Record<string, string>;
   } | null;
+  inheritAuth: number;
   mockConfig: {
     isEnabled: boolean;
     statusCode: number;
@@ -33,6 +34,8 @@ interface RequestItem {
     responseHeaders: Record<string, string>;
   } | null;
   pathVariables: Record<string, { value: string; description?: string }> | null;
+  preScript: string | null;
+  postScript: string | null;
   order: number;
   createdAt: Date;
   updatedAt: Date;
@@ -262,8 +265,11 @@ export default defineEventHandler(async (event) => {
         headers: parseJsonField<Record<string, string>>(req.headers),
         body: parseJsonField<Record<string, unknown> | string>(req.body),
         auth: parseJsonField<RequestItem['auth']>(req.auth),
+        inheritAuth: req.inheritAuth || 0,
         mockConfig: parseJsonField<RequestItem['mockConfig']>(req.mockConfig),
         pathVariables: parseJsonField<RequestItem['pathVariables']>(req.pathVariables),
+        preScript: req.preScript || null,
+        postScript: req.postScript || null,
         examples: requestExamplesList
       };
     });
