@@ -197,6 +197,7 @@ export interface ParsedPostmanBodyParam {
   value: string;
   enabled: boolean;
   type: 'text' | 'file';
+  note?: string;
 }
 
 export interface ParsedPostmanResponseExample {
@@ -220,6 +221,7 @@ export interface ParsedPostmanRequest {
   bodyMode?: ParsedRequestBodyFormat;
   bodyOptions?: { language?: string };
   formDataParams?: ParsedPostmanBodyParam[];
+  paramNotes?: import('../db/schema/savedRequest').RequestParamNotes;
   auth: RequestAuth;
   order: number;
   responseExamples: ParsedPostmanResponseExample[];
@@ -585,7 +587,8 @@ function parsePostmanBodyParams(body: PostmanBody | undefined): ParsedPostmanBod
         key: param.key,
         value: param.value || '',
         enabled: true,
-        type: 'text' as const
+        type: 'text' as const,
+        note: extractDescription(param.description)
       }));
   }
 
@@ -599,7 +602,8 @@ function parsePostmanBodyParams(body: PostmanBody | undefined): ParsedPostmanBod
           key: param.key,
           value: isFile ? extractFormDataFileValue(param) : (param.value || ''),
           enabled: true,
-          type: isFile ? 'file' as const : 'text' as const
+          type: isFile ? 'file' as const : 'text' as const,
+          note: extractDescription(param.description)
         };
       });
   }
@@ -664,25 +668,35 @@ function parsePostmanRequest(
 
   // Parse headers
   const headers: RequestHeaders = {};
+  const headerNotes: Record<string, string> = {};
   if (Array.isArray(request.header)) {
     for (const header of request.header) {
       if (header.key && !header.disabled) {
         headers[header.key] = header.value || '';
+        const desc = extractDescription(header.description);
+        if (desc) {
+          headerNotes[header.key] = desc;
+        }
       }
     }
   }
 
   // Parse query parameters
   const queryParams: Array<{ key: string; value: string; description?: string }> = [];
+  const queryParamNotes: Record<string, string> = {};
   const urlObj = typeof request.url === 'object' ? request.url : null;
   if (urlObj?.query && Array.isArray(urlObj.query)) {
     for (const param of urlObj.query) {
       if (param.key && !param.disabled) {
+        const desc = extractDescription(param.description);
         queryParams.push({
           key: param.key,
           value: param.value || '',
-          description: extractDescription(param.description)
+          description: desc
         });
+        if (desc) {
+          queryParamNotes[param.key] = desc;
+        }
       }
     }
   }
@@ -715,6 +729,26 @@ function parsePostmanRequest(
   }
 
   const persistedBody = buildPersistedBody(bodyMode, body, formDataParams, headers);
+
+  // Build param notes from extracted descriptions
+  const paramNotes: import('../db/schema/savedRequest').RequestParamNotes = {};
+  if (Object.keys(queryParamNotes).length > 0) {
+    paramNotes.queryParams = queryParamNotes;
+  }
+  if (Object.keys(headerNotes).length > 0) {
+    paramNotes.headers = headerNotes;
+  }
+  const formDataNotes: Record<string, string> = {};
+  if (formDataParams) {
+    for (const param of formDataParams) {
+      if (param.note) {
+        formDataNotes[param.key] = param.note;
+      }
+    }
+  }
+  if (Object.keys(formDataNotes).length > 0) {
+    paramNotes.formData = formDataNotes;
+  }
 
   // Parse auth (item-level auth takes precedence over request-level)
   const auth = item.auth ? parsePostmanAuth(item.auth) : 
@@ -787,6 +821,7 @@ function parsePostmanRequest(
     bodyMode,
     bodyOptions,
     formDataParams,
+    paramNotes: Object.keys(paramNotes).length > 0 ? paramNotes : undefined,
     auth,
     order,
     responseExamples,

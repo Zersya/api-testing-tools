@@ -71,6 +71,7 @@ interface HttpRequest {
     enabled: boolean;
     type: 'text' | 'file';
   }>;
+  paramNotes?: Record<string, Record<string, string>> | null;
   order: number;
   createdAt: Date;
   updatedAt: Date;
@@ -96,6 +97,7 @@ interface RequestDraftSnapshot {
   preScript?: string | null;
   postScript?: string | null;
   pathVariables?: HttpRequest['pathVariables'];
+  paramNotes?: HttpRequest['paramNotes'];
   bodyFormat?: HttpRequest['bodyFormat'];
   jsonBody?: string;
   rawBody?: string;
@@ -313,6 +315,9 @@ const normalizeRequestForTab = (request: Partial<HttpRequest>): HttpRequest => {
         type: param?.type === 'file' ? 'file' : 'text'
       }))
     : importedBodyPayload.formDataParams,
+  paramNotes: request.paramNotes && typeof request.paramNotes === 'object' && !Array.isArray(request.paramNotes)
+    ? request.paramNotes as NonNullable<HttpRequest['paramNotes']>
+    : null,
   order: typeof request.order === 'number' ? request.order : 0,
   createdAt: request.createdAt ? new Date(request.createdAt) : new Date(),
   updatedAt: request.updatedAt ? new Date(request.updatedAt) : new Date()
@@ -1887,7 +1892,8 @@ const executeSave = async (request: any) => {
       mockConfig: request.mockConfig,
       preScript: request.preScript,
       postScript: request.postScript,
-      pathVariables: request.pathVariables
+      pathVariables: request.pathVariables,
+      paramNotes: request.paramNotes
     };
     
     console.log('[Frontend Save] Sending body:', JSON.stringify(body, null, 2));
@@ -2086,7 +2092,8 @@ const handleSave = async (data: any) => {
           mockConfig: requestToSave.value.mockConfig,
           preScript: requestToSave.value.preScript,
           postScript: requestToSave.value.postScript,
-          pathVariables: requestToSave.value.pathVariables
+          pathVariables: requestToSave.value.pathVariables,
+          paramNotes: requestToSave.value.paramNotes
         }
       });
 
@@ -2104,7 +2111,8 @@ const handleSave = async (data: any) => {
           mockConfig: requestToSave.value.mockConfig,
           preScript: requestToSave.value.preScript,
           postScript: requestToSave.value.postScript,
-          pathVariables: requestToSave.value.pathVariables
+          pathVariables: requestToSave.value.pathVariables,
+          paramNotes: requestToSave.value.paramNotes
         });
 
         selectedRequest.value = normalizedUpdatedRequest;

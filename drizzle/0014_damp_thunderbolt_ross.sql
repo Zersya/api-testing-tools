@@ -1,0 +1,1 @@
+ALTER TABLE "saved_requests" ADD COLUMN "param_notes" text;
