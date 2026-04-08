@@ -3055,7 +3055,7 @@ defineExpose({
                   @input="updateQueryParam(param.id, 'note', ($event.target as HTMLInputElement).value)"
                   :disabled="!param.enabled"
                   placeholder="Note"
-                  class="flex-1 min-w-0 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed"
+                  class="flex-1 min-w-0 min-h-[34px] py-1.5 px-2 bg-bg-input border border-border-default rounded-md text-text-primary text-[13px] font-mono leading-5 focus:outline-none focus:ring-0 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <button 
                   @click="removeQueryParam(param.id)"
@@ -3119,9 +3119,9 @@ defineExpose({
                     :value="variable.description"
                     @input="updatePathVariable(variable.id, 'description', ($event.target as HTMLInputElement).value)"
                     :disabled="!variable.enabled"
-                    placeholder="Description"
-                    class="flex-1 min-w-0 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed"
-                  />
+                  placeholder="Description"
+                  class="flex-1 min-w-0 min-h-[34px] py-1.5 px-2 bg-bg-input border border-border-default rounded-md text-text-primary text-[13px] font-mono leading-5 focus:outline-none focus:ring-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                />
                   <button
                     @click="removePathVariable(variable.id)"
                     class="p-1.5 text-text-muted hover:text-accent-red opacity-0 group-hover:opacity-100 transition-all duration-fast focus:opacity-100 focus:outline-none"
@@ -3183,7 +3183,7 @@ defineExpose({
                   @input="updateHeader(header.id, 'note', ($event.target as HTMLInputElement).value)"
                   :disabled="!header.enabled"
                   placeholder="Note"
-                  class="flex-1 min-w-0 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed"
+                  class="flex-1 min-w-0 min-h-[34px] py-1.5 px-2 bg-bg-input border border-border-default rounded-md text-text-primary text-[13px] font-mono leading-5 focus:outline-none focus:ring-0 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <button
                   @click="removeHeader(header.id)"
@@ -3326,7 +3326,7 @@ defineExpose({
                   @input="updateFormDataParam(param.id, 'note', ($event.target as HTMLInputElement).value)"
                   :disabled="!param.enabled"
                   placeholder="Note"
-                  class="flex-1 min-w-0 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed"
+                  class="flex-1 min-w-0 min-h-[34px] py-1.5 px-2 bg-bg-input border border-border-default rounded-md text-text-primary text-[13px] font-mono leading-5 focus:outline-none focus:ring-0 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <button
                   @click="removeFormDataParam(param.id)"
@@ -3384,7 +3384,7 @@ defineExpose({
                   @input="updateFormDataParam(param.id, 'note', ($event.target as HTMLInputElement).value)"
                   :disabled="!param.enabled"
                   placeholder="Note"
-                  class="flex-1 min-w-0 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs focus:outline-none focus:border-accent-blue disabled:opacity-50 disabled:cursor-not-allowed"
+                  class="flex-1 min-w-0 min-h-[34px] py-1.5 px-2 bg-bg-input border border-border-default rounded-md text-text-primary text-[13px] font-mono leading-5 focus:outline-none focus:ring-0 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <button
                   @click="removeFormDataParam(param.id)"
