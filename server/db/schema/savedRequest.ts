@@ -40,6 +40,17 @@ export type RequestPathVariables = Record<string, {
   description?: string;
 }>;
 
+/**
+ * Notes/comments for request parameters (query, headers, form data, urlencoded)
+ * Keyed by parameter key for each category
+ */
+export type RequestParamNotes = {
+  queryParams?: Record<string, string>;
+  headers?: Record<string, string>;
+  formData?: Record<string, string>;
+  urlencoded?: Record<string, string>;
+};
+
 export const savedRequests = pgTable('saved_requests', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   folderId: text('folder_id')
@@ -57,6 +68,7 @@ export const savedRequests = pgTable('saved_requests', {
   preScript: text('pre_script'),
   postScript: text('post_script'),
   pathVariables: text('path_variables').$type<RequestPathVariables>(),
+  paramNotes: text('param_notes').$type<RequestParamNotes>(),
   order: integer('order').notNull().default(0),
   createdAt: timestamp('created_at')
     .notNull()

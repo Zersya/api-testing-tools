@@ -1,5 +1,5 @@
 import { db } from '../../../../db';
-import { folders, savedRequests, type HttpMethod, type RequestHeaders, type RequestBody, type RequestAuth, type RequestPathVariables } from '../../../../db/schema';
+import { folders, savedRequests, type HttpMethod, type RequestHeaders, type RequestBody, type RequestAuth, type RequestPathVariables, type RequestParamNotes } from '../../../../db/schema';
 import { eq } from 'drizzle-orm';
 import { trackResourceAction } from '../../../../services/usageTracking';
 
@@ -13,6 +13,7 @@ interface CreateRequestBody {
   preScript?: string;
   postScript?: string;
   pathVariables?: RequestPathVariables;
+  paramNotes?: RequestParamNotes;
   order?: number;
 }
 
@@ -139,6 +140,7 @@ export default defineEventHandler(async (event) => {
         preScript: body.preScript || null,
         postScript: body.postScript || null,
         pathVariables: body.pathVariables || null,
+        paramNotes: body.paramNotes || null,
         order
       })
       .returning())[0];

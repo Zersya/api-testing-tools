@@ -36,6 +36,7 @@ interface RequestItem {
   preScript: string | null;
   postScript: string | null;
   pathVariables: Record<string, { value: string; description?: string }> | null;
+  paramNotes: Record<string, Record<string, string>> | null;
   order: number;
   createdAt: Date;
   updatedAt: Date;
@@ -242,6 +243,7 @@ export default defineEventHandler(async (event) => {
         auth: parseJsonField<RequestItem['auth']>(req.auth),
         mockConfig: parseJsonField<RequestItem['mockConfig']>(req.mockConfig),
         pathVariables: parseJsonField<RequestItem['pathVariables']>(req.pathVariables),
+        paramNotes: parseJsonField<RequestItem['paramNotes']>(req.paramNotes),
         examples: requestExamplesList
       };
     });
