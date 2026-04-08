@@ -10,6 +10,10 @@ import { useUsageTracking } from '~/composables/useUsageTracking'
 import { useClientRequest, isLocalUrl } from '~/composables/useClientRequest'
 import { stripComments, validateJSONC, formatJSONC } from '~/utils/jsonc'
 
+// Metadata keys for body format persistence
+const BODY_FORMAT_META_KEY = '__mockServiceBodyFormat';
+const FORM_DATA_PARAMS_META_KEY = '__mockServiceFormDataParams';
+
 interface Variable {
   id: string;
   key: string;
@@ -368,7 +372,7 @@ const captureCurrentStateAsSaved = () => {
     method: form.value.method,
     url: form.value.url,
     headers: buildHeadersRecord(),
-    body: buildBody(),
+    body: buildBodyForSave(),
     auth: {
       type: authType.value,
       inherit: inheritFromParent.value,
@@ -576,8 +580,35 @@ const loadRequestData = (request: HttpRequest) => {
             bodyFormat.value = 'raw';
           }
         } else if (typeof request.body === 'object') {
-          jsonBody.value = JSON.stringify(request.body, null, 2);
-          bodyFormat.value = 'json';
+          // Check if this is a body with metadata keys
+          const bodyObj = request.body as Record<string, unknown>;
+          const bodyFormatMeta = bodyObj[BODY_FORMAT_META_KEY];
+          
+          if (bodyFormatMeta === 'form-data' || bodyFormatMeta === 'urlencoded') {
+            // Load form-data or urlencoded from metadata
+            bodyFormat.value = bodyFormatMeta;
+            const params = bodyObj[FORM_DATA_PARAMS_META_KEY];
+            if (Array.isArray(params)) {
+              formDataParams.value = params.map(param => ({
+                id: crypto.randomUUID(),
+                key: param.key || '',
+                value: param.value || '',
+                enabled: param.enabled !== false,
+                type: param.type === 'file' ? 'file' : 'text'
+              }));
+            }
+          } else if (bodyFormatMeta === 'raw') {
+            // Load raw body from metadata
+            bodyFormat.value = 'raw';
+            rawBody.value = typeof bodyObj.body === 'string' ? bodyObj.body : '';
+            rawContentType.value = typeof bodyObj.rawContentType === 'string' ? bodyObj.rawContentType : 'text/plain';
+          } else if (bodyFormatMeta === 'none') {
+            bodyFormat.value = 'none';
+          } else {
+            // No metadata, treat as JSON
+            jsonBody.value = JSON.stringify(request.body, null, 2);
+            bodyFormat.value = 'json';
+          }
         }
       } catch (e) {
         console.error('Error setting body:', e);
@@ -725,12 +756,12 @@ const loadRequestData = (request: HttpRequest) => {
     // Capture original request state for change detection using NORMALIZED form values
     // This ensures the baseline matches what hasUnsavedChanges computes, preventing dirty-on-load
     // We use the same build functions that hasUnsavedChanges uses for consistency
-    const builtBody = buildBody();
+    const builtBody = buildBodyForSave();
     originalRequestState.value = {
       method: form.value.method,
       url: form.value.url,
       headers: JSON.parse(JSON.stringify(buildHeadersRecord())),
-      body: builtBody === undefined ? null : JSON.parse(JSON.stringify(builtBody)),
+      body: builtBody === null ? null : JSON.parse(JSON.stringify(builtBody)),
       auth: JSON.parse(JSON.stringify({
         type: authType.value,
         inherit: inheritFromParent.value,
@@ -1020,11 +1051,6 @@ const buildPathVariablesRecord = (): import('../../server/db/schema/savedRequest
 };
 
 const buildDraftSnapshot = (): RequestDraftSnapshot => {
-  const builtBody = buildBody();
-  const normalizedBody = builtBody instanceof FormData || builtBody instanceof File
-    ? null
-    : (builtBody ?? null);
-
   const currentAuth = {
     type: authType.value,
     inherit: inheritFromParent.value,
@@ -1056,7 +1082,7 @@ const buildDraftSnapshot = (): RequestDraftSnapshot => {
     method: form.value.method,
     url: form.value.url,
     headers: buildHeadersRecord(),
-    body: normalizedBody,
+    body: buildBodyForSave(),
     auth: currentAuth,
     inheritAuth: inheritFromParent.value ? 1 : 0,
     mockConfig: mockConfig.value,
@@ -1162,6 +1188,41 @@ const buildBody = (): any => {
       return binaryFile.value
     default:
       return undefined
+  }
+}
+
+const buildBodyForSave = (): Record<string, unknown> | string | null => {
+  switch (bodyFormat.value) {
+    case 'none':
+      return null
+    case 'json':
+      try {
+        const cleanJson = stripComments(jsonBody.value)
+        return JSON.parse(cleanJson)
+      } catch {
+        return jsonBody.value
+      }
+    case 'form-data':
+    case 'urlencoded':
+      return {
+        [BODY_FORMAT_META_KEY]: bodyFormat.value,
+        [FORM_DATA_PARAMS_META_KEY]: formDataParams.value.map(param => ({
+          key: param.key,
+          value: param.value,
+          enabled: param.enabled,
+          type: param.type
+        }))
+      }
+    case 'raw':
+      return {
+        [BODY_FORMAT_META_KEY]: 'raw',
+        body: rawBody.value,
+        rawContentType: rawContentType.value
+      }
+    case 'binary':
+      return null
+    default:
+      return null
   }
 }
 
@@ -1745,7 +1806,7 @@ const hasUnsavedChanges = computed(() => {
   const currentUrl = form.value.url;
   const currentMethod = form.value.method;
   const currentHeaders = buildHeadersRecord();
-  const currentBody = buildBody();
+  const currentBody = buildBodyForSave();
   
   // Normalize auth for comparison - make aware of inheritAuth for accurate comparisons
   const rawCurrentAuth = {
@@ -2384,7 +2445,7 @@ const openSaveDialog = () => {
     method: form.value.method,
     url: form.value.url,
     headers: buildHeadersRecord(),
-    body: buildBody(),
+    body: buildBodyForSave(),
     auth: {
       type: authType.value,
       inherit: inheritFromParent.value,
