@@ -20,8 +20,20 @@ interface HttpRequest {
   body: Record<string, unknown> | string | null;
   auth: {
     type: string;
+    inherit?: boolean;
     credentials?: Record<string, string>;
   } | null;
+  pathVariables?: Record<string, { value: string; description?: string }> | null;
+  inheritAuth?: number;
+  mockConfig?: {
+    isEnabled: boolean;
+    statusCode: number;
+    delay: number;
+    responseBody: Record<string, unknown> | string | null;
+    responseHeaders: Record<string, string>;
+  } | null;
+  preScript?: string;
+  postScript?: string;
   order: number;
   createdAt: Date;
   updatedAt: Date;
@@ -306,7 +318,12 @@ const executeSharedSave = async (request: HttpRequest) => {
         url: request.url,
         headers: request.headers,
         body: request.body,
-        auth: request.auth
+        auth: request.auth,
+        pathVariables: request.pathVariables,
+        inheritAuth: request.inheritAuth,
+        mockConfig: request.mockConfig,
+        preScript: request.preScript,
+        postScript: request.postScript
       }
     });
     
