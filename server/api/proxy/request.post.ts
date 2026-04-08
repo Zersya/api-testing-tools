@@ -16,6 +16,9 @@ import type { MockConfig } from '../../db/schema/savedRequest';
 import { eq, inArray, sql, and } from 'drizzle-orm';
 import { executePreScript, executePostScript, type ScriptLogEntry } from '../../services/script-runner';
 import { getMagicVariableValue } from '../../utils/magic-variables';
+import { trackServerError, setSpanTags, finishSpanWithError } from '../../utils/error-tracking';
+import { trackRequestExecution, trackSlowRequest } from '../../utils/datadog-metrics';
+import tracer from 'dd-trace';
 
 interface EnvironmentVariable {
   id: string;
@@ -95,8 +98,24 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
   let scriptModifiedHeaders: Record<string, string> | undefined;
   let scriptModifiedBody: any;
 
+  // Create Datadog span for this proxy request
+  const span = tracer.startSpan('proxy.request', {
+    tags: {
+      'span.kind': 'server',
+    },
+  });
+
   try {
     const body = await readBody<ProxyRequestBody>(event);
+    
+    // Set span tags with request info
+    setSpanTags(span, {
+      'proxy.method': body.method,
+      'proxy.url': body.url,
+      'proxy.workspace_id': body.workspaceId,
+      'proxy.environment_id': body.environmentId,
+      'proxy.saved_request_id': body.savedRequestId,
+    });
 
     if (!body.url) {
       throw createError({
@@ -722,16 +741,77 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
       }
     }
 
+    // Track successful request metrics
+    trackRequestExecution(
+      body.method, 
+      response.status, 
+      endTime - startTime, 
+      true, 
+      {
+        workspace_id: body.workspaceId || 'none',
+        environment_id: body.environmentId || 'none',
+      }
+    );
+    
+    // Track slow requests
+    trackSlowRequest(endTime - startTime);
+    
+    // Finish span with success
+    setSpanTags(span, {
+      'proxy.success': true,
+      'proxy.status_code': response.status,
+      'proxy.response_time': endTime - startTime,
+    });
+    span.finish();
+
     return proxyResponse;
 
   } catch (error: any) {
     const errorEndTime = Date.now();
+    const duration = errorEndTime - startTime;
+    const config = useRuntimeConfig();
+
+    // Track error in Datadog
+    trackServerError(error, {
+      type: 'proxy_error',
+      requestId: body?.savedRequestId,
+      workspaceId: body?.workspaceId,
+      metadata: {
+        url: body?.url,
+        method: body?.method,
+        variableWarnings,
+        scriptErrors,
+      },
+    });
+    
+    // Track failed request metrics
+    trackRequestExecution(
+      body?.method || 'UNKNOWN',
+      0,
+      duration,
+      false,
+      {
+        workspace_id: body?.workspaceId || 'none',
+        error_type: error.code || 'UNKNOWN',
+      }
+    );
 
     if (error.statusCode) {
+      // Finish span with error before throwing
+      finishSpanWithError(span, error);
       throw error;
     }
 
     if (error.name === 'TimeoutError' || error.code === 'ABORT_ERR' || error.message?.includes('timeout')) {
+      // Set error tags on span
+      setSpanTags(span, {
+        'proxy.error_type': 'timeout',
+        'proxy.timeout': true,
+        'proxy.error': true,
+        'proxy.error_code': 'TIMEOUT',
+      });
+      finishSpanWithError(span, error);
+      
       return {
         success: false,
         error: {
@@ -742,7 +822,7 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
         timing: {
           startTime: new Date(startTime).toISOString(),
           endTime: new Date(errorEndTime).toISOString(),
-          durationMs: errorEndTime - startTime
+          durationMs: duration
         },
         variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined,
         scriptLogs: scriptLogs.length > 0 ? scriptLogs : undefined,
@@ -751,6 +831,15 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
     }
 
     if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND' || error.code === 'ECONNRESET') {
+      // Set error tags on span
+      setSpanTags(span, {
+        'proxy.error_type': 'network',
+        'proxy.network_error': error.code,
+        'proxy.error': true,
+        'proxy.error_code': error.code,
+      });
+      finishSpanWithError(span, error);
+      
       return {
         success: false,
         error: {
@@ -770,6 +859,15 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
     }
 
     if (error.code === 'EAI_AGAIN' || error.code === 'ENOENT') {
+      // Set error tags on span
+      setSpanTags(span, {
+        'proxy.error_type': 'dns',
+        'proxy.dns_error': true,
+        'proxy.error': true,
+        'proxy.error_code': 'DNS_ERROR',
+      });
+      finishSpanWithError(span, error);
+      
       return {
         success: false,
         error: {
@@ -789,6 +887,15 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
     }
 
     if (error.code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' || error.code === 'CERT_HAS_EXPIRED' || error.message?.includes('SSL') || error.message?.includes('certificate')) {
+      // Set error tags on span
+      setSpanTags(span, {
+        'proxy.error_type': 'ssl',
+        'proxy.ssl_error': true,
+        'proxy.error': true,
+        'proxy.error_code': 'SSL_ERROR',
+      });
+      finishSpanWithError(span, error);
+      
       return {
         success: false,
         error: {
@@ -807,6 +914,14 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
       };
     }
 
+    // Set generic error tags on span
+    setSpanTags(span, {
+      'proxy.error_type': 'unknown',
+      'proxy.error': true,
+      'proxy.error_code': error.code || 'UNKNOWN_ERROR',
+    });
+    finishSpanWithError(span, error);
+    
     return {
       success: false,
       error: {
