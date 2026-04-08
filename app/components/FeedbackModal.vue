@@ -192,6 +192,9 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
+import { useErrorContext } from '~/composables/useErrorContext';
+
+const { getErrorContext } = useErrorContext();
 
 const props = defineProps<{
   modelValue: boolean;
@@ -268,6 +271,12 @@ const submit = async () => {
       if (comment.value) {
         submissionData.comment = comment.value;
       }
+    }
+    
+    // NEW: Attach error context if there are recent errors
+    const errorContext = getErrorContext();
+    if (errorContext.errorCount > 0) {
+      submissionData.responses.errorContext = errorContext;
     }
     
     emit('submit', submissionData);
