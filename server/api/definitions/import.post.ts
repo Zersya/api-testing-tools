@@ -401,6 +401,71 @@ function extractQueryParams(parameters: any[]): Array<{ key: string; value: stri
   return queryParams;
 }
 
+// Extract param notes from OpenAPI parameters and requestBody
+function extractParamNotes(parameters: any[], requestBody?: any): Record<string, Record<string, string>> | null {
+  const paramNotes: Record<string, Record<string, string>> = {};
+  
+  // Extract query param descriptions
+  const queryParams = parameters?.filter(p => p.in === 'query') || [];
+  if (queryParams.length > 0) {
+    const queryNotes: Record<string, string> = {};
+    for (const param of queryParams) {
+      if (param.description) {
+        queryNotes[param.name] = param.description;
+      }
+    }
+    if (Object.keys(queryNotes).length > 0) {
+      paramNotes.queryParams = queryNotes;
+    }
+  }
+  
+  // Extract header descriptions
+  const headerParams = parameters?.filter(p => p.in === 'header') || [];
+  if (headerParams.length > 0) {
+    const headerNotes: Record<string, string> = {};
+    for (const param of headerParams) {
+      if (param.description) {
+        headerNotes[param.name] = param.description;
+      }
+    }
+    if (Object.keys(headerNotes).length > 0) {
+      paramNotes.headers = headerNotes;
+    }
+  }
+  
+  // Extract form-data descriptions from requestBody
+  if (requestBody?.content?.['multipart/form-data']?.schema?.properties) {
+    const props = requestBody.content['multipart/form-data'].schema.properties;
+    const formDataNotes: Record<string, string> = {};
+    for (const [key, prop] of Object.entries(props)) {
+      const propSchema = prop as any;
+      if (propSchema.description) {
+        formDataNotes[key] = propSchema.description;
+      }
+    }
+    if (Object.keys(formDataNotes).length > 0) {
+      paramNotes.formData = formDataNotes;
+    }
+  }
+  
+  // Extract urlencoded descriptions from requestBody
+  if (requestBody?.content?.['application/x-www-form-urlencoded']?.schema?.properties) {
+    const props = requestBody.content['application/x-www-form-urlencoded'].schema.properties;
+    const urlencodedNotes: Record<string, string> = {};
+    for (const [key, prop] of Object.entries(props)) {
+      const propSchema = prop as any;
+      if (propSchema.description) {
+        urlencodedNotes[key] = propSchema.description;
+      }
+    }
+    if (Object.keys(urlencodedNotes).length > 0) {
+      paramNotes.urlencoded = urlencodedNotes;
+    }
+  }
+  
+  return Object.keys(paramNotes).length > 0 ? paramNotes : null;
+}
+
 // Build URL with query parameters
 function buildUrlWithQueryParams(baseUrl: string, queryParams: Array<{ key: string; value: string }>): string {
   if (queryParams.length === 0) return baseUrl;
@@ -876,6 +941,7 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
         const extractedHeaders = extractHeaders(endpoint.parameters || [], endpoint.requestBody);
         const headersJson = extractedHeaders ? JSON.stringify(extractedHeaders) : null;
         const endpointBody = extractBody(endpoint.requestBody);
+        const paramNotes = extractParamNotes(endpoint.parameters || [], endpoint.requestBody);
         
         const newRequest = (await db
           .insert(savedRequests)
@@ -894,6 +960,7 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
               responseBody: { message: 'Mock response' },
               responseHeaders: { 'Content-Type': 'application/json' }
             }),
+            paramNotes,
             order: requestOrder++
           })
           .returning())[0];
@@ -948,6 +1015,7 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
         const fullUrl = buildUrlWithQueryParams(baseRequestUrl, queryParams);
         const endpointHeaders = extractHeaders(endpoint.parameters || [], endpoint.requestBody);
         const endpointBody = extractBody(endpoint.requestBody);
+        const paramNotes = extractParamNotes(endpoint.parameters || [], endpoint.requestBody);
         
         const newRequest = (await db
           .insert(savedRequests)
@@ -966,6 +1034,7 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
               responseBody: { message: 'Mock response' },
               responseHeaders: { 'Content-Type': 'application/json' }
             }),
+            paramNotes,
             order: requestOrder++
           })
           .returning())[0];
