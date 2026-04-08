@@ -61,6 +61,18 @@ export const feedbackSubmissions = pgTable('feedback_submissions', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
   userAgent: text('user_agent'),
   ipAddress: text('ip_address'),
+  
+  // Datadog correlation
+  datadogErrorId: text('datadog_error_id'),
+  datadogSessionId: text('datadog_session_id'),
+  errorContext: jsonb('error_context').$type<{
+    errorCount: number;
+    recentErrors: Array<{
+      type: string;
+      message: string;
+      timestamp: string;
+    }>;
+  }>(),
 });
 
 export type FeedbackConfig = typeof feedbackConfig.$inferSelect;

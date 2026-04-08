@@ -1,5 +1,6 @@
 import { db } from '../db';
 import { usageEvents, type UsageEventType, type ResourceType, type NewUsageEvent } from '../db/schema/usageAnalytics';
+import { incrementCounter, trackUserStress } from '../utils/datadog-metrics';
 
 export interface UsageEventInput {
   userId: string;
@@ -65,6 +66,16 @@ export async function trackUsageEvent(event: UsageEventInput): Promise<void> {
       };
 
       await db.insert(usageEvents).values(newEvent);
+      
+      // NEW: Send to Datadog
+      incrementCounter(`postrack.${event.eventType}`, 1, {
+        tags: {
+          user_id: event.userId,
+          workspace_id: event.workspaceId,
+          resource_type: event.resourceType,
+          success: (event.success ?? true).toString(),
+        },
+      });
     } catch (error) {
       console.error('[Usage] Failed to track event:', error);
     }
@@ -114,6 +125,15 @@ export async function trackRequestExecution(input: RequestExecutionInput): Promi
     responseTimeMs: input.responseTimeMs,
     success: input.success,
   });
+  
+  // NEW: Track performance degradation
+  if (input.responseTimeMs && input.responseTimeMs > 3000) {
+    trackUserStress('slow_response', {
+      duration_ms: input.responseTimeMs.toString(),
+      url: input.url,
+      workspace_id: input.workspaceId,
+    });
+  }
 }
 
 export async function trackResourceAction(input: ResourceActionInput): Promise<void> {
