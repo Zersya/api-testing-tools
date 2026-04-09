@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { SSO_PROVIDER_METADATA, type SsoProvider, type SsoProviderType, type SsoConfig } from '../../types/sso';
 
+definePageMeta({
+  middleware: ['super-admin']
+});
+
 interface ProviderForm {
   id?: string;
   type: SsoProviderType;
