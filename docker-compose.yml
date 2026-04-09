@@ -11,6 +11,14 @@ services:
             SERVICE_NAME: ${IMAGE_NAME}-${APP_ENV}-application
             SERVICE_TAGS: dev
             DATABASE_URL: ${DATABASE_URL}
+            # Datadog configuration
+            DD_ENV: ${APP_ENV}
+            DD_SERVICE: ${IMAGE_NAME}
+            DATADOG_ENV: ${APP_ENV}
+            DATADOG_SITE: ${DATADOG_SITE:-us5.datadoghq.com}
+            DATADOG_API_KEY: ${DATADOG_API_KEY:-}
+            DATADOG_APPLICATION_ID: ${DATADOG_APPLICATION_ID:-}
+            DATADOG_CLIENT_TOKEN: ${DATADOG_CLIENT_TOKEN:-}
         working_dir: /app
         deploy:
             replicas: ${COMPOSE_REPLICAS:-1}
