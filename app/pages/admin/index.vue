@@ -1748,6 +1748,28 @@ const handleCloseTab = (tabKey: string) => {
   }
 };
 
+const handleCloseTabs = (tabKeys: string[]) => {
+  const activeIndex = openTabs.value.findIndex(t => t.key === activeTabKey.value);
+  const closingActive = tabKeys.includes(activeTabKey.value || '');
+  
+  // Filter out the tabs to close
+  openTabs.value = openTabs.value.filter(t => !tabKeys.includes(t.key));
+  
+  // If closing the active tab, switch to another
+  if (closingActive) {
+    if (openTabs.value.length > 0) {
+      // Try to select the tab at the same index, or the last one if it was at the end
+      const newIndex = Math.min(Math.max(0, activeIndex - 1), openTabs.value.length - 1);
+      activeTabKey.value = openTabs.value[newIndex].key;
+      selectedRequest.value = openTabs.value[newIndex].request;
+    } else {
+      activeTabKey.value = null;
+      selectedRequest.value = null;
+      isSharedWorkspace.value = false;
+    }
+  }
+};
+
 const handleNewTab = () => {
   activeAdminPanel.value = 'requests';
   const newRequest: HttpRequest = {
@@ -3369,6 +3391,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
             :active-tab-key="activeTabKey"
             @select-tab="handleSelectTab"
             @close-tab="handleCloseTab"
+            @close-tabs="handleCloseTabs"
             @new-tab="handleNewTab"
             @reorder-tabs="handleReorderTabs"
           />
