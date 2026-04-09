@@ -345,6 +345,7 @@ watch(() => authState.value?.user?.email, async (newEmail) => {
 
           <!-- Menu Items -->
           <a
+            v-if="isSuperAdmin"
             href="/admin/sso"
             class="flex items-center gap-2 px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors duration-fast"
           >
