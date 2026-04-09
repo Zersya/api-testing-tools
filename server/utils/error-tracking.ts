@@ -39,15 +39,26 @@ export function trackServerError(error: Error | unknown, context?: Partial<Error
     }
   }
 
-  // Log to console with full context
-  console.error('[Server Error]', {
-    type: errorDetails.type,
+  // Inject Datadog trace IDs for log correlation
+  const traceId = activeSpan ? activeSpan.context().toTraceId() : undefined
+  const spanId = activeSpan ? activeSpan.context().toSpanId() : undefined
+
+  // Log to console as JSON string for Datadog structured logging
+  console.error(JSON.stringify({
     message: errorDetails.message,
+    level: 'error',
+    error: {
+      kind: errorDetails.type,
+      message: errorDetails.message,
+      stack: errorDetails.stack,
+    },
     userId: errorDetails.userId,
     workspaceId: errorDetails.workspaceId,
+    requestId: errorDetails.requestId,
     metadata: errorDetails.metadata,
-    stack: errorDetails.stack,
-  })
+    'dd.trace_id': traceId,
+    'dd.span_id': spanId
+  }))
 
   return errorDetails
 }

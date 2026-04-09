@@ -32,7 +32,19 @@ export default defineEventHandler((event) => {
     // Tag slow requests (> 1s)
     if (duration > 1000) {
       span.setTag('performance.slow', true)
-      console.warn(`[Slow Request] ${event.method} ${event.path} - ${duration}ms`)
+      
+      const traceId = span.context().toTraceId()
+      const spanId = span.context().toSpanId()
+      
+      console.warn(JSON.stringify({
+        message: `[Slow Request] ${event.method} ${event.path} - ${duration}ms`,
+        level: 'warn',
+        duration,
+        method: event.method,
+        path: event.path,
+        'dd.trace_id': traceId,
+        'dd.span_id': spanId
+      }))
     }
     
     // Tag errors
