@@ -1,5 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
+
+definePageMeta({
+  middleware: ['super-admin']
+});
+
 import RequestBuilder from '~/components/RequestBuilder.vue';
 import SuperAdminInviteModal from '~/components/SuperAdminInviteModal.vue';
 import FeedbackConfigPanel from '~/components/FeedbackConfigPanel.vue';
