@@ -10,7 +10,7 @@ import {
   environments,
   environmentVariables
 } from '../../../db/schema';
-import { eq, desc, asc, isNull, inArray } from 'drizzle-orm';
+import { eq, desc, asc, isNull, inArray, or } from 'drizzle-orm';
 import { isSuperAdmin, getWorkspaceOwnerEmail } from '../../../utils/permissions';
 import { getUserEmailOrFallback } from '../../../utils/userMapping';
 
@@ -244,20 +244,29 @@ export default defineEventHandler(async (event) => {
         ])
       : [[], []];
 
-    // Batch 4: Fetch folders, requests, and environment variables
+    // Batch 4: Fetch folders and environment variables (need folderIds for requests query)
     const collectionIds = allCollections.map(c => c.id);
     const environmentIds = allEnvironments.map(e => e.id);
-    const [allFolders, allRequestsRaw, allEnvironmentVariables] = await Promise.all([
+    const [allFolders, allEnvironmentVariables] = await Promise.all([
       collectionIds.length > 0 
         ? db.select().from(folders).where(inArray(folders.collectionId, collectionIds))
-        : [],
-      collectionIds.length > 0
-        ? db.select().from(savedRequests).where(inArray(savedRequests.collectionId, collectionIds)).orderBy(asc(savedRequests.order))
         : [],
       environmentIds.length > 0
         ? db.select().from(environmentVariables).where(inArray(environmentVariables.environmentId, environmentIds))
         : []
     ]);
+
+    // Batch 5: Fetch requests using both collectionIds and folderIds
+    // Requests can be at collection root (collectionId set) OR inside folders (folderId set)
+    const folderIds = allFolders.map(f => f.id);
+    const allRequestsRaw = (collectionIds.length > 0 || folderIds.length > 0)
+      ? await db.select().from(savedRequests).where(
+          or(
+            inArray(savedRequests.collectionId, collectionIds),
+            inArray(savedRequests.folderId, folderIds)
+          )
+        ).orderBy(asc(savedRequests.order))
+      : [];
 
     // Parse JSON fields from requests
     const allRequests: RequestItem[] = allRequestsRaw.map(req => ({
