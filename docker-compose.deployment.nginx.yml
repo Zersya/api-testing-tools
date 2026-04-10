@@ -8,6 +8,23 @@ services:
             SERVICE_NAME: ${IMAGE_NAME}-${APP_ENV}-application
             SERVICE_TAGS: ${APP_ENV}
             DATABASE_PATH: /app/data/sqlite.db
+            # Datadog configuration for APM and log correlation
+            DD_ENV: ${DATADOG_ENV:-production}
+            DD_SERVICE: postrack-api
+            DD_VERSION: ${CI_COMMIT_TAG:-latest}
+            DD_LOGS_INJECTION: true
+            DD_TRACE_ENABLED: true
+            DD_PROFILING_ENABLED: true
+            DD_RUNTIME_METRICS_ENABLED: true
+            # Required for Datadog Logs (if using Agent)
+            DATADOG_API_KEY: ${DATADOG_API_KEY}
+            DATADOG_SITE: ${DATADOG_SITE:-us5.datadoghq.com}
+            DATADOG_ENV: ${DATADOG_ENV:-production}
+            # Labels for Datadog Agent log collection
+        labels:
+            - "com.datadoghq.tags.env=${DATADOG_ENV:-production}"
+            - "com.datadoghq.tags.service=postrack-api"
+            - "com.datadoghq.tags.version=${CI_COMMIT_TAG:-latest}"
         working_dir: /app
         deploy:
             replicas: ${COMPOSE_REPLICAS:-1}
@@ -18,6 +35,45 @@ services:
           - ./.env:/app/.env
           - mock-service-data:/app/data
           - /home/mock-api/collections:/app/collections
+        logging:
+          driver: "json-file"
+          options:
+            max-size: "100m"
+            max-file: "5"
+            labels: "com.datadoghq.tags.service,com.datadoghq.tags.env,com.datadoghq.tags.version"
+            env: "DD_ENV,DD_SERVICE,DD_VERSION"
+
+    # Datadog Agent for log collection, APM, and infrastructure monitoring
+    datadog-agent:
+        image: gcr.io/datadoghq/agent:latest
+        restart: unless-stopped
+        environment:
+            - DD_API_KEY=${DATADOG_API_KEY}
+            - DD_SITE=${DATADOG_SITE:-us5.datadoghq.com}
+            - DD_ENV=${DATADOG_ENV:-production}
+            - DD_HOSTNAME=${APP_HOST:-postrack-api-host}
+            # Enable log collection
+            - DD_LOGS_ENABLED=true
+            - DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL=true
+            - DD_LOGS_CONFIG_DOCKER_CONTAINER_USE_FILE=true
+            # Enable APM
+            - DD_APM_ENABLED=true
+            - DD_APM_NON_LOCAL_TRAFFIC=true
+            # Enable process collection
+            - DD_PROCESS_AGENT_ENABLED=true
+            # Tags
+            - DD_TAGS=env:${DATADOG_ENV:-production} service:postrack-api version:${CI_COMMIT_TAG:-latest}
+        volumes:
+            - /var/run/docker.sock:/var/run/docker.sock:ro
+            - /proc/:/host/proc/:ro
+            - /sys/fs/cgroup:/host/sys/fs/cgroup:ro
+            - /var/lib/docker/containers:/var/lib/docker/containers:ro
+        network_mode: host
+        privileged: true
+        pid: host
+        labels:
+            - "com.datadoghq.tags.env=${DATADOG_ENV:-production}"
+            - "com.datadoghq.tags.service=datadog-agent"
 
 volumes:
     mock-service-data:

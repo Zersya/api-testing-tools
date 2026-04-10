@@ -11,12 +11,18 @@ services:
             SERVICE_NAME: ${IMAGE_NAME}-${APP_ENV}-application
             SERVICE_TAGS: dev
             DATABASE_URL: ${DATABASE_URL}
-            # Datadog configuration
-            DD_ENV: ${APP_ENV}
-            DD_SERVICE: ${IMAGE_NAME}
-            DATADOG_ENV: ${APP_ENV}
-            DATADOG_SITE: ${DATADOG_SITE:-us5.datadoghq.com}
+            # Datadog configuration for APM and log correlation
+            DD_ENV: ${DATADOG_ENV:-${APP_ENV}}
+            DD_SERVICE: postrack-api
+            DD_VERSION: ${APP_VERSION:-latest}
+            DD_LOGS_INJECTION: true
+            DD_TRACE_ENABLED: true
+            DD_PROFILING_ENABLED: ${DD_PROFILING_ENABLED:-false}
+            DD_RUNTIME_METRICS_ENABLED: true
+            # Required for Datadog Logs
             DATADOG_API_KEY: ${DATADOG_API_KEY:-}
+            DATADOG_SITE: ${DATADOG_SITE:-us5.datadoghq.com}
+            DATADOG_ENV: ${DATADOG_ENV:-${APP_ENV}}
             DATADOG_APPLICATION_ID: ${DATADOG_APPLICATION_ID:-}
             DATADOG_CLIENT_TOKEN: ${DATADOG_CLIENT_TOKEN:-}
         working_dir: /app
@@ -40,6 +46,52 @@ services:
             - "traefik.http.routers.${IMAGE_NAME}-${APP_ENV}-secure.service=${IMAGE_NAME}-${APP_ENV}"
             - "traefik.http.services.${IMAGE_NAME}-${APP_ENV}.loadbalancer.server.port=3000"
             - "traefik.docker.network=proxy"
+            # Datadog labels for Agent log collection
+            - "com.datadoghq.tags.env=${DATADOG_ENV:-${APP_ENV}}"
+            - "com.datadoghq.tags.service=postrack-api"
+            - "com.datadoghq.tags.version=${APP_VERSION:-latest}"
+        logging:
+          driver: "json-file"
+          options:
+            max-size: "100m"
+            max-file: "5"
+            labels: "com.datadoghq.tags.service,com.datadoghq.tags.env,com.datadoghq.tags.version"
+            env: "DD_ENV,DD_SERVICE,DD_VERSION"
+
+    # Datadog Agent for log collection, APM, and infrastructure monitoring (optional for local dev)
+    datadog-agent:
+        image: gcr.io/datadoghq/agent:latest
+        restart: unless-stopped
+        environment:
+            - DD_API_KEY=${DATADOG_API_KEY}
+            - DD_SITE=${DATADOG_SITE:-us5.datadoghq.com}
+            - DD_ENV=${DATADOG_ENV:-${APP_ENV}}
+            - DD_HOSTNAME=${APP_HOST:-postrack-api-host}
+            # Enable log collection
+            - DD_LOGS_ENABLED=true
+            - DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL=true
+            - DD_LOGS_CONFIG_DOCKER_CONTAINER_USE_FILE=true
+            # Enable APM
+            - DD_APM_ENABLED=true
+            - DD_APM_NON_LOCAL_TRAFFIC=true
+            # Enable process collection
+            - DD_PROCESS_AGENT_ENABLED=true
+            # Tags
+            - DD_TAGS=env:${DATADOG_ENV:-${APP_ENV}} service:postrack-api version:${APP_VERSION:-latest}
+        volumes:
+            - /var/run/docker.sock:/var/run/docker.sock:ro
+            - /proc/:/host/proc/:ro
+            - /sys/fs/cgroup:/host/sys/fs/cgroup:ro
+            - /var/lib/docker/containers:/var/lib/docker/containers:ro
+        network_mode: host
+        privileged: true
+        pid: host
+        labels:
+            - "com.datadoghq.tags.env=${DATADOG_ENV:-${APP_ENV}}"
+            - "com.datadoghq.tags.service=datadog-agent"
+        # Only run if DATADOG_API_KEY is provided
+        profiles:
+            - datadog
 
 volumes:
     mock-service-data:
