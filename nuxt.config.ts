@@ -52,7 +52,7 @@ export default defineNuxtConfig({
     // Server-side only (SECRET) - Datadog configuration
     datadogApiKey: process.env.DATADOG_API_KEY,
     datadogSite: process.env.DATADOG_SITE || 'us5.datadoghq.com',
-    datadogEnv: process.env.DATADOG_ENV || 'development',
+    datadogEnv: process.env.DATADOG_ENV || process.env.DD_ENV || 'development',
     
     // Client-side (PUBLIC) - Datadog RUM configuration
     public: {
@@ -64,7 +64,7 @@ export default defineNuxtConfig({
       datadogClientToken: process.env.DATADOG_CLIENT_TOKEN,
       datadogSite: process.env.DATADOG_SITE || 'us5.datadoghq.com',
       datadogService: 'postrack-web',
-      datadogEnv: process.env.DATADOG_ENV || 'development',
+      datadogEnv: process.env.DATADOG_ENV || process.env.DD_ENV || 'development',
       datadogVersion: appVersion,
     }
   }
