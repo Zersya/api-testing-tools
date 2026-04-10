@@ -2760,6 +2760,10 @@ const sendRequest = async () => {
     // Apply path variable substitution
     requestUrl = resolvePathVariables(requestUrl);
 
+    // Pre-resolve environment variables in URL to properly detect localhost URLs
+    // This is needed because {{URL}} might resolve to http://localhost:4000
+    const resolvedUrlForLocalCheck = resolveEnvVars(requestUrl);
+
     const authQueryParams = buildAuthQueryParams();
     if (Object.keys(authQueryParams).length > 0) {
       try {
@@ -2773,7 +2777,8 @@ const sendRequest = async () => {
     }
 
     // Determine if URL is local and should be handled client-side
-    const isLocalRequest = isLocalUrl(requestUrl);
+    // Use the pre-resolved URL to correctly detect localhost URLs like {{URL}}/api
+    const isLocalRequest = isLocalUrl(resolvedUrlForLocalCheck);
 
     let result: ProxyResponse | ProxyErrorResponse;
 
