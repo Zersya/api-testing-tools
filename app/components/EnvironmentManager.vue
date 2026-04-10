@@ -423,7 +423,7 @@ const clearSearch = () => {
       @close="closeVariablesPanel"
       @activate="handleActivate"
       @add:variable="emit('add:variable', $event)"
-      @update:variable="emit('update:variable', $event)"
+      @update:variable="(variable, key, value, isSecret) => emit('update:variable', variable, key, value, isSecret)"
       @delete:variable="emit('delete:variable', $event)"
       @toggle:secret="emit('toggle:secret', $event)"
     />
