@@ -4241,22 +4241,20 @@ defineExpose({
                 <span>Response</span>
               </button>
               
-              <transition name="fade-scale">
-                <div v-if="hasResponse && !isResponseCollapsed && response" class="flex items-center gap-3">
-                  <span
-                    v-if="response.success"
-                    class="py-1 px-2.5 rounded text-[11px] font-semibold uppercase"
-                    :class="getResponseStatusColorClass(response.status)"
-                  >
-                    {{ response.status }} {{ response.statusText }}
-                  </span>
-                  <span v-else class="py-1 px-2.5 rounded text-[11px] font-semibold uppercase bg-accent-red/15 text-accent-red">
-                    Error
-                  </span>
-                  <span v-if="response.timing" class="text-xs text-text-muted font-mono">{{ response.timing.durationMs }}ms</span>
-                  <span class="text-xs text-text-muted">{{ getTotalResponseSize() }} bytes</span>
-                </div>
-              </transition>
+              <div v-if="hasResponse && !isResponseCollapsed && response" class="flex items-center gap-3">
+                <span
+                  v-if="response.success"
+                  class="py-1 px-2.5 rounded text-[11px] font-semibold uppercase"
+                  :class="getResponseStatusColorClass(response.status)"
+                >
+                  {{ response.status }} {{ response.statusText }}
+                </span>
+                <span v-else class="py-1 px-2.5 rounded text-[11px] font-semibold uppercase bg-accent-red/15 text-accent-red">
+                  Error
+                </span>
+                <span v-if="response.timing" class="text-xs text-text-muted font-mono">{{ response.timing.durationMs }}ms</span>
+                <span class="text-xs text-text-muted">{{ getTotalResponseSize() }} bytes</span>
+              </div>
               
               <!-- Placeholder when no response -->
               <div v-if="!hasResponse" class="flex items-center gap-2 text-xs text-text-muted">
@@ -4268,46 +4266,43 @@ defineExpose({
               </div>
             </div>
             
-            <transition name="fade-scale">
-              <div v-if="hasResponse && !isResponseCollapsed && response" class="flex items-center gap-2">
-                <button 
-                  @click="openResponseSearch"
-                  class="p-1.5 text-text-muted hover:text-text-secondary transition-colors duration-fast hover:scale-110 transform"
-                  title="Search (Cmd/Ctrl+F)"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="11" cy="11" r="8"></circle>
-                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                  </svg>
-                </button>
-                <button 
-                  @click="openSaveExampleModal"
-                  class="p-1.5 text-text-muted hover:text-accent-green transition-colors duration-fast hover:scale-110 transform"
-                  title="Save response as example"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-                    <polyline points="17 21 17 13 7 13 7 21"></polyline>
-                    <polyline points="7 3 7 8 15 8"></polyline>
-                  </svg>
-                </button>
-                <button 
-                  @click="copyResponseBody"
-                  class="p-1.5 text-text-muted hover:text-text-secondary transition-colors duration-fast hover:scale-110 transform"
-                  title="Copy response body"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                  </svg>
-                </button>
-              </div>
-            </transition>
+            <div v-if="hasResponse && !isResponseCollapsed && response" class="flex items-center gap-2">
+              <button 
+                @click="openResponseSearch"
+                class="p-1.5 text-text-muted hover:text-text-secondary transition-colors duration-fast hover:scale-110 transform"
+                title="Search (Cmd/Ctrl+F)"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+              </button>
+              <button 
+                @click="openSaveExampleModal"
+                class="p-1.5 text-text-muted hover:text-accent-green transition-colors duration-fast hover:scale-110 transform"
+                title="Save response as example"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                  <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                  <polyline points="7 3 7 8 15 8"></polyline>
+                </svg>
+              </button>
+              <button 
+                @click="copyResponseBody"
+                class="p-1.5 text-text-muted hover:text-text-secondary transition-colors duration-fast hover:scale-110 transform"
+                title="Copy response body"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+              </button>
+            </div>
           </div>
 
           <!-- Expanded Response Content -->
-          <transition name="slide-fade">
-            <div v-if="!isResponseCollapsed && response" class="flex-1 flex flex-col overflow-hidden">
+          <div v-if="!isResponseCollapsed && response" class="flex-1 flex flex-col overflow-hidden">
               <div v-if="response.success" class="flex-1 flex flex-col overflow-hidden">
                 <!-- Search Bar -->
                 <div v-if="showSearch || searchQuery" class="px-4 py-2 border-b border-border-default">
@@ -4658,7 +4653,7 @@ defineExpose({
                 </div>
               </div>
             </div>
-          </transition>
+          </div>
         </div>
 
         <!-- Mobile: Response as Tab (Fallback) -->
