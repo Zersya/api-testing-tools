@@ -223,6 +223,7 @@ const variableWarnings = ref<string[]>([]);
 const environmentVariables = ref<Variable[]>([]);
 
 const responseViewType = ref<ResponseViewType>('pretty');
+const previewContainerRef = ref<HTMLDivElement | null>(null);
 
 const queryParams = ref<QueryParam[]>([]);
 const isBulkEditMode = ref(false);
@@ -2533,6 +2534,12 @@ const handleKeydown = (e: KeyboardEvent) => {
   }
 };
 
+// Handle mousedown on preview container to manage focus
+const handlePreviewMousedown = () => {
+  // When user interacts with preview, we keep focus on parent window
+  // so keyboard shortcuts continue to work
+  window.focus();
+};
 
 const openSaveDialog = () => {
   emit('saveRequest', {
@@ -2867,12 +2874,13 @@ const sendRequest = async () => {
 };
 
 onMounted(() => {
-  window.addEventListener('keydown', handleKeydown);
+  // Use capture phase to intercept keyboard events even when focus is inside iframe
+  window.addEventListener('keydown', handleKeydown, true);
 });
 
 onUnmounted(() => {
   isMounted.value = false;
-  window.removeEventListener('keydown', handleKeydown);
+  window.removeEventListener('keydown', handleKeydown, true);
 });
 
 // Expose current request state for CodeExamples component
@@ -4174,17 +4182,25 @@ defineExpose({
                 <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
                   <span class="text-xs text-text-muted">{{ getContentType().split(';')[0] }}</span>
                 </div>
-                <div class="flex-1 overflow-hidden rounded border border-border-default bg-bg-tertiary">
+                <div
+                  ref="previewContainerRef"
+                  class="flex-1 overflow-hidden rounded border border-border-default bg-bg-tertiary relative"
+                  @mousedown="handlePreviewMousedown"
+                >
                   <iframe
                     v-if="isHtmlResponse()"
                     :srcdoc="getResponseText()"
                     class="w-full h-full border-none"
                     sandbox="allow-same-origin"
+                    tabindex="-1"
+                    inert
                   ></iframe>
                   <iframe
                     v-else-if="isJsonResponse()"
                     :srcdoc="getJsonPreviewHtml()"
                     class="w-full h-full border-none"
+                    tabindex="-1"
+                    inert
                   ></iframe>
                   <div v-else class="w-full h-full flex items-center justify-center text-text-muted text-xs">
                     Preview not available for this content type
