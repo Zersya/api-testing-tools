@@ -810,18 +810,34 @@ const addVariableFromSettings = async (environment: Environment) => {
 };
 
 const updateVariableFromSettings = async (variable: EnvironmentVariable, key: string, value: string, isSecret: boolean) => {
+  // Validate inputs
+  if (!variable?.id) {
+    console.error('Invalid variable:', variable);
+    alert('Error: Variable is invalid');
+    return;
+  }
+
   if (isSecret) {
     environmentSettingsSecretValues.value[variable.id] = value;
   }
 
   try {
+    // Build body only with defined values
+    const body: { key?: string; value?: string; isSecret?: boolean } = {};
+    
+    if (key !== undefined && key !== null) {
+      body.key = key.trim();
+    }
+    if (value !== undefined && value !== null) {
+      body.value = isSecret ? environmentSettingsSecretValues.value[variable.id] : value;
+    }
+    if (isSecret !== undefined) {
+      body.isSecret = isSecret;
+    }
+
     await $fetch(`/api/admin/variables/${variable.id}`, {
       method: 'PUT',
-      body: {
-        key: key.trim(),
-        value: isSecret ? environmentSettingsSecretValues.value[variable.id] : value,
-        isSecret
-      }
+      body
     });
     await refreshEnvironmentSources();
   } catch (e: any) {
