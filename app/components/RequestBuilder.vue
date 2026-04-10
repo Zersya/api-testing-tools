@@ -382,7 +382,7 @@ const captureCurrentStateAsSaved = () => {
     body: buildBodyForSave(),
     auth: {
       type: authType.value,
-      inherit: inheritFromParent.value,
+      // Note: 'inherit' field removed from auth - using inheritAuth column as single source of truth
       credentials: authType.value === 'api-key' ? {
         key: apiKey.value.key,
         value: apiKey.value.value,
@@ -391,6 +391,19 @@ const captureCurrentStateAsSaved = () => {
         : authType.value === 'basic' ? {
           username: basicAuth.value.username,
           password: basicAuth.value.password
+        } : authType.value === 'oauth2' ? {
+          authUrl: oauth2.value.authUrl,
+          tokenUrl: oauth2.value.tokenUrl,
+          clientId: oauth2.value.clientId,
+          clientSecret: oauth2.value.clientSecret,
+          scopes: oauth2.value.scopes,
+          callbackUrl: oauth2.value.callbackUrl,
+          accessToken: oauth2.value.accessToken,
+          refreshToken: oauth2.value.refreshToken,
+          expiresAt: oauth2.value.expiresAt,
+          tokenType: oauth2.value.tokenType,
+          grantType: oauth2.value.grantType,
+          PKCE: oauth2.value.PKCE
         } : undefined
     },
     inheritAuth: inheritFromParent.value ? 1 : 0,
@@ -463,13 +476,13 @@ const resolvePathVariables = (url: string): string => {
 const isFirstLoad = ref(true);
 
 // Function to load request data into form state
-const loadRequestData = (request: HttpRequest) => {
+const loadRequestData = async (request: HttpRequest) => {
   // Increment load ID to track this specific load operation
   const loadId = ++currentLoadId;
-  
+
   // Set flag to prevent change detection during loading
   isLoadingRequestData.value = true;
-  
+
   try {
     // Create a snapshot of key fields to detect changes
     const snapshot = JSON.stringify({
@@ -625,18 +638,27 @@ const loadRequestData = (request: HttpRequest) => {
       }
     } 
     
+    // Load inheritAuth setting - single source of truth from database column
+    // Backward compatibility: also check legacy auth.inherit flag
+    const hasNewInherit = (request as any).inheritAuth === 1;
+    const hasLegacyInherit = request.auth?.inherit === true;
+    inheritFromParent.value = hasNewInherit || hasLegacyInherit;
+
+    // If only legacy flag is set (not migrated yet), log for debugging
+    if (hasLegacyInherit && !hasNewInherit) {
+      console.log('[RequestBuilder] Request has legacy auth.inherit flag, treating as inherited');
+    }
+
     // Reset auth state
     const authConfig = request.auth;
     if (!authConfig) {
       authType.value = 'none';
-      inheritFromParent.value = false;
       apiKey.value = { key: '', value: '', addTo: 'header' };
       bearerToken.value = '';
       basicAuth.value = { username: '', password: '' };
     } else {
       const type = authConfig.type as AuthType;
       authType.value = type;
-      inheritFromParent.value = authConfig.inherit ?? false;
 
       if (type === 'api-key' && authConfig.credentials) {
         apiKey.value.key = authConfig.credentials.key || '';
@@ -659,12 +681,9 @@ const loadRequestData = (request: HttpRequest) => {
         oauth2.value.expiresAt = authConfig.credentials.expiresAt || null;
         oauth2.value.tokenType = authConfig.credentials.tokenType || 'Bearer';
         oauth2.value.grantType = authConfig.credentials.grantType || 'authorization_code';
-      oauth2.value.PKCE = authConfig.credentials.PKCE || false;
+        oauth2.value.PKCE = authConfig.credentials.PKCE || false;
+      }
     }
-  }
-
-    // Load inheritAuth setting
-    inheritFromParent.value = (request as any).inheritAuth === 1;
 
     // Load mock configuration
     if (request.mockConfig) {
@@ -819,7 +838,8 @@ const loadRequestData = (request: HttpRequest) => {
       body: builtBody === null ? null : JSON.parse(JSON.stringify(builtBody)),
       auth: JSON.parse(JSON.stringify({
         type: authType.value,
-        inherit: inheritFromParent.value,
+        // Note: 'inherit' field removed from auth JSON - using inheritAuth column as single source of truth
+        // Backward compatibility: keeping credentials structure intact
         credentials: authType.value === 'api-key' ? {
           key: apiKey.value.key,
           value: apiKey.value.value,
@@ -828,6 +848,19 @@ const loadRequestData = (request: HttpRequest) => {
           : authType.value === 'basic' ? {
             username: basicAuth.value.username,
             password: basicAuth.value.password
+          } : authType.value === 'oauth2' ? {
+            authUrl: oauth2.value.authUrl,
+            tokenUrl: oauth2.value.tokenUrl,
+            clientId: oauth2.value.clientId,
+            clientSecret: oauth2.value.clientSecret,
+            scopes: oauth2.value.scopes,
+            callbackUrl: oauth2.value.callbackUrl,
+            accessToken: oauth2.value.accessToken,
+            refreshToken: oauth2.value.refreshToken,
+            expiresAt: oauth2.value.expiresAt,
+            tokenType: oauth2.value.tokenType,
+            grantType: oauth2.value.grantType,
+            PKCE: oauth2.value.PKCE
           } : undefined
       })) || {},
       inheritAuth: inheritFromParent.value ? 1 : 0,
@@ -841,6 +874,13 @@ const loadRequestData = (request: HttpRequest) => {
     // Reset saved state to ensure fresh comparison for the newly loaded request
     // This prevents stale saved state from previous tabs affecting change detection
     lastSavedState.value = null;
+
+    // If this request inherits auth from collection, pre-fetch collection auth
+    // This ensures inherited auth is available before user can send the request
+    if (inheritFromParent.value && props.collectionId && !collectionAuth.value) {
+      console.log('[RequestBuilder] Pre-loading collection auth for inherited request...');
+      await fetchCollectionAuth();
+    }
   } finally {
     // Clear loading flag after a small delay to allow all reactive updates to settle
     // Use setTimeout to ensure we're outside of Vue's update cycle
@@ -1147,7 +1187,7 @@ const buildPathVariablesRecord = (): import('../../server/db/schema/savedRequest
 const buildDraftSnapshot = (): RequestDraftSnapshot => {
   const currentAuth = {
     type: authType.value,
-    inherit: inheritFromParent.value,
+    // Note: 'inherit' field removed from auth - using inheritAuth column as single source of truth
     credentials: authType.value === 'api-key' ? {
       key: apiKey.value.key,
       value: apiKey.value.value,
@@ -1413,13 +1453,13 @@ const buildAuthQueryParams = (): Record<string, string> => {
 const parseAuthFromRequest = (authConfig: any) => {
   if (!authConfig) {
     authType.value = 'none';
-    inheritFromParent.value = false;
     return;
   }
 
   const type = authConfig.type as AuthType;
   authType.value = type;
-  inheritFromParent.value = authConfig.inherit ?? false;
+  // Note: inheritFromParent is now managed separately from inheritAuth column
+  // Do NOT set inheritFromParent here - it's set in loadRequestData()
 
   if (type === 'api-key' && authConfig.credentials) {
     apiKey.value.key = authConfig.credentials.key || '';
@@ -2545,7 +2585,7 @@ const openSaveDialog = () => {
     body: buildBodyForSave(),
     auth: {
       type: authType.value,
-      inherit: inheritFromParent.value,
+      // Note: 'inherit' field removed from auth - using inheritAuth column as single source of truth
       credentials: authType.value === 'api-key' ? {
         key: apiKey.value.key,
         value: apiKey.value.value,
@@ -2595,7 +2635,7 @@ const openSaveAsDialog = () => {
     body: buildBody(),
     auth: {
       type: authType.value,
-      inherit: inheritFromParent.value,
+      // Note: 'inherit' field removed from auth - using inheritAuth column as single source of truth
       credentials: authType.value === 'api-key' ? {
         key: apiKey.value.key,
         value: apiKey.value.value,
@@ -2688,19 +2728,21 @@ watch(hasUnsavedChanges, (newValue, oldValue) => {
   emit('unsavedChanges', props.request, newValue, buildDraftSnapshot());
 });
 
-onMounted(() => {
+onMounted(async () => {
   isMounted.value = true;
-  
+
   // Load initial request data (this handles headers, auth, body, etc.)
-  loadRequestData(props.request);
-  
+  await loadRequestData(props.request);
+
   // Other initialization that's not part of request data loading
   checkForOAuthCallback();
   fetchEnvironmentVariables();
-  
-  // Fetch collection auth if we have a collectionId
-  if (props.collectionId) {
-    fetchCollectionAuth();
+
+  // Fetch collection auth if we have a collectionId and request is inheriting
+  // This ensures inherited auth is loaded before user can send the request
+  if (props.collectionId && inheritFromParent.value) {
+    console.log('[RequestBuilder] Request has inheritAuth enabled, pre-loading collection auth...');
+    await fetchCollectionAuth();
   }
 });
 
@@ -2723,6 +2765,29 @@ const sendRequest = async () => {
 
   if (authType.value === 'oauth2' && oauth2.value.accessToken) {
     await autoRefreshToken();
+  }
+
+  // Guard: Ensure collection auth is loaded when inheriting
+  if (inheritFromParent.value && props.collectionId) {
+    if (collectionAuthLoading.value) {
+      // Wait for collection auth to finish loading
+      console.log('[RequestBuilder] Waiting for collection auth to load...');
+      while (collectionAuthLoading.value) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+
+    // If still no collection auth after loading, try to fetch it
+    if (!collectionAuth.value && !collectionAuthLoading.value) {
+      console.log('[RequestBuilder] Collection auth not loaded, fetching...');
+      await fetchCollectionAuth();
+    }
+
+    // Check again after fetch attempt
+    if (!collectionAuth.value) {
+      console.warn('[RequestBuilder] Collection auth not available for inherited request');
+      // Continue anyway - buildAuthHeaders will handle the fallback
+    }
   }
 
   isLoading.value = true;
@@ -2976,18 +3041,19 @@ defineExpose({
             class="flex-1 min-w-0 py-2.5 px-3 bg-transparent border-none text-text-primary font-mono text-sm focus:outline-none placeholder:text-text-muted overflow-hidden"
             @keyup.enter="sendRequest"
           />
-          <button 
-            class="shrink-0 py-2.5 px-8 bg-accent-blue text-white font-semibold rounded-md border-none cursor-pointer transition-all duration-fast hover:bg-[#1976D2] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2" 
-            @click="sendRequest" 
-            :disabled="isLoading || !form.url"
+          <button
+            class="shrink-0 py-2.5 px-8 bg-accent-blue text-white font-semibold rounded-md border-none cursor-pointer transition-all duration-fast hover:bg-[#1976D2] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            @click="sendRequest"
+            :disabled="isLoading || !form.url || (inheritFromParent && collectionAuthLoading)"
+            :title="(inheritFromParent && collectionAuthLoading) ? 'Loading collection authentication...' : ''"
           >
-            <svg v-if="isLoading" class="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg v-if="isLoading || (inheritFromParent && collectionAuthLoading)" class="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
             </svg>
             <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polygon points="5 3 19 12 5 21 5 3"></polygon>
             </svg>
-            {{ isLoading ? 'Sending...' : 'Send' }}
+            {{ isLoading ? 'Sending...' : (inheritFromParent && collectionAuthLoading) ? 'Loading Auth...' : 'Send' }}
           </button>
         </div>
       </div>
