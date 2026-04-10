@@ -131,6 +131,7 @@ const emit = defineEmits<{
   createResource: [];
   createCollection: [];
   createRequest: [];
+  importCurl: [];
   createFolder: [collectionId: string];
   createProject: [workspaceId: string];
   createWorkspace: [];
@@ -977,6 +978,8 @@ const handleContextAction = (action: string) => {
         emit('createFolder', data.id);
       } else if (action === 'create-request') {
         emit('createRequest', null, data.id); // Pass null for folderId, collectionId as second param
+      } else if (action === 'import-curl') {
+        emit('importCurl', null, data.id);
       } else if (action === 'edit-collection') {
         emit('editCollection', data);
       } else if (action === 'rename-collection') {
@@ -988,6 +991,8 @@ const handleContextAction = (action: string) => {
     case 'folder':
       if (action === 'create-request') {
         emit('createRequest', data.id);
+      } else if (action === 'import-curl') {
+        emit('importCurl', data.id);
       } else if (action === 'rename-folder') {
         emit('renameFolder', data);
       } else if (action === 'delete-folder') {
@@ -1874,6 +1879,16 @@ defineExpose({
               </svg>
               New Request
             </button>
+            <button
+              class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              @click.stop="handleContextAction('import-curl')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
+                <polyline points="16 18 22 12 16 6"></polyline>
+                <polyline points="8 6 2 12 8 18"></polyline>
+              </svg>
+              Import from cURL
+            </button>
             <div class="border-t border-border-default my-1"></div>
             <button
               class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
@@ -1906,6 +1921,16 @@ defineExpose({
                 <line x1="5" y1="12" x2="19" y2="12"></line>
               </svg>
               New Request
+            </button>
+            <button
+              class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              @click.stop="handleContextAction('import-curl')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
+                <polyline points="16 18 22 12 16 6"></polyline>
+                <polyline points="8 6 2 12 8 18"></polyline>
+              </svg>
+              Import from cURL
             </button>
             <button
               class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
