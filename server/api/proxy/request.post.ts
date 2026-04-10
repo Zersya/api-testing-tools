@@ -105,8 +105,11 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
     },
   });
 
+  // Declare body outside try block so it's accessible in catch block
+  let body: ProxyRequestBody | undefined;
+
   try {
-    const body = await readBody<ProxyRequestBody>(event);
+    body = await readBody<ProxyRequestBody>(event);
     
     // Set span tags with request info
     setSpanTags(span, {
