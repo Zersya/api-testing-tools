@@ -2232,8 +2232,45 @@ const handleSaveAs = async (data: any) => {
 };
 
 const openCreateRequest = (folderId?: string | null, collectionId?: string) => {
+  // Create a new empty request tab with folder/collection association
+  activeAdminPanel.value = 'requests';
+  
+  const newRequest: HttpRequest = {
+    id: '',
+    folderId: folderId || '',
+    collectionId: collectionId || null,
+    name: 'Untitled Request',
+    method: 'GET',
+    url: '',
+    headers: null,
+    body: null,
+    auth: null,
+    bodyFormat: 'none',
+    jsonBody: '',
+    rawBody: '',
+    rawContentType: 'text/plain',
+    formDataParams: [],
+    order: 0,
+    createdAt: new Date(),
+    updatedAt: new Date()
+  };
+  
+  const newTabKey = createTabKey();
+  const newTab: OpenTab = {
+    key: newTabKey,
+    request: newRequest,
+    hasUnsavedChanges: true
+  };
+  openTabs.value.push(newTab);
+  activeTabKey.value = newTabKey;
+  selectedRequest.value = newRequest;
+  isSharedWorkspace.value = false;
+};
+
+// For importing from cURL - shows the modal
+const openImportCurl = (folderId?: string | null, collectionId?: string) => {
   if (folderId) {
-    // Creating request in a folder
+    // Importing to a folder
     const folder = findFolderInWorkspaces(folderId);
     requestFolderId.value = folderId;
     requestFolderName.value = folder?.name || 'Unknown Folder';
@@ -2241,7 +2278,7 @@ const openCreateRequest = (folderId?: string | null, collectionId?: string) => {
     requestCollectionName.value = '';
     showRequestModal.value = true;
   } else if (collectionId) {
-    // Creating request at collection root
+    // Importing to collection root
     const collection = findCollectionInWorkspaces(collectionId);
     requestFolderId.value = null;
     requestFolderName.value = '';
@@ -2250,6 +2287,21 @@ const openCreateRequest = (folderId?: string | null, collectionId?: string) => {
     showRequestModal.value = true;
   } else {
     alert('Please select a folder or collection first');
+  }
+};
+
+const handleCurlImported = async (result: any) => {
+  // Close the modal
+  showRequestModal.value = false;
+  requestFolderId.value = null;
+  requestCollectionId.value = null;
+  
+  // Refresh workspaces to show the new request
+  await refreshWorkspaces();
+  
+  // Open the newly created request in a tab
+  if (result && result.id) {
+    handleSelectRequest(result);
   }
 };
 
@@ -2918,6 +2970,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
         @create-resource="showResourceModal = true"
         @create-collection="openCreateCollection"
         @create-request="openCreateRequest"
+        @import-curl="openImportCurl"
         @create-folder="openCreateFolder"
         @create-project="openCreateProject"
         @create-workspace="openCreateWorkspace"
@@ -4093,7 +4146,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
       @created="handleFolderCreated"
     />
 
-    <!-- Create Request Modal -->
+    <!-- Import from cURL Modal -->
     <CreateRequestModal
       :show="showRequestModal"
       :folder-id="requestFolderId || ''"
@@ -4101,7 +4154,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
       :collection-id="requestCollectionId || ''"
       :collection-name="requestCollectionName"
       @close="showRequestModal = false; requestFolderId = null; requestCollectionId = null"
-      @created="refreshWorkspaces()"
+      @imported="handleCurlImported"
     />
 
     <!-- Keyboard Shortcuts Help Modal -->
