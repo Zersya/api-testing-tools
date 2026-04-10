@@ -2764,6 +2764,9 @@ const sendRequest = async () => {
     // This is needed because {{URL}} might resolve to http://localhost:4000
     const resolvedUrlForLocalCheck = resolveEnvVars(requestUrl);
 
+    // Check if the resolved URL is a localhost/private URL
+    const isResolvedLocalhost = isLocalUrl(resolvedUrlForLocalCheck);
+
     const authQueryParams = buildAuthQueryParams();
     if (Object.keys(authQueryParams).length > 0) {
       try {
@@ -2776,9 +2779,10 @@ const sendRequest = async () => {
       }
     }
 
-    // Determine if URL is local and should be handled client-side
-    // Use the pre-resolved URL to correctly detect localhost URLs like {{URL}}/api
-    const isLocalRequest = isLocalUrl(resolvedUrlForLocalCheck);
+    // Route localhost URLs through server proxy to avoid CORS issues
+    // Both raw localhost (http://localhost:3000) and template variables ({{URL}}) 
+    // that resolve to localhost will use the server proxy
+    const isLocalRequest = false; // Always use server proxy for localhost to avoid CORS
 
     let result: ProxyResponse | ProxyErrorResponse;
 

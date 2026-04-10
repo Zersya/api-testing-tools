@@ -226,4 +226,4 @@ production:
       - docker-compose.yml
     expire_in: 1 days
     when: always
-  when : manual
+  when : always
