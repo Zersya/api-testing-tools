@@ -64,6 +64,11 @@ interface ProxyResponse {
   };
   scriptLogs?: ScriptLogEntry[];
   scriptErrors?: string[];
+  environmentChanges?: Array<{
+    key: string;
+    value: string;
+    action: 'set' | 'unset';
+  }>;
 }
 
 interface ProxyErrorResponse {
@@ -651,6 +656,9 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
       responseBody = null;
     }
 
+    // Track environment variable changes from post-script
+    let environmentChanges: Array<{ key: string; value: string; action: 'set' | 'unset' }> = [];
+
     // Execute post-script if available
     if (savedRequest?.postScript && body.environmentId) {
       try {
@@ -688,6 +696,12 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
         scriptLogs.push(...postResult.logs);
         scriptErrors.push(...postResult.errors);
 
+        // Capture environment changes from post-script
+        if (postResult.environmentChanges && postResult.environmentChanges.length > 0) {
+          environmentChanges = postResult.environmentChanges;
+          console.log('[Proxy] Post-script environment changes:', environmentChanges);
+        }
+
         if (postResult.success) {
           console.log('[Proxy] Post-script executed successfully');
         } else {
@@ -713,7 +727,8 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
       variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined,
       resolvedValues: resolvedValues && Object.keys(resolvedValues).length > 0 ? resolvedValues : undefined,
       scriptLogs: scriptLogs.length > 0 ? scriptLogs : undefined,
-      scriptErrors: scriptErrors.length > 0 ? scriptErrors : undefined
+      scriptErrors: scriptErrors.length > 0 ? scriptErrors : undefined,
+      environmentChanges: environmentChanges.length > 0 ? environmentChanges : undefined
     };
 
     if (body.workspaceId) {
