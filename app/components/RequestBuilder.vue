@@ -4180,11 +4180,13 @@ defineExpose({
                     :srcdoc="getResponseText()"
                     class="w-full h-full border-none"
                     sandbox="allow-same-origin"
+                    tabindex="-1"
                   ></iframe>
                   <iframe
                     v-else-if="isJsonResponse()"
                     :srcdoc="getJsonPreviewHtml()"
                     class="w-full h-full border-none"
+                    tabindex="-1"
                   ></iframe>
                   <div v-else class="w-full h-full flex items-center justify-center text-text-muted text-xs">
                     Preview not available for this content type
