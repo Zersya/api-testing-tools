@@ -4241,8 +4241,15 @@ defineExpose({
                 <span>Response</span>
               </button>
               
-              <transition name="fade-scale">
-                <div v-if="hasResponse && !isResponseCollapsed && response" class="flex items-center gap-3">
+              <transition 
+                name="fade-scale"
+                :duration="isLoading ? 0 : undefined"
+              >
+                <div 
+                  v-if="hasResponse && !isResponseCollapsed && response" 
+                  class="flex items-center gap-3"
+                  :class="{ 'no-transition': isLoading }"
+                >
                   <span
                     v-if="response.success"
                     class="py-1 px-2.5 rounded text-[11px] font-semibold uppercase"
@@ -4268,8 +4275,15 @@ defineExpose({
               </div>
             </div>
             
-            <transition name="fade-scale">
-              <div v-if="hasResponse && !isResponseCollapsed && response" class="flex items-center gap-2">
+            <transition 
+              name="fade-scale"
+              :duration="isLoading ? 0 : undefined"
+            >
+              <div 
+                v-if="hasResponse && !isResponseCollapsed && response" 
+                class="flex items-center gap-2"
+                :class="{ 'no-transition': isLoading }"
+              >
                 <button 
                   @click="openResponseSearch"
                   class="p-1.5 text-text-muted hover:text-text-secondary transition-colors duration-fast hover:scale-110 transform"
@@ -4306,8 +4320,15 @@ defineExpose({
           </div>
 
           <!-- Expanded Response Content -->
-          <transition name="slide-fade">
-            <div v-if="!isResponseCollapsed && response" class="flex-1 flex flex-col overflow-hidden">
+          <transition 
+            name="slide-fade"
+            :duration="isLoading ? 0 : undefined"
+          >
+            <div 
+              v-if="!isResponseCollapsed && response" 
+              class="flex-1 flex flex-col overflow-hidden"
+              :class="{ 'no-transition': isLoading }"
+            >
               <div v-if="response.success" class="flex-1 flex flex-col overflow-hidden">
                 <!-- Search Bar -->
                 <div v-if="showSearch || searchQuery" class="px-4 py-2 border-b border-border-default">
@@ -4949,6 +4970,13 @@ kbd {
   opacity: 0;
   max-height: 0;
   transform: translateY(-10px);
+}
+
+/* Disable transitions during loading */
+.no-transition,
+.no-transition * {
+  transition: none !important;
+  animation: none !important;
 }
 
 /* Tab content transition */
