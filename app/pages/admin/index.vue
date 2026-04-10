@@ -14,6 +14,7 @@ import RenameWorkspaceModal from '~/components/RenameWorkspaceModal.vue';
 import ShareWorkspaceModal from '~/components/ShareWorkspaceModal.vue';
 import TeamCollectionWarningDialog from '~/components/TeamCollectionWarningDialog.vue';
 import VariableInput from '~/components/VariableInput.vue';
+import EnvironmentManager from '~/components/EnvironmentManager.vue';
 import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
 import { useExampleData } from '~/composables/useExampleData';
 
@@ -3095,13 +3096,6 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
                   {{ project.name }}
                 </option>
               </select>
-              <button class="btn btn-primary" @click="openEnvironmentCreateModal" :disabled="!currentProjectId">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="12" y1="5" x2="12" y2="19"></line>
-                  <line x1="5" y1="12" x2="19" y2="12"></line>
-                </svg>
-                New Environment
-              </button>
             </div>
           </div>
 
@@ -3109,128 +3103,22 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
             Select a workspace and project to manage environments.
           </div>
 
-          <div v-else-if="environmentSettingsEnvironments.length === 0" class="flex-1 flex flex-col items-center justify-center text-center">
-            <h3 class="text-lg font-semibold text-text-primary mb-2">No environments yet</h3>
-            <p class="text-text-secondary mb-4 max-w-sm">Create your first environment for development, staging, or production variables.</p>
-            <button class="btn btn-primary" @click="openEnvironmentCreateModal">
-              Create Environment
-            </button>
-          </div>
-
-          <div v-else class="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-2 gap-6 pb-4 content-start">
-            <div v-for="environment in environmentSettingsEnvironments" :key="environment.id" class="bg-bg-secondary border border-border-default rounded-xl overflow-hidden flex flex-col max-h-[500px]">
-              <div class="p-4 border-b border-border-default">
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-3">
-                    <div class="flex items-center gap-2.5">
-                      <template v-if="environment.isMockEnvironment">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                          <path d="M17.5 19c0-1.7-1.3-3-3-3h-11c-1.7 0-3 1.3-3 3 0 1.7 1.3 3 3 3h11c1.7 0 3-1.3 3-3z"/>
-                          <path d="M17.5 19c0-2.5-2-4.5-4.5-4.5h-7c-2.5 0-4.5 2-4.5 4.5s2 4.5 4.5 4.5h7c2.5 0 4.5-2 4.5-4.5z"/>
-                          <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
-                        </svg>
-                      </template>
-                      <template v-else>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" :class="environment.isActive ? 'text-accent-green' : 'text-text-muted'">
-                          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
-                        </svg>
-                      </template>
-                      <h3 class="text-sm font-semibold" :class="environment.isMockEnvironment ? 'text-purple-400' : 'text-text-primary'">{{ environment.name }}</h3>
-                    </div>
-                    <span v-if="environment.isMockEnvironment" class="py-0.5 px-2 bg-purple-500/15 text-purple-400 text-[10px] font-semibold uppercase rounded-full">Mock</span>
-                    <span v-else-if="environment.isActive" class="py-0.5 px-2 bg-accent-green/15 text-accent-green text-[10px] font-semibold uppercase rounded-full">Active</span>
-                  </div>
-                  <div class="flex items-center gap-1">
-                    <button v-if="!environment.isActive" class="flex items-center justify-center w-8 h-8 bg-transparent border-none rounded text-text-muted cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-green" @click="activateEnvironmentFromSettings(environment)" title="Activate">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                      </svg>
-                    </button>
-                    <button v-if="!environment.isMockEnvironment" class="flex items-center justify-center w-8 h-8 bg-transparent border-none rounded text-text-muted cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-text-primary" @click="openEnvironmentRenameModal(environment)" title="Rename">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
-                      </svg>
-                    </button>
-                    <button v-if="!environment.isMockEnvironment" class="flex items-center justify-center w-8 h-8 bg-transparent border-none rounded text-text-muted cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-text-primary" @click="openEnvironmentDuplicateModal(environment)" title="Duplicate">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="9" y="9" width="13" height="13" rx="2"></rect>
-                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                      </svg>
-                    </button>
-                    <button v-if="!environment.isMockEnvironment" class="flex items-center justify-center w-8 h-8 bg-transparent border-none rounded text-text-muted cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-red" @click="openEnvironmentDeleteModal(environment)" title="Delete">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="3 6 5 6 21 6"></polyline>
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div class="p-4 flex flex-col flex-1 min-h-0">
-                <div class="flex items-center justify-between mb-3 shrink-0">
-                  <span class="text-xs font-medium text-text-secondary uppercase tracking-wide">{{ environment.variables.length }} Variable{{ environment.variables.length !== 1 ? 's' : '' }}</span>
-                  <button class="flex items-center gap-1 text-xs font-medium text-accent-blue border-none bg-transparent cursor-pointer transition-all duration-fast hover:text-accent-blue/80" @click="addVariableFromSettings(environment)">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <line x1="12" y1="5" x2="12" y2="19"></line>
-                      <line x1="5" y1="12" x2="19" y2="12"></line>
-                    </svg>
-                    Add Variable
-                  </button>
-                </div>
-
-                <div v-if="environment.variables.length === 0" class="py-8 text-center shrink-0">
-                  <p class="text-xs text-text-muted">No variables defined for this environment</p>
-                </div>
-
-                <div v-else class="space-y-2 overflow-y-auto">
-                  <div v-for="variable in environment.variables" :key="variable.id" class="flex items-center gap-2 group">
-                    <input
-                      v-model="variable.key"
-                      @blur="updateVariableFromSettings(variable, variable.key, variable.value, variable.isSecret)"
-                      @keyup.enter="($event.target as HTMLInputElement).blur()"
-                      class="flex-1 py-1.5 px-2 bg-bg-input border border-border-default rounded-md text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(59,130,246,0.2)]"
-                      placeholder="Variable name"
-                    />
-                    <div class="flex-1 flex items-center gap-2">
-                      <input
-                        :key="`input-${variable.id}-${variable.isSecret ? 'secret' : 'text'}`"
-                        v-model="variable.value"
-                        @blur="updateVariableFromSettings(variable, variable.key, variable.value, variable.isSecret)"
-                        @keyup.enter="($event.target as HTMLInputElement).blur()"
-                        :type="variable.isSecret ? 'password' : 'text'"
-                        class="w-full py-1.5 px-2 bg-bg-input border border-border-default rounded-md text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(59,130,246,0.2)]"
-                        placeholder="Variable value"
-                      />
-                      <button
-                        @click="toggleSecretFromSettings(variable)"
-                        :class="[
-                          'flex items-center justify-center w-8 h-8 border-none rounded cursor-pointer transition-all duration-fast',
-                          variable.isSecret ? 'bg-accent-yellow/15 text-accent-yellow hover:bg-accent-yellow/25' : 'bg-bg-hover text-text-muted hover:text-text-primary'
-                        ]"
-                        :title="variable.isSecret ? 'Secret (click to reveal)' : 'Not secret (click to hide)'"
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                          <circle cx="12" cy="12" r="3"></circle>
-                        </svg>
-                      </button>
-                    </div>
-                    <button
-                      @click="deleteVariableFromSettings(variable.id)"
-                      class="flex items-center justify-center w-8 h-8 bg-transparent border-none rounded text-text-muted cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-red opacity-0 group-hover:opacity-100"
-                      title="Delete variable"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <EnvironmentManager
+            v-else
+            :environments="environmentSettingsEnvironments"
+            :project-id="currentProjectId"
+            :is-loading="isEnvironmentSettingsLoading"
+            :secret-values="environmentSettingsSecretValues"
+            @create="openEnvironmentCreateModal"
+            @activate="activateEnvironmentFromSettings"
+            @rename="(env, name) => { environmentToRename.value = env; environmentRenameForm.value.name = name; showEnvironmentRenameModal.value = true; }"
+            @duplicate="(env) => { environmentToDuplicate.value = env; showEnvironmentDuplicateConfirm.value = true; }"
+            @delete="(env) => { environmentToDelete.value = env; showEnvironmentDeleteConfirm.value = true; }"
+            @add:variable="addVariableFromSettings"
+            @update:variable="updateVariableFromSettings"
+            @delete:variable="deleteVariableFromSettings"
+            @toggle:secret="toggleSecretFromSettings"
+          />
         </div>
 
         <!-- Empty State -->
