@@ -1,4 +1,5 @@
 import tracer from 'dd-trace'
+import { ddError } from './datadog-logger'
 
 export interface ErrorDetails {
   type: string
@@ -43,7 +44,22 @@ export function trackServerError(error: Error | unknown, context?: Partial<Error
   const traceId = activeSpan ? activeSpan.context().toTraceId() : undefined
   const spanId = activeSpan ? activeSpan.context().toSpanId() : undefined
 
-  // Log to console as JSON string for Datadog structured logging
+  // Send to Datadog via direct logger
+  ddError(
+    `[${errorDetails.type}] ${errorDetails.message}`,
+    errorObj,
+    {
+      error_type: errorDetails.type,
+      user_id: errorDetails.userId || 'unknown',
+      workspace_id: errorDetails.workspaceId || 'unknown',
+      request_id: errorDetails.requestId || 'unknown',
+      ...(errorDetails.metadata || {}),
+      ...(traceId ? { trace_id: traceId } : {}),
+      ...(spanId ? { span_id: spanId } : {})
+    }
+  )
+
+  // Also log to console as JSON for Agent log collection (if Agent is present)
   console.error(JSON.stringify({
     message: errorDetails.message,
     level: 'error',
