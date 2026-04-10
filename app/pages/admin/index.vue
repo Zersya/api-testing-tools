@@ -822,22 +822,13 @@ const updateVariableFromSettings = async (variable: EnvironmentVariable, key: st
   }
 
   try {
-    // Build body only with defined values
-    const body: { key?: string; value?: string; isSecret?: boolean } = {};
-    
-    if (key !== undefined && key !== null) {
-      body.key = key.trim();
-    }
-    if (value !== undefined && value !== null) {
-      body.value = isSecret ? environmentSettingsSecretValues.value[variable.id] : value;
-    }
-    if (isSecret !== undefined) {
-      body.isSecret = isSecret;
-    }
-
     await $fetch(`/api/admin/variables/${variable.id}`, {
       method: 'PUT',
-      body
+      body: {
+        key: key?.trim() || variable.key,
+        value: isSecret ? environmentSettingsSecretValues.value[variable.id] : (value ?? variable.value),
+        isSecret: isSecret ?? variable.isSecret
+      }
     });
     await refreshEnvironmentSources();
   } catch (e: any) {
