@@ -368,16 +368,17 @@ const clearSearch = () => {
             <div v-else class="space-y-2 overflow-y-auto">
               <div v-for="variable in environment.variables" :key="variable.id" class="flex items-center gap-2 group">
                 <input
-                  :value="variable.key"
-                  @blur="emit('update:variable', variable, ($event.target as HTMLInputElement).value, variable.value, variable.isSecret)"
+                  v-model="variable.key"
+                  @blur="emit('update:variable', variable, variable.key, variable.value, variable.isSecret)"
                   @keyup.enter="($event.target as HTMLInputElement).blur()"
                   class="flex-1 py-1.5 px-2 bg-bg-input border border-border-default rounded-md text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(59,130,246,0.2)]"
                   placeholder="Variable name"
                 />
                 <div class="flex-1 flex items-center gap-2">
                   <input
-                    :value="variable.value"
-                    @blur="emit('update:variable', variable, variable.key, ($event.target as HTMLInputElement).value, variable.isSecret)"
+                    :key="`input-${variable.id}-${variable.isSecret ? 'secret' : 'text'}`"
+                    v-model="variable.value"
+                    @blur="emit('update:variable', variable, variable.key, variable.value, variable.isSecret)"
                     @keyup.enter="($event.target as HTMLInputElement).blur()"
                     :type="variable.isSecret ? 'password' : 'text'"
                     class="w-full py-1.5 px-2 bg-bg-input border border-border-default rounded-md text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(59,130,246,0.2)]"
@@ -422,7 +423,7 @@ const clearSearch = () => {
       @close="closeVariablesPanel"
       @activate="handleActivate"
       @add:variable="emit('add:variable', $event)"
-      @update:variable="emit('update:variable', $event)"
+      @update:variable="(variable, key, value, isSecret) => emit('update:variable', variable, key, value, isSecret)"
       @delete:variable="emit('delete:variable', $event)"
       @toggle:secret="emit('toggle:secret', $event)"
     />

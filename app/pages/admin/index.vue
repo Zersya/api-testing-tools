@@ -573,6 +573,7 @@ const activateEnvironment = async (environmentId: string | null) => {
 const environmentSettingsEnvironments = ref<Environment[]>([]);
 const environmentSettingsSecretValues = ref<Record<string, string>>({});
 const isEnvironmentSettingsLoading = ref(false);
+const environmentRefreshTrigger = ref(0);
 
 const showEnvironmentCreateModal = ref(false);
 const showEnvironmentRenameModal = ref(false);
@@ -804,12 +805,20 @@ const addVariableFromSettings = async (environment: Environment) => {
       }
     });
     await refreshEnvironmentSources();
+    environmentRefreshTrigger.value++;
   } catch (e: any) {
     alert('Error adding variable: ' + (e.data?.message || e.message));
   }
 };
 
 const updateVariableFromSettings = async (variable: EnvironmentVariable, key: string, value: string, isSecret: boolean) => {
+  // Validate inputs
+  if (!variable?.id) {
+    console.error('Invalid variable:', variable);
+    alert('Error: Variable is invalid');
+    return;
+  }
+
   if (isSecret) {
     environmentSettingsSecretValues.value[variable.id] = value;
   }
@@ -818,12 +827,13 @@ const updateVariableFromSettings = async (variable: EnvironmentVariable, key: st
     await $fetch(`/api/admin/variables/${variable.id}`, {
       method: 'PUT',
       body: {
-        key: key.trim(),
-        value: isSecret ? environmentSettingsSecretValues.value[variable.id] : value,
-        isSecret
+        key: key?.trim() || variable.key,
+        value: isSecret ? environmentSettingsSecretValues.value[variable.id] : (value ?? variable.value),
+        isSecret: isSecret ?? variable.isSecret
       }
     });
     await refreshEnvironmentSources();
+    environmentRefreshTrigger.value++;
   } catch (e: any) {
     alert('Error updating variable: ' + (e.data?.message || e.message));
   }
@@ -861,6 +871,8 @@ const toggleSecretFromSettings = (variable: EnvironmentVariable) => {
       value: environmentSettingsSecretValues.value[variable.id] || variable.value,
       isSecret: newIsSecret
     }
+  }).then(() => {
+    environmentRefreshTrigger.value++;
   }).catch((e: any) => {
     variable.isSecret = !newIsSecret;
     if (newIsSecret) {
@@ -878,6 +890,7 @@ const deleteVariableFromSettings = async (variableId: string) => {
       method: 'DELETE'
     });
     await refreshEnvironmentSources();
+    environmentRefreshTrigger.value++;
   } catch (e: any) {
     alert('Error deleting variable: ' + (e.data?.message || e.message));
   }
@@ -3392,6 +3405,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
                 :initial-script-logs="getActiveOpenTab()?.scriptLogs"
                 :initial-expanded-nodes="getActiveOpenTab()?.expandedNodes"
                 :is-shared-workspace="isSharedWorkspace"
+                :refresh-trigger="environmentRefreshTrigger"
                 @save-request="handleSaveRequest"
                 @save-as-request="handleSaveAsRequest"
                 @unsaved-changes="updateTabUnsavedStatus"

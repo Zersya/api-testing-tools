@@ -94,6 +94,19 @@ export interface ProxyResponse {
     endTime: string;
     durationMs: number;
   };
+  variableWarnings?: string[];
+  resolvedValues?: {
+    url?: string;
+    headers?: Record<string, string>;
+    body?: any;
+  };
+  scriptLogs?: Array<{ phase: 'pre' | 'post'; type: 'log' | 'error' | 'warn'; message: string; timestamp: number }>;
+  scriptErrors?: string[];
+  environmentChanges?: Array<{
+    key: string;
+    value: string;
+    action: 'set' | 'unset';
+  }>;
 }
 
 export interface ProxyErrorResponse {
@@ -159,6 +172,7 @@ interface Props {
   initialScriptLogs?: Array<{ phase: 'pre' | 'post'; type: 'log' | 'error' | 'warn'; message: string; timestamp: number }>
   initialExpandedNodes?: string[]
   isSharedWorkspace?: boolean
+  refreshTrigger?: number
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -2904,6 +2918,14 @@ watch(() => props.environmentId, () => {
   fetchEnvironmentVariables()
 })
 
+watch(() => props.refreshTrigger, () => {
+  console.log('[RequestBuilder] Refresh trigger activated, reloading environment variables and collection auth');
+  fetchEnvironmentVariables();
+  if (props.collectionId && inheritFromParent.value) {
+    fetchCollectionAuth();
+  }
+})
+
 watch(() => props.collectionId, () => {
   fetchCollectionAuth()
 })
@@ -3038,6 +3060,18 @@ const sendRequest = async () => {
     if (result.scriptLogs && result.scriptLogs.length > 0) {
       scriptLogs.value = result.scriptLogs;
     }
+    
+    // If post-script modified environment variables, refresh them immediately
+    // This ensures subsequent requests (including those with inherited auth) use the updated values
+    if (result.environmentChanges && result.environmentChanges.length > 0) {
+      console.log('[RequestBuilder] Post-script modified environment variables:', result.environmentChanges);
+      await fetchEnvironmentVariables();
+      // Also refresh collection auth if inheriting, as it may use the updated variables
+      if (inheritFromParent.value && props.collectionId) {
+        await fetchCollectionAuth();
+      }
+    }
+    
     if (responseViewType.value === 'pretty') {
       expandAll();
     }
