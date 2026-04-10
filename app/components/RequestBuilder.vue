@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, watch } from 'vue'
+import { computed, nextTick, watch, ref, onMounted, onUnmounted } from 'vue'
 import { debounce } from 'perfect-debounce'
 import JsonNode from './JsonNode.vue'
 import VariableInput from './VariableInput.vue'
@@ -110,9 +110,17 @@ export interface ProxyErrorResponse {
   };
 }
 
-export type TabType = 'params' | 'headers' | 'body' | 'auth' | 'preScript' | 'postScript' | 'mock' | 'examples' | 'response';
+// TabType without 'response' - response is now in split panel
+export type TabType = 'params' | 'headers' | 'body' | 'auth' | 'preScript' | 'postScript' | 'mock' | 'examples';
 type BodyFormat = 'none' | 'json' | 'form-data' | 'urlencoded' | 'raw' | 'binary';
 type ResponseViewType = 'pretty' | 'preview' | 'raw' | 'headers' | 'cookies' | 'imagePreview' | 'console';
+
+// Panel resize configuration
+const PANEL_STORAGE_KEY = 'requestBuilderPanelConfig';
+const DEFAULT_REQUEST_RATIO = 0.40; // 40% for request panel
+const MIN_PANEL_HEIGHT = 80; // Minimum height in pixels
+const COLLAPSED_HEIGHT = 42; // Height when response is collapsed
+const MOBILE_BREAKPOINT = 768; // Mobile breakpoint in pixels
 
 export interface RequestDraftSnapshot {
   method: string;
@@ -221,6 +229,145 @@ const isLoading = ref(false);
 const response = ref<ProxyResponse | ProxyErrorResponse | null>(null);
 const variableWarnings = ref<string[]>([]);
 const environmentVariables = ref<Variable[]>([]);
+
+// ============ SPLIT PANEL STATE ============
+const panelContainerRef = ref<HTMLDivElement | null>(null);
+const isMobile = ref(false);
+const requestPanelRatio = ref(DEFAULT_REQUEST_RATIO);
+const isResponseCollapsed = ref(false);
+const isDragging = ref(false);
+const showMobileTabs = ref(false); // For mobile fallback
+
+// Load saved panel preferences
+onMounted(() => {
+  const saved = localStorage.getItem(PANEL_STORAGE_KEY);
+  if (saved) {
+    try {
+      const config = JSON.parse(saved);
+      requestPanelRatio.value = config.ratio ?? DEFAULT_REQUEST_RATIO;
+      isResponseCollapsed.value = config.collapsed ?? false;
+    } catch {
+      // Use defaults
+    }
+  }
+  
+  checkMobile();
+  updateContainerHeight();
+  
+  window.addEventListener('resize', handleWindowResize);
+  window.addEventListener('wheel', handleOptionScroll, { passive: false });
+  document.addEventListener('mousemove', handleDragMove);
+  document.addEventListener('mouseup', stopDrag);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleWindowResize);
+  window.removeEventListener('wheel', handleOptionScroll);
+  document.removeEventListener('mousemove', handleDragMove);
+  document.removeEventListener('mouseup', stopDrag);
+});
+
+// Save panel preferences whenever they change
+watch([requestPanelRatio, isResponseCollapsed], () => {
+  localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify({
+    ratio: requestPanelRatio.value,
+    collapsed: isResponseCollapsed.value
+  }));
+}, { deep: true });
+
+// Mobile detection
+const checkMobile = () => {
+  isMobile.value = window.innerWidth < MOBILE_BREAKPOINT;
+};
+
+const handleWindowResize = () => {
+  checkMobile();
+  updateContainerHeight();
+};
+
+let containerHeight = 0;
+const updateContainerHeight = () => {
+  if (panelContainerRef.value) {
+    containerHeight = panelContainerRef.value.getBoundingClientRect().height;
+  }
+};
+
+// Computed panel heights (only used on desktop)
+const requestPanelHeight = computed(() => {
+  if (isMobile.value) return containerHeight;
+  if (isResponseCollapsed.value) return containerHeight - COLLAPSED_HEIGHT;
+  return Math.round(containerHeight * requestPanelRatio.value);
+});
+
+const responsePanelHeight = computed(() => {
+  if (isMobile.value) return 0;
+  if (isResponseCollapsed.value) return COLLAPSED_HEIGHT;
+  return containerHeight - requestPanelHeight.value;
+});
+
+// Drag functionality
+const startDrag = (e: MouseEvent) => {
+  if (isMobile.value || isResponseCollapsed.value) return;
+  isDragging.value = true;
+  e.preventDefault();
+  document.body.style.cursor = 'row-resize';
+  document.body.style.userSelect = 'none';
+};
+
+const handleDragMove = (e: MouseEvent) => {
+  if (!isDragging.value || !panelContainerRef.value) return;
+  
+  const rect = panelContainerRef.value.getBoundingClientRect();
+  const relativeY = e.clientY - rect.top;
+  const newRatio = Math.max(
+    MIN_PANEL_HEIGHT / containerHeight,
+    Math.min(1 - (MIN_PANEL_HEIGHT / containerHeight), relativeY / containerHeight)
+  );
+  requestPanelRatio.value = newRatio;
+};
+
+const stopDrag = () => {
+  isDragging.value = false;
+  document.body.style.cursor = '';
+  document.body.style.userSelect = '';
+};
+
+// Option + Scroll to resize (Alt/Option key + mouse wheel)
+const handleOptionScroll = (e: WheelEvent) => {
+  if (!e.altKey || isMobile.value || isResponseCollapsed.value) return;
+  
+  // Only if mouse is over the panel container
+  if (!panelContainerRef.value) return;
+  
+  const rect = panelContainerRef.value.getBoundingClientRect();
+  const isOverContainer = (
+    e.clientY >= rect.top && 
+    e.clientY <= rect.bottom && 
+    e.clientX >= rect.left && 
+    e.clientX <= rect.right
+  );
+  
+  if (!isOverContainer) return;
+  
+  e.preventDefault();
+  
+  const delta = e.deltaY > 0 ? 0.015 : -0.015;
+  const newRatio = Math.max(
+    MIN_PANEL_HEIGHT / containerHeight,
+    Math.min(1 - (MIN_PANEL_HEIGHT / containerHeight), requestPanelRatio.value + delta)
+  );
+  requestPanelRatio.value = newRatio;
+};
+
+// Toggle response panel collapse
+const toggleResponseCollapse = () => {
+  isResponseCollapsed.value = !isResponseCollapsed.value;
+};
+
+// Check if response has content
+const hasResponse = computed(() => response.value !== null);
+
+// ============ END SPLIT PANEL STATE ============
 
 const responseViewType = ref<ResponseViewType>('pretty');
 const previewContainerRef = ref<HTMLDivElement | null>(null);
@@ -3003,23 +3150,39 @@ defineExpose({
       <div class="border-b border-border-default bg-bg-secondary">
         <div class="flex gap-0">
           <button
-            v-for="tab in (readOnly ? ['params', 'headers', 'body', 'auth', 'examples', 'response'] : ['params', 'headers', 'body', 'auth', 'preScript', 'postScript', 'mock', 'examples', 'response']) as TabType[]"
+            v-for="tab in (readOnly ? ['params', 'headers', 'body', 'auth', 'examples'] : ['params', 'headers', 'body', 'auth', 'preScript', 'postScript', 'mock', 'examples']) as TabType[]"
             :key="tab"
             @click="activeTab = tab"
-            class="px-4 py-3 text-xs font-medium capitalize transition-all duration-fast border-b-2 focus:outline-none whitespace-nowrap"
+            class="px-4 py-3 text-xs font-medium capitalize transition-all duration-fast border-b-2 focus:outline-none whitespace-nowrap relative overflow-hidden group"
             :class="[
               activeTab === tab
                 ? 'border-accent-blue text-text-primary'
                 : 'border-transparent text-text-muted hover:text-text-secondary'
             ]"
           >
-            {{ tab === 'preScript' ? 'Pre-Script' : tab === 'postScript' ? 'Post-Script' : tab }}
+            <!-- Micro animation: active indicator slide -->
+            <span 
+              v-if="activeTab === tab"
+              class="absolute bottom-0 left-0 right-0 h-0.5 bg-accent-blue animate-slide-up"
+            />
+            <span class="relative z-10 transition-transform duration-fast group-hover:scale-105">
+              {{ tab === 'preScript' ? 'Pre-Script' : tab === 'postScript' ? 'Post-Script' : tab }}
+            </span>
           </button>
         </div>
       </div>
 
-      <div class="flex-1 flex flex-col overflow-hidden">
-        <div v-if="activeTab === 'params'" class="flex-1 flex flex-col overflow-hidden">
+      <!-- Split Panel Container -->
+      <div 
+        ref="panelContainerRef"
+        class="flex-1 flex flex-col overflow-hidden relative"
+      >
+        <!-- REQUEST CONTENT AREA (takes remaining space before response panel) -->
+        <div 
+          class="request-content-area flex-1 flex flex-col overflow-hidden"
+          :style="!isMobile && hasResponse ? { height: requestPanelHeight + 'px', flex: 'none' } : {}"
+        >
+          <div v-if="activeTab === 'params'" class="flex-1 flex flex-col overflow-hidden">
           <div class="p-2 border-b border-border-default bg-bg-secondary flex items-center justify-between">
             <span class="text-xs text-text-muted">{{ queryParams.filter(p => p.enabled).length }} params</span>
             <button 
@@ -3957,374 +4120,487 @@ defineExpose({
         <div v-else-if="activeTab === 'examples'" class="flex-1 flex flex-col overflow-hidden">
           <RequestExampleManager :request-id="props.request.id" :read-only="readOnly" />
         </div>
+        </div><!-- /REQUEST CONTENT AREA -->
 
-        <div v-else-if="activeTab === 'response'" class="flex-1 flex flex-col overflow-hidden">
-          <div v-if="!response" class="flex-1 flex items-center justify-center text-text-muted text-center p-10">
-            <div class="flex flex-col items-center gap-3">
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" class="opacity-30">
-                <circle cx="12" cy="12" r="10"></circle>
-                <polygon points="10 8 16 12 10 16 10 8"></polygon>
-              </svg>
-              <p class="text-sm">Click "Send" or press <kbd class="px-2 py-0.5 bg-bg-tertiary rounded text-xs font-mono">Cmd+Enter</kbd> to send the request</p>
+        <!-- RESIZE HANDLE (only on desktop when there's a response) -->
+        <div
+          v-if="!isMobile && hasResponse"
+          class="resize-handle group flex-shrink-0"
+          :class="{ 'is-dragging': isDragging }"
+          @mousedown="startDrag"
+          title="Drag to resize or hold Option/Alt + Scroll"
+        >
+          <div class="resize-handle-line">
+            <div class="resize-handle-dots">
+              <span class="resize-dot"></span>
+              <span class="resize-dot"></span>
+              <span class="resize-dot"></span>
             </div>
           </div>
+          <div class="resize-tooltip">
+            <span class="text-[10px] text-text-muted">Option+Scroll to resize</span>
+          </div>
+        </div>
 
-          <div v-else class="flex-1 flex flex-col overflow-hidden">
-            <div v-if="response.success" class="border-b border-border-default bg-bg-secondary">
-              <div class="flex items-center justify-between py-2.5 px-4 border-b border-border-default">
-                <div class="flex items-center gap-3">
+        <!-- RESPONSE PANEL (Always visible, collapsible, at the bottom) -->
+        <div 
+          v-if="!isMobile"
+          class="response-panel flex flex-col overflow-hidden border-t border-border-default bg-bg-secondary flex-shrink-0"
+          :class="{ 'is-collapsed': isResponseCollapsed || !hasResponse }"
+          :style="{ height: !hasResponse ? COLLAPSED_HEIGHT + 'px' : responsePanelHeight + 'px' }"
+        >
+          <!-- Response Header with Collapse Toggle -->
+          <div class="flex items-center justify-between py-2 px-4 border-b border-border-default bg-bg-secondary/50">
+            <div class="flex items-center gap-3">
+              <button
+                @click="hasResponse ? toggleResponseCollapse() : null"
+                class="flex items-center gap-1.5 text-xs font-medium transition-colors duration-fast group/collapse"
+                :class="hasResponse ? 'text-text-secondary hover:text-text-primary cursor-pointer' : 'text-text-muted cursor-default'"
+                :title="hasResponse ? (isResponseCollapsed ? 'Expand response' : 'Collapse response') : 'Send a request to see response'"
+                :disabled="!hasResponse"
+              >
+                <svg 
+                  v-if="hasResponse"
+                  width="14" 
+                  height="14" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  stroke-width="2"
+                  class="transition-transform duration-300 ease-out"
+                  :class="{ 'rotate-180': isResponseCollapsed }"
+                >
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+                <span>Response</span>
+              </button>
+              
+              <transition name="fade-scale">
+                <div v-if="hasResponse && !isResponseCollapsed && response" class="flex items-center gap-3">
                   <span
+                    v-if="response.success"
                     class="py-1 px-2.5 rounded text-[11px] font-semibold uppercase"
                     :class="getResponseStatusColorClass(response.status)"
                   >
                     {{ response.status }} {{ response.statusText }}
                   </span>
-                  <span class="text-xs text-text-muted font-mono">{{ response.timing.durationMs }}ms</span>
+                  <span v-else class="py-1 px-2.5 rounded text-[11px] font-semibold uppercase bg-accent-red/15 text-accent-red">
+                    Error
+                  </span>
+                  <span v-if="response.timing" class="text-xs text-text-muted font-mono">{{ response.timing.durationMs }}ms</span>
                   <span class="text-xs text-text-muted">{{ getTotalResponseSize() }} bytes</span>
                 </div>
-                <div class="flex items-center gap-2">
-                  <button 
-                    @click="openResponseSearch"
-                    class="p-1.5 text-text-muted hover:text-text-secondary transition-colors duration-fast"
-                    title="Search (Cmd/Ctrl+F)"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <circle cx="11" cy="11" r="8"></circle>
-                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                    </svg>
-                  </button>
-                  <button 
-                    @click="openSaveExampleModal"
-                    class="p-1.5 text-text-muted hover:text-accent-green transition-colors duration-fast"
-                    title="Save response as example"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-                      <polyline points="17 21 17 13 7 13 7 21"></polyline>
-                      <polyline points="7 3 7 8 15 8"></polyline>
-                    </svg>
-                  </button>
-                  <button 
-                    @click="copyResponseBody"
-                    class="p-1.5 text-text-muted hover:text-text-secondary transition-colors duration-fast"
-                    title="Copy response body"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                    </svg>
-                  </button>
-                </div>
+              </transition>
+              
+              <!-- Placeholder when no response -->
+              <div v-if="!hasResponse" class="flex items-center gap-2 text-xs text-text-muted">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="opacity-50">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polygon points="10 8 16 12 10 16 10 8"></polygon>
+                </svg>
+                <span>Click "Send" or press <kbd class="px-1.5 py-0.5 bg-bg-tertiary rounded font-mono">⌘+Enter</kbd> to see response</span>
               </div>
-
-              <div v-if="showSearch || searchQuery" class="px-4 py-2 border-b border-border-default">
-                <div class="flex items-center gap-2">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-text-muted">
+            </div>
+            
+            <transition name="fade-scale">
+              <div v-if="hasResponse && !isResponseCollapsed && response" class="flex items-center gap-2">
+                <button 
+                  @click="openResponseSearch"
+                  class="p-1.5 text-text-muted hover:text-text-secondary transition-colors duration-fast hover:scale-110 transform"
+                  title="Search (Cmd/Ctrl+F)"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="11" cy="11" r="8"></circle>
                     <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                   </svg>
-                  <input
-                    id="response-search-input"
-                    v-model="searchQuery"
-                    type="text"
-                    class="flex-1 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs focus:outline-none focus:border-accent-blue placeholder:text-text-muted"
-                    placeholder="Search in response..."
-                    @keydown.enter.prevent="handleSearchInputEnter"
-                    @keydown.esc.prevent="closeResponseSearch"
-                  />
-                  <span v-if="searchQuery" class="text-[11px] text-text-muted whitespace-nowrap">
-                    {{ searchMatches.length === 0 ? '0' : activeSearchMatchIndex + 1 }} / {{ searchMatches.length }}
-                  </span>
-                  <button
-                    :disabled="searchMatches.length === 0"
-                    @click="goToPreviousSearchMatch"
-                    class="p-1 text-text-muted hover:text-text-secondary disabled:opacity-40 disabled:cursor-not-allowed"
-                    title="Previous match (Shift+Enter)"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="18 15 12 9 6 15"></polyline>
-                    </svg>
-                  </button>
-                  <button
-                    :disabled="searchMatches.length === 0"
-                    @click="goToNextSearchMatch"
-                    class="p-1 text-text-muted hover:text-text-secondary disabled:opacity-40 disabled:cursor-not-allowed"
-                    title="Next match (Enter)"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="6 9 12 15 18 9"></polyline>
-                    </svg>
-                  </button>
-                  <button
-                    v-if="searchQuery"
-                    @click="searchQuery = ''"
-                    class="p-1 text-text-muted hover:text-text-secondary"
-                    title="Clear"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18"></line>
-                      <line x1="6" y1="6" x2="18" y2="18"></line>
-                    </svg>
-                  </button>
-                  <button
-                    @click="closeResponseSearch"
-                    class="p-1 text-text-muted hover:text-text-secondary"
-                    title="Close"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18"></line>
-                      <line x1="6" y1="6" x2="18" y2="18"></line>
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              <div class="flex items-center gap-1 border-b border-border-default overflow-x-auto">
-                <button
-                  @click="responseViewType = 'pretty'"
-                  class="px-3 py-2 text-xs font-medium transition-colors duration-fast whitespace-nowrap"
-                  :class="responseViewType === 'pretty' ? 'text-text-primary border-b-2 border-accent-blue' : 'text-text-muted hover:text-text-secondary'"
-                >
-                  Pretty
                 </button>
-                <button
-                  v-if="isJsonResponse() || isHtmlResponse()"
-                  @click="responseViewType = 'preview'"
-                  class="px-3 py-2 text-xs font-medium transition-colors duration-fast whitespace-nowrap"
-                  :class="responseViewType === 'preview' ? 'text-text-primary border-b-2 border-accent-blue' : 'text-text-muted hover:text-text-secondary'"
+                <button 
+                  @click="openSaveExampleModal"
+                  class="p-1.5 text-text-muted hover:text-accent-green transition-colors duration-fast hover:scale-110 transform"
+                  title="Save response as example"
                 >
-                  Preview
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                    <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                    <polyline points="7 3 7 8 15 8"></polyline>
+                  </svg>
                 </button>
-                <button
-                  v-if="isImageResponse()"
-                  @click="responseViewType = 'imagePreview'"
-                  class="px-3 py-2 text-xs font-medium transition-colors duration-fast whitespace-nowrap"
-                  :class="responseViewType === 'imagePreview' ? 'text-text-primary border-b-2 border-accent-blue' : 'text-text-muted hover:text-text-secondary'"
+                <button 
+                  @click="copyResponseBody"
+                  class="p-1.5 text-text-muted hover:text-text-secondary transition-colors duration-fast hover:scale-110 transform"
+                  title="Copy response body"
                 >
-                  Preview
-                </button>
-                <button
-                  @click="responseViewType = 'raw'"
-                  class="px-3 py-2 text-xs font-medium transition-colors duration-fast whitespace-nowrap"
-                  :class="responseViewType === 'raw' ? 'text-text-primary border-b-2 border-accent-blue' : 'text-text-muted hover:text-text-secondary'"
-                >
-                  Raw
-                </button>
-                <button
-                  @click="responseViewType = 'headers'"
-                  class="px-3 py-2 text-xs font-medium transition-colors duration-fast whitespace-nowrap"
-                  :class="responseViewType === 'headers' ? 'text-text-primary border-b-2 border-accent-blue' : 'text-text-muted hover:text-text-secondary'"
-                >
-                  Headers
-                </button>
-                <button
-                  v-if="responseCookies.length > 0"
-                  @click="responseViewType = 'cookies'"
-                  class="px-3 py-2 text-xs font-medium transition-colors duration-fast whitespace-nowrap"
-                  :class="responseViewType === 'cookies' ? 'text-text-primary border-b-2 border-accent-blue' : 'text-text-muted hover:text-text-secondary'"
-                >
-                  Cookies
-                </button>
-                <button
-                  v-if="scriptLogs.length > 0"
-                  @click="responseViewType = 'console'"
-                  class="px-3 py-2 text-xs font-medium transition-colors duration-fast whitespace-nowrap"
-                  :class="responseViewType === 'console' ? 'text-text-primary border-b-2 border-accent-blue' : 'text-text-muted hover:text-text-secondary'"
-                >
-                  Console ({{ scriptLogs.length }})
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
                 </button>
               </div>
-            </div>
-
-            <div v-if="response.success" ref="responseContentRef" class="flex-1 overflow-auto p-4">
-              <div v-if="responseViewType === 'pretty' && isJsonResponse() && getHighlightedJson" class="space-y-1">
-                <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
-                  <span class="text-xs text-text-muted">JSON</span>
-                  <button
-                    @click="expandAll"
-                    class="text-xs text-accent-blue hover:text-accent-blue/80"
-                  >
-                    Expand All
-                  </button>
-                  <span class="text-text-muted">|</span>
-                  <button
-                    @click="collapseAll"
-                    class="text-xs text-accent-blue hover:text-accent-blue/80"
-                  >
-                    Collapse All
-                  </button>
-                </div>
-                <JsonNode
-                  :node="getHighlightedJson"
-                  :search-query="searchQuery"
-                  @toggle="toggleNode"
-                />
-              </div>
-
-              <div v-else-if="responseViewType === 'pretty' && isXmlResponse()" class="space-y-1">
-                <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
-                  <span class="text-xs text-text-muted">XML</span>
-                </div>
-                <div class="font-mono text-xs leading-normal bg-bg-tertiary rounded p-3 border border-border-default">
-                  <div
-                    v-for="(line, index) in highlightXml(getResponseText())"
-                    :key="index"
-                    class="hover:bg-bg-hover px-1 -mx-1 transition-colors duration-fast"
-                    :class="{ 'bg-accent-yellow/20': searchQuery && line.original.toLowerCase().includes(searchQuery.toLowerCase()) }"
-                  >
-                    <span class="text-text-muted select-none w-8 inline-block">{{ String(line.index).padStart(3, '0') }}</span>
-                    <span v-html="line.content"></span>
-                  </div>
-                </div>
-              </div>
-
-              <div v-else-if="responseViewType === 'preview'" class="h-full flex flex-col">
-                <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
-                  <span class="text-xs text-text-muted">{{ getContentType().split(';')[0] }}</span>
-                </div>
-                <div
-                  ref="previewContainerRef"
-                  class="flex-1 overflow-hidden rounded border border-border-default bg-bg-tertiary relative"
-                  @mousedown="handlePreviewMousedown"
-                >
-                  <iframe
-                    v-if="isHtmlResponse()"
-                    :srcdoc="getResponseText()"
-                    class="w-full h-full border-none"
-                    sandbox="allow-same-origin"
-                    tabindex="-1"
-                    inert
-                  ></iframe>
-                  <iframe
-                    v-else-if="isJsonResponse()"
-                    :srcdoc="getJsonPreviewHtml()"
-                    class="w-full h-full border-none"
-                    tabindex="-1"
-                    inert
-                  ></iframe>
-                  <div v-else class="w-full h-full flex items-center justify-center text-text-muted text-xs">
-                    Preview not available for this content type
-                  </div>
-                </div>
-              </div>
-
-              <div v-else-if="responseViewType === 'imagePreview' && isImageResponse()" class="h-full flex flex-col">
-                <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
-                  <span class="text-xs text-text-muted">{{ getContentType().split(';')[0] }}</span>
-                  <span v-if="getImageData()?.size" class="text-xs text-text-muted">({{ formatBytes(getImageData()!.size) }})</span>
-                </div>
-                <div class="flex-1 flex items-center justify-center bg-bg-tertiary rounded border border-border-default p-4 overflow-auto">
-                  <img
-                    v-if="getImageData()?.src"
-                    :src="getImageData()!.src"
-                    alt="Response preview"
-                    class="max-w-full max-h-full object-contain rounded shadow-lg"
-                  />
-                </div>
-              </div>
-
-              <div v-else-if="responseViewType === 'raw'" class="space-y-1">
-                <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
-                  <span class="text-xs text-text-muted">{{ getContentType().split(';')[0] }}</span>
-                </div>
-                <pre class="font-mono text-xs leading-normal bg-bg-tertiary rounded p-3 border border-border-default overflow-auto whitespace-pre-wrap break-words text-text-primary m-0">{{ getResponseText() }}</pre>
-              </div>
-
-              <div v-else-if="responseViewType === 'headers'" class="space-y-1">
-                <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
-                  <span class="text-xs text-text-muted">{{ Object.keys(response.headers).length }} headers</span>
-                </div>
-                <div class="bg-bg-tertiary rounded border border-border-default overflow-hidden">
-                  <div
-                    v-for="[key, value] in Object.entries(response.headers)"
-                    :key="key"
-                    class="flex items-start py-2 px-3 border-b border-border-default last:border-b-0 hover:bg-bg-hover transition-colors duration-fast"
-                  >
-                    <span class="font-mono text-xs text-accent-blue flex-shrink-0 w-1/3">{{ key }}</span>
-                    <span class="font-mono text-xs text-text-primary flex-1 break-all">{{ value }}</span>
-                  </div>
-                </div>
-              </div>
-
-<div v-else-if="responseViewType === 'cookies'" class="space-y-1">
-                <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
-                  <span class="text-xs text-text-muted">{{ responseCookies.length }} cookies</span>
-                </div>
-                <div class="bg-bg-tertiary rounded border border-border-default overflow-hidden">
-                  <div
-                    v-for="(cookie, index) in responseCookies"
-                    :key="index"
-                    class="py-2 px-3 border-b border-border-default last:border-b-0 hover:bg-bg-hover transition-colors duration-fast"
-                  >
-                    <div class="flex items-start gap-2 mb-1">
-                      <span class="font-mono text-xs text-accent-blue flex-shrink-0">{{ cookie.name }}</span>
-                      <span class="text-text-secondary">=</span>
-                      <span class="font-mono text-xs text-text-primary flex-1 break-all">{{ cookie.value }}</span>
-                    </div>
-                    <div v-if="cookie.attributes" class="text-xs text-text-muted font-mono ml-2">
-                      {{ cookie.attributes }}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div v-else-if="responseViewType === 'console'" class="h-full flex flex-col">
-                <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
-                  <span class="text-xs text-text-muted">Script Console ({{ scriptLogs.length }} logs)</span>
-                  <button
-                    @click="scriptLogs = []"
-                    class="text-xs text-accent-blue hover:text-accent-blue/80"
-                  >
-                    Clear
-                  </button>
-                </div>
-                <div class="flex-1 overflow-auto bg-bg-tertiary rounded border border-border-default p-3">
-                  <div
-                    v-for="(log, index) in scriptLogs"
-                    :key="index"
-                    class="py-1 px-2 border-b border-border-default/50 last:border-b-0 font-mono text-xs"
-                    :class="{
-                      'text-text-primary': log.type === 'log',
-                      'text-accent-red': log.type === 'error',
-                      'text-accent-yellow': log.type === 'warn'
-                    }"
-                  >
-                    <span class="text-text-muted text-[10px] mr-2">[{{ log.phase === 'pre' ? 'PRE' : 'POST' }}]</span>
-                    <span>{{ log.message }}</span>
-                  </div>
-                  <div v-if="scriptLogs.length === 0" class="text-text-muted text-xs italic">
-                    No script logs
-                  </div>
-                </div>
-              </div>
-
-              <div v-else class="space-y-1">
-                <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
-                  <span class="text-xs text-text-muted">{{ getContentType().split(';')[0] }}</span>
-                </div>
-                <pre class="font-mono text-xs leading-normal bg-bg-tertiary rounded p-3 border border-border-default overflow-auto whitespace-pre-wrap break-words text-text-primary m-0">{{ getResponseText() }}</pre>
-              </div>
-            </div>
-
-            <div v-else class="flex-1 overflow-auto p-4">
-              <div class="bg-bg-secondary border border-accent-red/30 rounded-lg overflow-hidden">
-                <div class="flex items-center py-2.5 px-4 border-b border-accent-red/30">
-                  <div class="flex items-center gap-3">
-                    <span class="py-1 px-2.5 rounded text-[11px] font-semibold uppercase bg-accent-red/15 text-accent-red">
-                      Error
-                    </span>
-                    <span v-if="response.error.code" class="text-xs text-text-muted font-mono">{{ response.error.code }}</span>
-                  </div>
-                </div>
-                <div class="p-4">
-                  <div class="mb-3">
-                    <div class="text-sm font-medium text-accent-red mb-1">{{ response.error.message }}</div>
-                    <div v-if="response.error.cause" class="text-xs text-text-muted">{{ response.error.cause }}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            </transition>
           </div>
+
+          <!-- Expanded Response Content -->
+          <transition name="slide-fade">
+            <div v-if="!isResponseCollapsed && response" class="flex-1 flex flex-col overflow-hidden">
+              <div v-if="response.success" class="flex-1 flex flex-col overflow-hidden">
+                <!-- Search Bar -->
+                <div v-if="showSearch || searchQuery" class="px-4 py-2 border-b border-border-default">
+                  <div class="flex items-center gap-2">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-text-muted">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input
+                      id="response-search-input"
+                      v-model="searchQuery"
+                      type="text"
+                      class="flex-1 py-1.5 px-2 bg-bg-input border border-border-default rounded text-text-primary text-xs focus:outline-none focus:border-accent-blue placeholder:text-text-muted transition-all duration-fast"
+                      placeholder="Search in response..."
+                      @keydown.enter.prevent="handleSearchInputEnter"
+                      @keydown.esc.prevent="closeResponseSearch"
+                    />
+                    <span v-if="searchQuery" class="text-[11px] text-text-muted whitespace-nowrap">
+                      {{ searchMatches.length === 0 ? '0' : activeSearchMatchIndex + 1 }} / {{ searchMatches.length }}
+                    </span>
+                    <button
+                      :disabled="searchMatches.length === 0"
+                      @click="goToPreviousSearchMatch"
+                      class="p-1 text-text-muted hover:text-text-secondary disabled:opacity-40 disabled:cursor-not-allowed transition-transform duration-fast hover:-translate-y-0.5"
+                      title="Previous match (Shift+Enter)"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" strokelinecap="round" stroke-linejoin="round">
+                        <polyline points="18 15 12 9 6 15"></polyline>
+                      </svg>
+                    </button>
+                    <button
+                      :disabled="searchMatches.length === 0"
+                      @click="goToNextSearchMatch"
+                      class="p-1 text-text-muted hover:text-text-secondary disabled:opacity-40 disabled:cursor-not-allowed transition-transform duration-fast hover:translate-y-0.5"
+                      title="Next match (Enter)"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" strokelinecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                      </svg>
+                    </button>
+                    <button
+                      v-if="searchQuery"
+                      @click="searchQuery = ''"
+                      class="p-1 text-text-muted hover:text-text-secondary transition-colors duration-fast hover:rotate-90 transform"
+                      title="Clear"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" strokelinecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                      </svg>
+                    </button>
+                    <button
+                      @click="closeResponseSearch"
+                      class="p-1 text-text-muted hover:text-text-secondary transition-colors duration-fast"
+                      title="Close"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" strokelinecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Response View Tabs -->
+                <div class="flex items-center gap-1 border-b border-border-default overflow-x-auto px-2">
+                  <button
+                    @click="responseViewType = 'pretty'"
+                    class="px-3 py-2 text-xs font-medium transition-all duration-fast whitespace-nowrap relative"
+                    :class="responseViewType === 'pretty' ? 'text-text-primary' : 'text-text-muted hover:text-text-secondary'"
+                  >
+                    <span class="relative z-10">Pretty</span>
+                    <span 
+                      v-if="responseViewType === 'pretty'"
+                      class="absolute bottom-0 left-0 right-0 h-0.5 bg-accent-blue animate-scale-x"
+                    />
+                  </button>
+                  <button
+                    v-if="isJsonResponse() || isHtmlResponse()"
+                    @click="responseViewType = 'preview'"
+                    class="px-3 py-2 text-xs font-medium transition-all duration-fast whitespace-nowrap relative"
+                    :class="responseViewType === 'preview' ? 'text-text-primary' : 'text-text-muted hover:text-text-secondary'"
+                  >
+                    <span class="relative z-10">Preview</span>
+                    <span 
+                      v-if="responseViewType === 'preview'"
+                      class="absolute bottom-0 left-0 right-0 h-0.5 bg-accent-blue animate-scale-x"
+                    />
+                  </button>
+                  <button
+                    v-if="isImageResponse()"
+                    @click="responseViewType = 'imagePreview'"
+                    class="px-3 py-2 text-xs font-medium transition-all duration-fast whitespace-nowrap relative"
+                    :class="responseViewType === 'imagePreview' ? 'text-text-primary' : 'text-text-muted hover:text-text-secondary'"
+                  >
+                    <span class="relative z-10">Preview</span>
+                    <span 
+                      v-if="responseViewType === 'imagePreview'"
+                      class="absolute bottom-0 left-0 right-0 h-0.5 bg-accent-blue animate-scale-x"
+                    />
+                  </button>
+                  <button
+                    @click="responseViewType = 'raw'"
+                    class="px-3 py-2 text-xs font-medium transition-all duration-fast whitespace-nowrap relative"
+                    :class="responseViewType === 'raw' ? 'text-text-primary' : 'text-text-muted hover:text-text-secondary'"
+                  >
+                    <span class="relative z-10">Raw</span>
+                    <span 
+                      v-if="responseViewType === 'raw'"
+                      class="absolute bottom-0 left-0 right-0 h-0.5 bg-accent-blue animate-scale-x"
+                    />
+                  </button>
+                  <button
+                    @click="responseViewType = 'headers'"
+                    class="px-3 py-2 text-xs font-medium transition-all duration-fast whitespace-nowrap relative"
+                    :class="responseViewType === 'headers' ? 'text-text-primary' : 'text-text-muted hover:text-text-secondary'"
+                  >
+                    <span class="relative z-10">Headers</span>
+                    <span 
+                      v-if="responseViewType === 'headers'"
+                      class="absolute bottom-0 left-0 right-0 h-0.5 bg-accent-blue animate-scale-x"
+                    />
+                  </button>
+                  <button
+                    v-if="responseCookies.length > 0"
+                    @click="responseViewType = 'cookies'"
+                    class="px-3 py-2 text-xs font-medium transition-all duration-fast whitespace-nowrap relative"
+                    :class="responseViewType === 'cookies' ? 'text-text-primary' : 'text-text-muted hover:text-text-secondary'"
+                  >
+                    <span class="relative z-10">Cookies ({{ responseCookies.length }})</span>
+                    <span 
+                      v-if="responseViewType === 'cookies'"
+                      class="absolute bottom-0 left-0 right-0 h-0.5 bg-accent-blue animate-scale-x"
+                    />
+                  </button>
+                  <button
+                    v-if="scriptLogs.length > 0"
+                    @click="responseViewType = 'console'"
+                    class="px-3 py-2 text-xs font-medium transition-all duration-fast whitespace-nowrap relative"
+                    :class="responseViewType === 'console' ? 'text-text-primary' : 'text-text-muted hover:text-text-secondary'"
+                  >
+                    <span class="relative z-10">Console ({{ scriptLogs.length }})</span>
+                    <span 
+                      v-if="responseViewType === 'console'"
+                      class="absolute bottom-0 left-0 right-0 h-0.5 bg-accent-blue animate-scale-x"
+                    />
+                  </button>
+                </div>
+
+                <!-- Response Content Area -->
+                <div ref="responseContentRef" class="flex-1 overflow-auto p-4">
+                  <!-- Pretty JSON View -->
+                  <div v-if="responseViewType === 'pretty' && isJsonResponse() && getHighlightedJson" class="space-y-1">
+                    <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
+                      <span class="text-xs text-text-muted">JSON</span>
+                      <button
+                        @click="expandAll"
+                        class="text-xs text-accent-blue hover:text-accent-blue/80 transition-colors duration-fast"
+                      >
+                        Expand All
+                      </button>
+                      <span class="text-text-muted">|</span>
+                      <button
+                        @click="collapseAll"
+                        class="text-xs text-accent-blue hover:text-accent-blue/80 transition-colors duration-fast"
+                      >
+                        Collapse All
+                      </button>
+                    </div>
+                    <JsonNode
+                      :node="getHighlightedJson"
+                      :search-query="searchQuery"
+                      @toggle="toggleNode"
+                    />
+                  </div>
+
+                  <!-- XML View -->
+                  <div v-else-if="responseViewType === 'pretty' && isXmlResponse()" class="space-y-1">
+                    <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
+                      <span class="text-xs text-text-muted">XML</span>
+                    </div>
+                    <div class="font-mono text-xs leading-normal bg-bg-tertiary rounded p-3 border border-border-default">
+                      <div
+                        v-for="(line, index) in highlightXml(getResponseText())"
+                        :key="index"
+                        class="hover:bg-bg-hover px-1 -mx-1 transition-colors duration-fast"
+                        :class="{ 'bg-accent-yellow/20': searchQuery && line.original.toLowerCase().includes(searchQuery.toLowerCase()) }"
+                      >
+                        <span class="text-text-muted select-none w-8 inline-block">{{ String(line.index).padStart(3, '0') }}</span>
+                        <span v-html="line.content"></span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- HTML/JSON Preview -->
+                  <div v-else-if="responseViewType === 'preview'" class="h-full flex flex-col">
+                    <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
+                      <span class="text-xs text-text-muted">{{ getContentType().split(';')[0] }}</span>
+                    </div>
+                    <div
+                      ref="previewContainerRef"
+                      class="flex-1 overflow-hidden rounded border border-border-default bg-bg-tertiary relative"
+                      @mousedown="handlePreviewMousedown"
+                    >
+                      <iframe
+                        v-if="isHtmlResponse()"
+                        :srcdoc="getResponseText()"
+                        class="w-full h-full border-none"
+                        sandbox="allow-same-origin"
+                        tabindex="-1"
+                        inert
+                      ></iframe>
+                      <iframe
+                        v-else-if="isJsonResponse()"
+                        :srcdoc="getJsonPreviewHtml()"
+                        class="w-full h-full border-none"
+                        tabindex="-1"
+                        inert
+                      ></iframe>
+                      <div v-else class="w-full h-full flex items-center justify-center text-text-muted text-xs">
+                        Preview not available for this content type
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Image Preview -->
+                  <div v-else-if="responseViewType === 'imagePreview' && isImageResponse()" class="h-full flex flex-col">
+                    <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
+                      <span class="text-xs text-text-muted">{{ getContentType().split(';')[0] }}</span>
+                      <span v-if="getImageData()?.size" class="text-xs text-text-muted">({{ formatBytes(getImageData()!.size) }})</span>
+                    </div>
+                    <div class="flex-1 flex items-center justify-center bg-bg-tertiary rounded border border-border-default p-4 overflow-auto">
+                      <img
+                        v-if="getImageData()?.src"
+                        :src="getImageData()!.src"
+                        alt="Response preview"
+                        class="max-w-full max-h-full object-contain rounded shadow-lg"
+                      />
+                    </div>
+                  </div>
+
+                  <!-- Raw View -->
+                  <div v-else-if="responseViewType === 'raw'" class="space-y-1">
+                    <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
+                      <span class="text-xs text-text-muted">{{ getContentType().split(';')[0] }}</span>
+                    </div>
+                    <pre class="font-mono text-xs leading-normal bg-bg-tertiary rounded p-3 border border-border-default overflow-auto whitespace-pre-wrap break-words text-text-primary m-0">{{ getResponseText() }}</pre>
+                  </div>
+
+                  <!-- Headers View -->
+                  <div v-else-if="responseViewType === 'headers'" class="space-y-1">
+                    <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
+                      <span class="text-xs text-text-muted">{{ Object.keys(response.headers).length }} headers</span>
+                    </div>
+                    <div class="bg-bg-tertiary rounded border border-border-default overflow-hidden">
+                      <div
+                        v-for="[key, value] in Object.entries(response.headers)"
+                        :key="key"
+                        class="flex items-start py-2 px-3 border-b border-border-default last:border-b-0 hover:bg-bg-hover transition-all duration-fast"
+                      >
+                        <span class="font-mono text-xs text-accent-blue flex-shrink-0 w-1/3">{{ key }}</span>
+                        <span class="font-mono text-xs text-text-primary flex-1 break-all">{{ value }}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Cookies View -->
+                  <div v-else-if="responseViewType === 'cookies'" class="space-y-1">
+                    <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
+                      <span class="text-xs text-text-muted">{{ responseCookies.length }} cookies</span>
+                    </div>
+                    <div class="bg-bg-tertiary rounded border border-border-default overflow-hidden">
+                      <div
+                        v-for="(cookie, index) in responseCookies"
+                        :key="index"
+                        class="py-2 px-3 border-b border-border-default last:border-b-0 hover:bg-bg-hover transition-all duration-fast"
+                      >
+                        <div class="flex items-start gap-2 mb-1">
+                          <span class="font-mono text-xs text-accent-blue flex-shrink-0">{{ cookie.name }}</span>
+                          <span class="text-text-secondary">=</span>
+                          <span class="font-mono text-xs text-text-primary flex-1 break-all">{{ cookie.value }}</span>
+                        </div>
+                        <div v-if="cookie.attributes" class="text-xs text-text-muted font-mono ml-2">
+                          {{ cookie.attributes }}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Console View -->
+                  <div v-else-if="responseViewType === 'console'" class="h-full flex flex-col">
+                    <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
+                      <span class="text-xs text-text-muted">Script Console ({{ scriptLogs.length }} logs)</span>
+                      <button
+                        @click="scriptLogs = []"
+                        class="text-xs text-accent-blue hover:text-accent-blue/80 transition-colors duration-fast"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    <div class="flex-1 overflow-auto bg-bg-tertiary rounded border border-border-default p-3">
+                      <div
+                        v-for="(log, index) in scriptLogs"
+                        :key="index"
+                        class="py-1 px-2 border-b border-border-default/50 last:border-b-0 font-mono text-xs"
+                        :class="{
+                          'text-text-primary': log.type === 'log',
+                          'text-accent-red': log.type === 'error',
+                          'text-accent-yellow': log.type === 'warn'
+                        }"
+                      >
+                        <span class="text-text-muted text-[10px] mr-2">[{{ log.phase === 'pre' ? 'PRE' : 'POST' }}]</span>
+                        <span>{{ log.message }}</span>
+                      </div>
+                      <div v-if="scriptLogs.length === 0" class="text-text-muted text-xs italic">
+                        No script logs
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Default/Other Content Type -->
+                  <div v-else class="space-y-1">
+                    <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border-default">
+                      <span class="text-xs text-text-muted">{{ getContentType().split(';')[0] }}</span>
+                    </div>
+                    <pre class="font-mono text-xs leading-normal bg-bg-tertiary rounded p-3 border border-border-default overflow-auto whitespace-pre-wrap break-words text-text-primary m-0">{{ getResponseText() }}</pre>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Error Response -->
+              <div v-else class="flex-1 overflow-auto p-4">
+                <div class="bg-bg-secondary border border-accent-red/30 rounded-lg overflow-hidden">
+                  <div class="flex items-center py-2.5 px-4 border-b border-accent-red/30">
+                    <div class="flex items-center gap-3">
+                      <span class="py-1 px-2.5 rounded text-[11px] font-semibold uppercase bg-accent-red/15 text-accent-red">
+                        Error
+                      </span>
+                      <span v-if="response.error.code" class="text-xs text-text-muted font-mono">{{ response.error.code }}</span>
+                    </div>
+                  </div>
+                  <div class="p-4">
+                    <div class="mb-3">
+                      <div class="text-sm font-medium text-accent-red mb-1">{{ response.error.message }}</div>
+                      <div v-if="response.error.cause" class="text-xs text-text-muted">{{ response.error.cause }}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </transition>
+        </div>
+
+        <!-- Mobile: Response as Tab (Fallback) -->
+        <div 
+          v-if="isMobile"
+          class="mobile-response-panel"
+        >
+          <!-- Mobile Response Content - Simplified tab-based view -->
         </div>
       </div>
     </div>
@@ -4448,6 +4724,218 @@ kbd {
   user-select: none;
 }
 
+/* ============ SPLIT PANEL STYLES ============ */
+.resize-handle {
+  height: 8px;
+  cursor: row-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  position: relative;
+  z-index: 10;
+  transition: all 0.2s ease;
+}
+
+.resize-handle:hover,
+.resize-handle.is-dragging {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.resize-handle-line {
+  width: 60px;
+  height: 3px;
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  transition: all 0.2s ease;
+}
+
+.resize-handle:hover .resize-handle-line,
+.resize-handle.is-dragging .resize-handle-line {
+  background: rgba(59, 130, 246, 0.6);
+  width: 80px;
+}
+
+.resize-handle-dots {
+  display: flex;
+  gap: 3px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.resize-handle:hover .resize-handle-dots,
+.resize-handle.is-dragging .resize-handle-dots {
+  opacity: 1;
+}
+
+.resize-dot {
+  width: 3px;
+  height: 3px;
+  background: rgba(59, 130, 246, 0.8);
+  border-radius: 50%;
+}
+
+.resize-tooltip {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+  background: rgba(15, 23, 42, 0.9);
+  padding: 2px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.resize-handle:hover .resize-tooltip {
+  opacity: 1;
+}
+
+.response-panel {
+  transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.response-panel.is-collapsed {
+  height: v-bind('COLLAPSED_HEIGHT + "px"') !important;
+}
+
+/* Request content area - contains params, headers, body, auth, scripts, mock, examples */
+.request-content-area {
+  position: relative;
+  min-height: 0; /* Important for flex child to shrink properly */
+}
+
+/* Ensure proper stacking order */
+.request-content-area,
+.resize-handle,
+.response-panel {
+  position: relative;
+  z-index: 1;
+}
+
+.resize-handle {
+  z-index: 10;
+}
+
+/* ============ MICRO ANIMATIONS ============ */
+/* Tab indicator slide animation */
+.animate-slide-up {
+  animation: slideUp 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(4px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Scale X animation for tab underline */
+.animate-scale-x {
+  animation: scaleX 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-origin: center;
+}
+
+@keyframes scaleX {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* Fade scale animation */
+.fade-scale-enter-active,
+.fade-scale-leave-active {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.fade-scale-enter-from,
+.fade-scale-leave-to {
+  opacity: 0;
+  transform: scale(0.95);
+}
+
+/* Slide fade animation for collapse/expand */
+.slide-fade-enter-active {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  max-height: 1000px;
+}
+
+.slide-fade-leave-active {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  max-height: 1000px;
+}
+
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  opacity: 0;
+  max-height: 0;
+  transform: translateY(-10px);
+}
+
+/* Tab content transition */
+.tab-fade-enter-active,
+.tab-fade-leave-active {
+  transition: all 0.15s ease-out;
+}
+
+.tab-fade-enter-from {
+  opacity: 0;
+  transform: translateX(-10px);
+}
+
+.tab-fade-leave-to {
+  opacity: 0;
+  transform: translateX(10px);
+}
+
+/* Button micro interactions */
+button {
+  transition: transform 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+/* Hover lift effect */
+.hover\:scale-110:hover {
+  transform: scale(1.1);
+}
+
+/* Rotate animation */
+.rotate-180 {
+  transform: rotate(180deg);
+}
+
+/* Chevron transition */
+.group\/collapse svg {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Response content fade */
+.response-content-enter-active,
+.response-content-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.response-content-enter-from,
+.response-content-leave-to {
+  opacity: 0;
+}
+
 :deep(.response-search-highlight) {
   transition: background-color 120ms ease;
 }
@@ -4455,5 +4943,45 @@ kbd {
 :deep(.response-search-highlight.response-search-highlight-active) {
   background-color: rgba(59, 130, 246, 0.45);
   box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.75);
+}
+
+/* Smooth scrollbar styling for panels */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.5);
+}
+
+/* Mobile response panel */
+@media (max-width: 768px) {
+  .resize-handle {
+    display: none;
+  }
+  
+  .response-panel {
+    display: none;
+  }
+  
+  .mobile-response-panel {
+    display: block;
+  }
+}
+
+@media (min-width: 769px) {
+  .mobile-response-panel {
+    display: none;
+  }
 }
 </style>
