@@ -76,8 +76,36 @@ const DEFAULT_TIMEOUT = 30000;
 /**
  * Check if a URL is a local/private network URL
  * Includes: localhost, 127.0.0.1, private IP ranges, .local domains
+ * Also handles URLs with template variables like {{URL}} that may resolve to localhost
  */
 export function isLocalUrl(url: string): boolean {
+  // Check for template variables at the start of the URL
+  // These will be resolved later - if they start with a template variable,
+  // we need to check what the template variable value typically resolves to
+  const templateVarPattern = /^(\{\{|%7B%7B)([^{}%]+)(\}\}|%7D%7D)/;
+  const templateMatch = url.match(templateVarPattern);
+
+  if (templateMatch) {
+    // URL starts with a template variable like {{URL}}/api
+    // We need to check if the base variable could be localhost
+    // For now, assume URLs with template vars that look like base URLs might be local
+    // The actual resolution will happen in executeClientRequest after fetching env vars
+    // But we can do a quick check: if the URL after the template var looks like a path,
+    // it's likely a base URL that should be checked after substitution
+
+    // Extract the path part after the template variable
+    const afterTemplate = url.substring(templateMatch[0].length);
+
+    // If what follows looks like a path (starts with /), this is likely a base URL template
+    // In this case, we should let it go through client-side request handling
+    // because the template variable value itself will be checked after substitution
+    if (afterTemplate.startsWith('/') || afterTemplate === '' || afterTemplate.startsWith('?')) {
+      // This looks like {{URL}}/path or {{URL}}?query - likely needs client-side handling
+      // The actual localhost check will happen after variable substitution
+      return true; // Tentatively treat as local to trigger client-side handling
+    }
+  }
+
   try {
     const urlObj = new URL(url);
     const hostname = urlObj.hostname.toLowerCase();
