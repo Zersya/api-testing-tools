@@ -196,14 +196,15 @@ watch(() => props.show, (show) => {
                 <div class="flex items-start gap-3">
                   <div class="flex-1 space-y-2">
                     <input
-                      :value="variable.key"
-                      @blur="emit('update:variable', variable, ($event.target as HTMLInputElement).value, getVariableValue(variable), variable.isSecret)"
+                      v-model="variable.key"
+                      @blur="emit('update:variable', variable, variable.key, getVariableValue(variable), variable.isSecret)"
                       @keyup.enter="($event.target as HTMLInputElement).blur()"
                       class="w-full py-1.5 px-2 bg-bg-primary border border-border-default rounded-md text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(59,130,246,0.2)]"
                       placeholder="Variable name"
                     />
                     <div class="flex items-center gap-2">
                       <input
+                        :key="`input-${variable.id}-${variable.isSecret ? 'secret' : 'text'}`"
                         :value="getVariableValue(variable)"
                         @blur="emit('update:variable', variable, variable.key, ($event.target as HTMLInputElement).value, variable.isSecret)"
                         @keyup.enter="($event.target as HTMLInputElement).blur()"
