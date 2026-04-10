@@ -1,4 +1,5 @@
 import tracer from 'dd-trace'
+import { ddDebug } from './datadog-logger'
 
 export interface MetricOptions {
   tags?: Record<string, string>
@@ -18,7 +19,13 @@ export function incrementCounter(metricName: string, value: number = 1, options?
     }
   }
   
-  console.log(`[Metric] ${metricName}: +${value}`, options?.tags || {})
+  // Send to Datadog via direct logger
+  ddDebug(`[Metric] ${metricName}: +${value}`, {
+    metric_name: metricName,
+    metric_value: value,
+    metric_type: 'counter',
+    ...options?.tags
+  })
 }
 
 export function recordGauge(metricName: string, value: number, options?: MetricOptions) {
@@ -34,7 +41,13 @@ export function recordGauge(metricName: string, value: number, options?: MetricO
     }
   }
   
-  console.log(`[Metric] ${metricName}: ${value}`, options?.tags || {})
+  // Send to Datadog via direct logger
+  ddDebug(`[Metric] ${metricName}: ${value}`, {
+    metric_name: metricName,
+    metric_value: value,
+    metric_type: 'gauge',
+    ...options?.tags
+  })
 }
 
 export function recordHistogram(metricName: string, value: number, options?: MetricOptions) {
@@ -50,7 +63,13 @@ export function recordHistogram(metricName: string, value: number, options?: Met
     }
   }
   
-  console.log(`[Metric] ${metricName}: ${value}`, options?.tags || {})
+  // Send to Datadog via direct logger
+  ddDebug(`[Metric] ${metricName}: ${value}`, {
+    metric_name: metricName,
+    metric_value: value,
+    metric_type: 'histogram',
+    ...options?.tags
+  })
 }
 
 // Convenience functions

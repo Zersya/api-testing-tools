@@ -1,10 +1,16 @@
 import tracer from 'dd-trace'
+import { getDatadogLogger } from '../utils/datadog-logger'
 
 export default defineNitroPlugin(() => {
   const config = useRuntimeConfig()
   
-  // Skip in development if desired
-  if (config.datadogEnv === 'development') {
+  // Initialize the Datadog logger (for direct log shipping)
+  // This creates the singleton instance early
+  getDatadogLogger()
+  
+  // Skip in development if desired (unless forced)
+  const forceEnable = process.env.DD_FORCE_ENABLE === 'true'
+  if (config.datadogEnv === 'development' && !forceEnable) {
     console.log('[Datadog APM] Skipping initialization in development')
     return
   }
@@ -27,37 +33,54 @@ export default defineNitroPlugin(() => {
       
       // Runtime metrics
       runtimeMetrics: true,
+      
+      // Enable log injection for correlation between logs and traces
+      logInjection: true,
+      
+      // Profiling (optional, adds some overhead but useful for performance analysis)
+      profiling: config.datadogEnv === 'production',
     })
 
     // Auto-instrument common packages
     tracer.use('http', {
       server: true,
       client: true,
+      // Enable analytics for HTTP requests
+      analytics: true,
     })
     
     tracer.use('net')
     tracer.use('dns')
     tracer.use('pg', {
-      service: 'postrack-postgres'
+      service: 'postrack-postgres',
+      analytics: true,
     })
+    
+    // Enable additional instrumentation
+    tracer.use('fs')
 
     console.log('[Datadog APM] Initialized via plugin', {
       service: 'postrack-api',
       env: config.datadogEnv,
-      version: config.public.appVersion
+      version: config.public.appVersion,
+      logInjection: true
     })
   } else {
     // Configure additional instrumentation when initialized via CLI
     tracer.use('http', {
       server: true,
       client: true,
+      analytics: true,
     })
     
     tracer.use('net')
     tracer.use('dns')
     tracer.use('pg', {
-      service: 'postrack-postgres'
+      service: 'postrack-postgres',
+      analytics: true,
     })
+    
+    tracer.use('fs')
 
     console.log('[Datadog APM] Already initialized via CLI flag', {
       service: 'postrack-api',
