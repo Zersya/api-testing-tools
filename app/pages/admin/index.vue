@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { watch, nextTick, type Ref } from 'vue';
+import { watch, nextTick, onMounted, onUnmounted, type Ref } from 'vue';
 import { debounce } from 'perfect-debounce';
 import RequestBuilder from '~/components/RequestBuilder.vue';
 import CodeExamples from '~/components/CodeExamples.vue';
@@ -1087,6 +1087,44 @@ const projectWorkspaceId = ref<string | null>(null);
 const showWorkspaceModal = ref(false);
 const showRenameWorkspaceModal = ref(false);
 const workspaceToRename = ref<{ id: string; name: string } | null>(null);
+
+// Code Examples Panel Toggle (default ON, persisted in localStorage)
+const CODE_EXAMPLES_STORAGE_KEY = 'showCodeExamplesPanel';
+const showCodeExamples = ref(true);
+
+// Load saved preference
+onMounted(() => {
+  const saved = localStorage.getItem(CODE_EXAMPLES_STORAGE_KEY);
+  if (saved !== null) {
+    showCodeExamples.value = saved === 'true';
+  }
+  
+  // Add keyboard shortcut: Cmd/Ctrl + Shift + C
+  window.addEventListener('keydown', handleCodeExamplesKeydown);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleCodeExamplesKeydown);
+});
+
+// Keyboard shortcut handler
+const handleCodeExamplesKeydown = (e: KeyboardEvent) => {
+  // Cmd/Ctrl + Shift + C to toggle Code Examples
+  if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'c') {
+    e.preventDefault();
+    toggleCodeExamples();
+  }
+};
+
+// Watch and save preference
+watch(showCodeExamples, (newValue) => {
+  localStorage.setItem(CODE_EXAMPLES_STORAGE_KEY, String(newValue));
+});
+
+// Toggle function
+const toggleCodeExamples = () => {
+  showCodeExamples.value = !showCodeExamples.value;
+};
 
 // Ref for AppSidebar to access its exposed properties
 const appSidebarRef = ref<{ activeView: Ref<'hierarchy' | 'mocks' | 'history' | 'definitions'> } | null>(null);
@@ -3473,23 +3511,88 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
               />
             </div>
             
-            <!-- Code Examples Sidebar -->
-            <div class="w-[380px] border-l border-border-default bg-bg-sidebar flex flex-col flex-shrink-0">
-              <CodeExamples
-                :method="requestBuilderRef?.form?.method || selectedRequest.method"
-                :url="requestBuilderRef?.form?.url || selectedRequest.url"
-                :headers="requestBuilderRef?.headers || []"
-                :query-params="requestBuilderRef?.queryParams || []"
-                :body="requestBuilderRef?.bodyFormat === 'json' ? requestBuilderRef?.jsonBody : requestBuilderRef?.bodyFormat === 'raw' ? requestBuilderRef?.rawBody : null"
-                :body-format="requestBuilderRef?.bodyFormat || 'none'"
-                :auth-type="requestBuilderRef?.authType || 'none'"
-                :bearer-token="requestBuilderRef?.bearerToken"
-                :basic-auth="requestBuilderRef?.basicAuth"
-                :api-key="requestBuilderRef?.apiKey"
-                :variables="activeEnvironmentVariables"
-                :is-mock-environment="isActiveEnvironmentMock"
-                :collection-id="activeCollectionId"
-              />
+            <!-- Code Examples Sidebar with Integrated Toggle -->
+            <div class="flex flex-row items-stretch flex-shrink-0">
+              <!-- Toggle Handle - Integrated into layout, not floating -->
+              <button
+                @click="toggleCodeExamples"
+                class="w-8 flex flex-col items-center justify-center bg-bg-sidebar border-l border-border-default hover:bg-bg-hover transition-all duration-200 group relative"
+                :title="showCodeExamples ? 'Hide Code Examples (Cmd+Shift+C)' : 'Show Code Examples (Cmd+Shift+C)'"
+              >
+                <!-- Vertical Label -->
+                <span 
+                  class="text-[10px] font-medium tracking-wider whitespace-nowrap transition-colors duration-200"
+                  :class="showCodeExamples ? 'text-text-secondary group-hover:text-text-primary' : 'text-accent-blue group-hover:text-accent-blue'"
+                  style="writing-mode: vertical-rl; text-orientation: mixed; transform: rotate(180deg);"
+                >
+                  {{ showCodeExamples ? 'CODE' : 'CODE' }}
+                </span>
+                
+                <!-- Arrow Icon - Shows direction to open/close -->
+                <svg 
+                  width="14" 
+                  height="14" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  stroke-width="2"
+                  class="mt-2 arrow-icon"
+                  :class="[
+                    showCodeExamples 
+                      ? 'text-text-muted group-hover:text-text-primary arrow-open' 
+                      : 'text-accent-blue group-hover:text-accent-blue arrow-closed'
+                  ]"
+                >
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+                
+                <!-- Active indicator dot when hidden -->
+                <span 
+                  v-if="!showCodeExamples"
+                  class="absolute top-2 right-1 w-1.5 h-1.5 bg-accent-blue rounded-full animate-pulse"
+                ></span>
+              </button>
+              
+              <!-- Code Examples Panel -->
+              <transition
+                enter-active-class="code-panel-enter"
+                leave-active-class="code-panel-leave"
+              >
+                <div 
+                  v-if="showCodeExamples"
+                  class="code-panel border-l border-border-default bg-bg-sidebar flex flex-col flex-shrink-0 overflow-hidden"
+                >
+                  <!-- Panel Header with Close Button -->
+                  <div class="flex items-center justify-between px-3 py-2 border-b border-border-default bg-bg-secondary/50">
+                    <span class="text-xs font-semibold text-text-secondary uppercase tracking-wider">Code Examples</span>
+                    <button
+                      @click="toggleCodeExamples"
+                      class="p-1 text-text-muted hover:text-text-primary transition-colors duration-150 rounded hover:bg-bg-hover"
+                      title="Hide Code Examples (Cmd+Shift+C)"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="15 18 9 12 15 6"></polyline>
+                      </svg>
+                    </button>
+                  </div>
+                  
+                  <CodeExamples
+                    :method="requestBuilderRef?.form?.method || selectedRequest.method"
+                    :url="requestBuilderRef?.form?.url || selectedRequest.url"
+                    :headers="requestBuilderRef?.headers || []"
+                    :query-params="requestBuilderRef?.queryParams || []"
+                    :body="requestBuilderRef?.bodyFormat === 'json' ? requestBuilderRef?.jsonBody : requestBuilderRef?.bodyFormat === 'raw' ? requestBuilderRef?.rawBody : null"
+                    :body-format="requestBuilderRef?.bodyFormat || 'none'"
+                    :auth-type="requestBuilderRef?.authType || 'none'"
+                    :bearer-token="requestBuilderRef?.bearerToken"
+                    :basic-auth="requestBuilderRef?.basicAuth"
+                    :api-key="requestBuilderRef?.apiKey"
+                    :variables="activeEnvironmentVariables"
+                    :is-mock-environment="isActiveEnvironmentMock"
+                    :collection-id="activeCollectionId"
+                  />
+                </div>
+              </transition>
             </div>
           </div>
           
@@ -4164,3 +4267,101 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
     />
   </div>
 </template>
+
+<style scoped>
+/* ============ SMOOTH CODE PANEL ANIMATIONS ============ */
+
+.code-panel {
+  width: 380px;
+  max-width: 380px;
+}
+
+/* Enter animation - smooth spring-like motion */
+.code-panel-enter {
+  animation: slideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Leave animation - smooth ease out */
+.code-panel-leave {
+  animation: slideOut 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes slideIn {
+  0% {
+    opacity: 0;
+    max-width: 0;
+    transform: translateX(20px);
+  }
+  60% {
+    opacity: 1;
+    max-width: 380px;
+    transform: translateX(-2px);
+  }
+  100% {
+    opacity: 1;
+    max-width: 380px;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideOut {
+  0% {
+    opacity: 1;
+    max-width: 380px;
+    transform: translateX(0);
+  }
+  40% {
+    opacity: 0.8;
+    max-width: 100px;
+    transform: translateX(-5px);
+  }
+  100% {
+    opacity: 0;
+    max-width: 0;
+    transform: translateX(10px);
+  }
+}
+
+/* Smooth arrow icon rotation */
+.arrow-icon {
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s ease;
+}
+
+.arrow-open {
+  transform: rotate(90deg);
+}
+
+.arrow-closed {
+  transform: rotate(-90deg);
+}
+
+/* Indicator dot pulse animation */
+.animate-pulse {
+  animation: smoothPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes smoothPulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(0.85);
+  }
+}
+
+/* Hover transitions for toggle handle */
+button {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Content fade when panel closes/opens */
+.code-panel > * {
+  transition: opacity 0.2s ease;
+}
+
+.code-panel-leave .code-panel > * {
+  opacity: 0;
+}
+</style>
