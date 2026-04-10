@@ -159,6 +159,7 @@ interface Props {
   initialScriptLogs?: Array<{ phase: 'pre' | 'post'; type: 'log' | 'error' | 'warn'; message: string; timestamp: number }>
   initialExpandedNodes?: string[]
   isSharedWorkspace?: boolean
+  refreshTrigger?: number
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -2902,6 +2903,14 @@ onMounted(async () => {
 
 watch(() => props.environmentId, () => {
   fetchEnvironmentVariables()
+})
+
+watch(() => props.refreshTrigger, () => {
+  console.log('[RequestBuilder] Refresh trigger activated, reloading environment variables and collection auth');
+  fetchEnvironmentVariables();
+  if (props.collectionId && inheritFromParent.value) {
+    fetchCollectionAuth();
+  }
 })
 
 watch(() => props.collectionId, () => {
