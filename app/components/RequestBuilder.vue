@@ -8,7 +8,11 @@ import RequestExampleManager from './RequestExampleManager.vue'
 import MockConfiguration from './MockConfiguration.vue'
 import { useUsageTracking } from '~/composables/useUsageTracking'
 import { useClientRequest, isLocalUrl } from '~/composables/useClientRequest'
+import { useApiClient } from '~~/composables/useApiFetch'
 import { stripComments, validateJSONC, formatJSONC } from '~/utils/jsonc'
+
+// API client for programmatic requests
+const api = useApiClient()
 
 // Metadata keys for body format persistence
 const BODY_FORMAT_META_KEY = '__mockServiceBodyFormat';
@@ -1653,7 +1657,10 @@ const fetchCollectionAuth = async () => {
   
   collectionAuthLoading.value = true
   try {
-    const result = await $fetch(`/api/admin/collections/${props.collectionId}/auth`)
+    const result = await api.get<{
+      authConfig: any;
+      collectionName: string;
+    }>(`/api/admin/collections/${props.collectionId}/auth`)
     collectionAuth.value = result.authConfig
     collectionName.value = result.collectionName
   } catch (error) {
@@ -2343,8 +2350,7 @@ const saveResponseAsExample = async () => {
       }
     }
     
-    await $fetch(`/api/admin/requests/${props.request.id}/examples`, {
-      method: 'POST',
+    await api.post(`/api/admin/requests/${props.request.id}/examples`, {
       body: {
         name: saveExampleName.value.trim(),
         statusCode: res.status,

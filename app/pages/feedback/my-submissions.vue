@@ -282,6 +282,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { useFeedback } from '~/composables/useFeedback';
+import { useApiClient } from '~~/composables/useApiFetch';
+
+// API client for programmatic requests
+const api = useApiClient();
 
 interface StatusHistoryRecord {
   id: string;
@@ -352,7 +356,7 @@ const fetchMySubmissions = async () => {
   error.value = null;
 
   try {
-    const response = await $fetch<{
+    const response = await api.get<{
       submissions: Submission[];
       total: number;
       publicCount: number;
@@ -396,8 +400,9 @@ const confirmVisibilityChange = async () => {
   isUpdatingVisibility.value = true;
 
   try {
-    const response = await $fetch(`/api/feedback/${visibilityConfirm.value.submission.id}/visibility`, {
-      method: 'PUT',
+    const response = await api.put<{
+      success: boolean;
+    }>(`/api/feedback/${visibilityConfirm.value.submission.id}/visibility`, {
       body: { visibility: visibilityConfirm.value.to }
     });
 

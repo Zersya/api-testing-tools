@@ -66,8 +66,11 @@ const parseCurlCommand = async () => {
   parsedData.value = null;
 
   try {
-    const result = await $fetch('/api/utils/parse-curl', {
-      method: 'POST',
+    const result = await api.post<{
+      success: boolean;
+      data?: any;
+      error?: { message: string };
+    }>('/api/utils/parse-curl', {
       body: {
         command: curlCommand.value.trim()
       }

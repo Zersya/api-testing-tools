@@ -641,7 +641,7 @@ const fetchEnvironmentSecretValues = async (envs: Environment[]) => {
     for (const variable of env.variables) {
       if (variable.isSecret && variable.value === '••••••••') {
         try {
-          const actualValue = await $fetch<{ value: string }>(`/api/admin/variables/${variable.id}/value`);
+          const actualValue = await api.get<{ value: string }>(`/api/admin/variables/${variable.id}/value`);
           environmentSettingsSecretValues.value[variable.id] = actualValue.value;
         } catch (e) {
           console.error('Failed to fetch secret value:', e);
@@ -660,7 +660,7 @@ const refreshEnvironmentSettings = async () => {
   }
 
   try {
-    const data = await $fetch<Environment[]>(`/api/admin/projects/${currentProjectId.value}/environments`);
+    const data = await api.get<Environment[]>(`/api/admin/projects/${currentProjectId.value}/environments`);
     environmentSettingsEnvironments.value = data;
     await fetchEnvironmentSecretValues(data);
   } catch (e) {
@@ -1244,20 +1244,18 @@ const syncSelectedRequestWithActiveTab = () => {
 
 const saveRequestTabsSession = async (session: PersistedTabSession, keepalive = false) => {
   if (keepalive && typeof window !== 'undefined') {
-    await fetch(`/api/admin/settings?key=${REQUEST_TABS_SETTINGS_KEY}`, {
+    await api.request(`/api/admin/settings?key=${REQUEST_TABS_SETTINGS_KEY}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ session }),
-      keepalive: true,
-      credentials: 'include'
+      body: { session },
+      keepalive: true
     });
     return;
   }
 
-  await $fetch('/api/admin/settings', {
-    method: 'POST',
+  await api.post('/api/admin/settings', {
     query: { key: REQUEST_TABS_SETTINGS_KEY },
     body: { session }
   });
@@ -1299,7 +1297,7 @@ const loadPersistedRequestTabs = async () => {
   isHydratingRequestTabs.value = true;
 
   try {
-    const data = await $fetch<{ session?: PersistedTabSession }>('/api/admin/settings', {
+    const data = await api.get<{ session?: PersistedTabSession }>('/api/admin/settings', {
       query: { key: REQUEST_TABS_SETTINGS_KEY }
     });
 
@@ -1688,8 +1686,16 @@ const saveSettings = async () => {
 
 const exportOpenAPI = async () => {
    try {
+      // For file downloads, we need direct fetch to access response headers
+      // Build the full URL using api client's URL building logic
+      const inTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
+      const baseUrl = inTauri ? 'https://postrack.transtrack.co' : '';
+      const exportUrl = `${baseUrl}/api/admin/export`;
+      
       // Fetch the YAML export from the server
-      const response = await fetch('/api/admin/export');
+      const response = await fetch(exportUrl, {
+        credentials: 'include'
+      });
       
       if (!response.ok) {
          const errorData = await response.json().catch(() => ({ message: 'Export failed' }));
@@ -2616,7 +2622,9 @@ const openEditCollection = async (collection: Collection) => {
     // Fetch fresh auth config from API to ensure we have latest data
     let authConfig: any = null;
     try {
-        const authData = await $fetch(`/api/admin/collections/${collection.id}/auth`);
+        const authData = await api.get<{
+          authConfig: any;
+        }>(`/api/admin/collections/${collection.id}/auth`);
         authConfig = authData.authConfig;
     } catch (error) {
         console.error('Failed to fetch collection auth:', error);
@@ -2659,8 +2667,7 @@ const saveCollection = async () => {
             });
         } else {
             // Update collection basic info using the proper database endpoint
-            await $fetch(`/api/admin/collections/${collectionForm.value.id}`, {
-                method: 'PUT',
+            await api.put(`/api/admin/collections/${collectionForm.value.id}`, {
                 body: {
                     name: collectionForm.value.name,
                     description: collectionForm.value.description,
@@ -2700,8 +2707,7 @@ const saveCollection = async () => {
                 authPayload.credentials = {};
             }
             
-            await $fetch(`/api/admin/collections/${collectionForm.value.id}/auth`, {
-                method: 'POST',
+            await api.post(`/api/admin/collections/${collectionForm.value.id}/auth`, {
                 body: { authConfig: authPayload }
             });
             

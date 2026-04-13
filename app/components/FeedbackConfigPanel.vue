@@ -252,6 +252,10 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue';
+import { useApiClient } from '~~/composables/useApiFetch';
+
+// API client for programmatic requests
+const api = useApiClient();
 
 interface FeedbackQuestion {
   id: string;
@@ -301,7 +305,7 @@ const isActive = computed(() => {
 
 const fetchConfig = async () => {
   try {
-    const response = await $fetch<{ config: any }>('/api/admin/super/feedback/config');
+    const response = await api.get<{ config: any }>('/api/admin/super/feedback/config');
     if (response.config) {
       const c = response.config;
       config.isEnabled = c.isEnabled;
@@ -364,8 +368,7 @@ const saveConfig = async () => {
   isSaving.value = true;
   
   try {
-    await $fetch('/api/admin/super/feedback/config', {
-      method: 'POST',
+    await api.post('/api/admin/super/feedback/config', {
       body: {
         isEnabled: config.isEnabled,
         shownFrom: config.shownFrom || null,

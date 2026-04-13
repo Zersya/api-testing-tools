@@ -167,6 +167,10 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
+import { useApiClient } from '~~/composables/useApiFetch';
+
+// API client for programmatic requests
+const api = useApiClient();
 
 type FeedbackStatus = 'open' | 'pending' | 'process' | 'resolved' | 'closed';
 
@@ -216,11 +220,11 @@ const fetchPublicSubmissions = async () => {
   error.value = null;
 
   try {
-    const response = await $fetch<{
+    const response = await api.get<{
       submissions: PublicSubmission[];
       total: number;
     }>('/api/feedback/public', {
-      params: { sortBy: sortBy.value }
+      query: { sortBy: sortBy.value }
     });
 
     submissions.value = response.submissions;
@@ -241,8 +245,11 @@ const toggleVote = async (submission: PublicSubmission) => {
   try {
     const action = submission.userVoted ? 'downvote' : 'upvote';
 
-    const response = await $fetch(`/api/feedback/${submission.id}/vote`, {
-      method: 'POST',
+    const response = await api.post<{
+      success: boolean;
+      upvotes: number;
+      userVoted: boolean;
+    }>(`/api/feedback/${submission.id}/vote`, {
       body: { action }
     });
 

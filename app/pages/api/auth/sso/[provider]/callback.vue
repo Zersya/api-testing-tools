@@ -2,18 +2,11 @@
 // Client-side handler for SSO callback
 // This page proxies the callback to the server API
 
+import { useApiClient } from '~~/composables/useApiFetch';
+
 const route = useRoute();
 const router = useRouter();
-
-// Get the API base URL - works for both web and Tauri
-const getApiBaseUrl = () => {
-  // In Tauri production build, use the external API
-  if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
-    return 'https://postrack.transtrack.co';
-  }
-  // In web/dev mode, use relative URL
-  return '';
-};
+const api = useApiClient();
 
 onMounted(async () => {
   const provider = route.params.provider as string;
@@ -22,30 +15,19 @@ onMounted(async () => {
   console.log(`[SSO Callback Page] Provider: ${provider}, Query:`, query);
 
   try {
-    // Forward the callback to the server API using fetch
+    // Forward the callback to the server API using api client
     const queryString = new URLSearchParams(query as Record<string, string>).toString();
-    const apiBase = getApiBaseUrl();
-    const apiUrl = `${apiBase}/api/auth/sso/${provider}/callback?${queryString}`;
+    const apiUrl = `/api/auth/sso/${provider}/callback?${queryString}`;
 
     console.log(`[SSO Callback Page] Calling API: ${apiUrl}`);
 
-    const response = await fetch(apiUrl, {
-      method: 'GET',
-      credentials: 'include', // Include cookies
-      headers: {
-        'Accept': 'application/json' // Tell server we want JSON
-      }
-    });
+    const data = await api.get<{
+      redirectUrl?: string;
+      message?: string;
+    }>(apiUrl);
 
-    if (response.ok) {
-      const data = await response.json().catch(() => ({ redirectUrl: '/admin' }));
-      console.log('[SSO Callback Page] Success:', data);
-      router.push(data.redirectUrl || '/admin');
-    } else {
-      const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
-      console.error('[SSO Callback Page] Error:', errorData);
-      router.push(`/login?error=${encodeURIComponent(errorData.message || 'SSO failed')}`);
-    }
+    console.log('[SSO Callback Page] Success:', data);
+    router.push(data.redirectUrl || '/admin');
   } catch (error: any) {
     console.error('[SSO Callback Page] Exception:', error);
     router.push(`/login?error=${encodeURIComponent(error.message || 'SSO failed')}`);

@@ -703,6 +703,10 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, onUnmounted } from 'vue';
+import { useApiClient } from '~~/composables/useApiFetch';
+
+// API client for programmatic requests
+const api = useApiClient();
 
 type FeedbackStatus = 'open' | 'pending' | 'process' | 'resolved' | 'closed';
 
@@ -833,16 +837,16 @@ const fetchData = async () => {
   error.value = null;
   
   try {
-    const params: Record<string, string> = {};
-    if (filters.value.startDate) params.startDate = filters.value.startDate;
-    if (filters.value.endDate) params.endDate = filters.value.endDate;
-    if (selectedStatuses.value.length > 0) params.status = selectedStatuses.value.join(',');
+    const query: Record<string, string> = {};
+    if (filters.value.startDate) query.startDate = filters.value.startDate;
+    if (filters.value.endDate) query.endDate = filters.value.endDate;
+    if (selectedStatuses.value.length > 0) query.status = selectedStatuses.value.join(',');
     
-    const response = await $fetch<{
+    const response = await api.get<{
       submissions: Submission[];
       analytics: Analytics;
       availableStatuses: FeedbackStatus[];
-    }>('/api/admin/super/feedback/submissions', { params });
+    }>('/api/admin/super/feedback/submissions', { query });
     
     submissions.value = response.submissions;
     analytics.value = response.analytics;
@@ -858,7 +862,7 @@ const fetchData = async () => {
 const fetchStatusHistory = async (submissionId: string) => {
   loadingHistory.value = true;
   try {
-    const response = await $fetch<{
+    const response = await api.get<{
       history: StatusHistoryRecord[];
     }>(`/api/admin/super/feedback/submissions/${submissionId}/history`);
     statusHistory.value = response.history;
@@ -1126,8 +1130,10 @@ const confirmStatusChangeAction = async () => {
   confirmStatusChange.value.loading = true;
   
   try {
-    const response = await $fetch(`/api/admin/super/feedback/submissions/${confirmStatusChange.value.submission.id}`, {
-      method: 'PUT',
+    const response = await api.put<{
+      success: boolean;
+      statusHistory?: StatusHistoryRecord[];
+    }>(`/api/admin/super/feedback/submissions/${confirmStatusChange.value.submission.id}`, {
       body: { status: confirmStatusChange.value.to }
     });
     
