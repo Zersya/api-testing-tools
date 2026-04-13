@@ -383,6 +383,7 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
 
     // Check if environment is CLOUD MOCK and return mock response
     let isMockEnvironment = false;
+    let environmentExists = false;
     if (body.environmentId) {
       try {
         const environment = (await db
@@ -391,11 +392,16 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
           .where(eq(environments.id, body.environmentId))
           .limit(1))[0];
         
-        if (environment?.isMockEnvironment) {
-          isMockEnvironment = true;
+        if (environment) {
+          environmentExists = true;
+          if (environment.isMockEnvironment) {
+            isMockEnvironment = true;
+          }
+        } else {
+          console.log('[Proxy] Environment not found in database, skipping mock check:', body.environmentId);
         }
       } catch (error) {
-        console.error('Failed to check if environment is mock:', error);
+        console.error('[Proxy] Failed to check if environment is mock:', error);
       }
     }
 
@@ -554,10 +560,16 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
 
         // No mock config found for this request
         const errorEndTime = Date.now();
+        console.log('[Proxy] No mock config found for request:', {
+          method,
+          url: resolvedUrl,
+          savedRequestId: body.savedRequestId,
+          workspaceId: body.workspaceId
+        });
         return {
           success: false,
           error: {
-            message: 'No mock configuration found for this request in CLOUD MOCK environment. Please configure mock response in the Mock tab.',
+            message: 'No mock configuration found for this request in CLOUD MOCK environment. Please configure mock response in the Mock tab, or switch to a non-mock environment to make real HTTP requests.',
             code: 'MOCK_NOT_CONFIGURED'
           },
           timing: {
