@@ -1,7 +1,7 @@
 import { db } from '../../../../../db';
 import { workspaces, workspaceMembers } from '../../../../../db/schema';
 import { eq, and } from 'drizzle-orm';
-import { isWorkspaceOwner } from '../../../../../utils/permissions';
+import { canInviteMembers } from '../../../../../utils/permissions';
 import type { MemberPermission } from '../../../../../db/schema/workspaceMember';
 
 interface UpdateMemberBody {
@@ -41,22 +41,22 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  // Only workspace owner can update member permissions
-  const isOwner = await isWorkspaceOwner(user.id, workspaceId);
-  if (!isOwner) {
+  // Only workspace owners can update member permissions
+  const canUpdate = await canInviteMembers(user.id, workspaceId);
+  if (!canUpdate) {
     throw createError({
       statusCode: 403,
-      statusMessage: 'Only workspace owner can update member permissions'
+      statusMessage: 'Only workspace owners can update member permissions'
     });
   }
 
   const body = await readBody<UpdateMemberBody>(event);
 
   // Validate permission
-  if (!body.permission || !['view', 'edit'].includes(body.permission)) {
+  if (!body.permission || !['view', 'edit', 'owner'].includes(body.permission)) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'Permission must be "view" or "edit"'
+      statusMessage: 'Permission must be "view", "edit", or "owner"'
     });
   }
 

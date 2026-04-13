@@ -31,6 +31,7 @@ import {
   parsePostmanEnvironment,
   isPostmanCollection,
   isPostmanEnvironment,
+  type ParsedPostmanBodyParam,
   type ParsedPostmanFolder,
   type ParsedPostmanRequest,
   type ParsedPostmanEnvironment,
@@ -542,6 +543,7 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
               }),
               preScript: parsedRequest.preRequestScript || null,
               postScript: parsedRequest.testScript || null,
+              paramNotes: parsedRequest.paramNotes,
               order: parsedRequest.order
             })
             .returning())[0];
@@ -606,6 +608,7 @@ export default defineEventHandler(async (event): Promise<ImportSuccessResponse |
             }),
             preScript: parsedRequest.preRequestScript || null,
             postScript: parsedRequest.testScript || null,
+            paramNotes: parsedRequest.paramNotes,
             order: parsedRequest.order
           })
           .returning())[0];

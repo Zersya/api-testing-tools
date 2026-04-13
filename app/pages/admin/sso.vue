@@ -4,6 +4,10 @@ import { useApiClient } from '~~/composables/useApiFetch';
 
 const api = useApiClient();
 
+definePageMeta({
+  middleware: ['super-admin']
+});
+
 interface ProviderForm {
   id?: string;
   type: SsoProviderType;

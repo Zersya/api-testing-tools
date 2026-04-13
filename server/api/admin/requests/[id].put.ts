@@ -1,6 +1,8 @@
 import { db } from '../../../db';
-import { savedRequests, type HttpMethod, type RequestHeaders, type RequestBody, type RequestAuth, type MockConfig, type RequestPathVariables } from '../../../db/schema';
+import { savedRequests, type HttpMethod, type RequestHeaders, type RequestBody, type RequestAuth, type MockConfig, type RequestPathVariables, type RequestParamNotes } from '../../../db/schema';
 import { eq, sql } from 'drizzle-orm';
+import { trackResourceAction } from '../../../services/usageTracking';
+import { cache, CacheKeys } from '../../../utils/cache';
 
 interface UpdateRequestBody {
   name?: string;
@@ -9,10 +11,12 @@ interface UpdateRequestBody {
   headers?: RequestHeaders;
   body?: RequestBody;
   auth?: RequestAuth;
+  inheritAuth?: number;
   mockConfig?: MockConfig;
   preScript?: string;
   postScript?: string;
   pathVariables?: RequestPathVariables;
+  paramNotes?: RequestParamNotes;
   order?: number;
 }
 
@@ -64,10 +68,12 @@ export default defineEventHandler(async (event) => {
       headers: RequestHeaders | null;
       body: RequestBody;
       auth: RequestAuth;
+      inheritAuth: number;
       mockConfig: MockConfig;
       preScript: string | null;
       postScript: string | null;
       pathVariables: RequestPathVariables | null;
+      paramNotes: RequestParamNotes | null;
       order: number;
       updatedAt: Date;
     }> = {
@@ -157,6 +163,11 @@ export default defineEventHandler(async (event) => {
       updateData.auth = body.auth;
     }
 
+    // Set inheritAuth (can be 0 or 1)
+    if (body.inheritAuth !== undefined) {
+      updateData.inheritAuth = body.inheritAuth ? 1 : 0;
+    }
+
     // Set mockConfig (can be null or object)
     if (body.mockConfig !== undefined) {
       console.log('[Request PUT] Setting mockConfig:', body.mockConfig);
@@ -183,6 +194,11 @@ export default defineEventHandler(async (event) => {
       console.log('[Request PUT] pathVariables is undefined, not updating');
     }
 
+    // Set paramNotes (can be null or object)
+    if (body.paramNotes !== undefined) {
+      updateData.paramNotes = body.paramNotes;
+    }
+
     // Validate and set order
     if (body.order !== undefined) {
       if (typeof body.order !== 'number' || !Number.isInteger(body.order)) {
@@ -204,6 +220,23 @@ export default defineEventHandler(async (event) => {
       .returning())[0];
     
     console.log('[Request PUT] Updated request mockConfig:', updatedRequest.mockConfig);
+
+    // Track analytics
+    const user = event.context.user;
+    if (user?.id) {
+      trackResourceAction({
+        userId: user.id,
+        userEmail: user.email,
+        workspaceId: user.workspaceId || 'personal',
+        action: 'update',
+        resourceType: 'request',
+        resourceId: updatedRequest.id,
+        resourceName: updatedRequest.name,
+      });
+      
+      // Invalidate cache for this user
+      cache.delete(CacheKeys.workspaceTree(user.id));
+    }
 
     return updatedRequest;
   } catch (error: any) {

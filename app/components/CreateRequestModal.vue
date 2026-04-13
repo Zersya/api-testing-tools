@@ -14,98 +14,104 @@ const props = defineProps<Props>();
 
 const emit = defineEmits<{
   close: [];
-  created: [request: any];
+  imported: [request: any];
 }>();
 
-const form = ref({
-  name: '',
-  method: 'GET' as 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS',
-  url: '',
-  headers: '',
-  body: '',
-  authType: 'none'
+// cURL import state
+const curlCommand = ref('');
+const isParsingCurl = ref(false);
+const isCreating = ref(false);
+const curlError = ref('');
+const curlSuccess = ref(false);
+const parsedData = ref<any>(null);
+
+const canParseCurl = computed(() => {
+  return !isParsingCurl.value && curlCommand.value.trim();
 });
 
-const isSubmitting = ref(false);
-const error = ref('');
-
-const methods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const;
-
-const canSubmit = computed(() => {
-  return !isSubmitting.value && form.value.name.trim() && form.value.url.trim();
+const canCreate = computed(() => {
+  return parsedData.value && !isCreating.value;
 });
 
-const resetForm = () => {
-  form.value = {
-    name: '',
-    method: 'GET',
-    url: '',
-    headers: '',
-    body: '',
-    authType: 'none'
-  };
-  error.value = '';
+// cURL placeholder text
+const curlPlaceholder = "curl -X POST https://api.example.com/users -H Content-Type:application/json -d '{name: John}'";
+
+const resetCurl = () => {
+  curlCommand.value = '';
+  curlError.value = '';
+  curlSuccess.value = false;
+  parsedData.value = null;
 };
 
 const handleClose = () => {
-  resetForm();
+  resetCurl();
   emit('close');
 };
 
 watch(() => props.show, (newVal) => {
   if (newVal) {
-    resetForm();
+    resetCurl();
   }
 });
 
-watch(() => [props.folderId, props.collectionId], () => {
-  resetForm();
-});
-
-const createRequest = async () => {
-  if (!form.value.name.trim() || !form.value.url.trim()) {
-    error.value = 'Name and URL are required';
+const parseCurlCommand = async () => {
+  if (!curlCommand.value.trim()) {
+    curlError.value = 'Please enter a curl command';
     return;
   }
 
-  isSubmitting.value = true;
-  error.value = '';
+  isParsingCurl.value = true;
+  curlError.value = '';
+  curlSuccess.value = false;
+  parsedData.value = null;
 
   try {
-    let headers = null;
-    if (form.value.headers.trim()) {
-      try {
-        headers = JSON.parse(form.value.headers);
-      } catch {
-        error.value = 'Headers must be valid JSON';
-        isSubmitting.value = false;
-        return;
+    const result = await $fetch('/api/utils/parse-curl', {
+      method: 'POST',
+      body: {
+        command: curlCommand.value.trim()
       }
-    }
+    });
 
+    if (result.success && result.data) {
+      parsedData.value = result.data;
+      curlSuccess.value = true;
+    } else {
+      curlError.value = result.error?.message || 'Failed to parse curl command';
+    }
+  } catch (e: any) {
+    curlError.value = e.data?.message || e.message || 'Failed to parse curl command';
+  } finally {
+    isParsingCurl.value = false;
+  }
+};
+
+const createRequestFromCurl = async () => {
+  if (!parsedData.value) {
+    curlError.value = 'Please parse a curl command first';
+    return;
+  }
+
+  isCreating.value = true;
+  curlError.value = '';
+
+  try {
     let body = null;
-    if (['POST', 'PUT', 'PATCH'].includes(form.value.method) && form.value.body.trim()) {
-      try {
-        body = JSON.parse(form.value.body);
-      } catch {
-        error.value = 'Body must be valid JSON';
-        isSubmitting.value = false;
-        return;
+    if (parsedData.value.body) {
+      if (typeof parsedData.value.body === 'object') {
+        body = parsedData.value.body;
+      } else {
+        body = parsedData.value.body;
       }
-    }
-
-    let auth = null;
-    if (form.value.authType !== 'none') {
-      auth = { type: form.value.authType };
     }
 
     const requestBody = {
-      name: form.value.name.trim(),
-      method: form.value.method,
-      url: form.value.url.trim(),
-      headers,
-      body,
-      auth,
+      name: parsedData.value.name || 'Imported Request',
+      method: parsedData.value.method,
+      url: parsedData.value.url,
+      headers: parsedData.value.headers || null,
+      body: body,
+      auth: parsedData.value.auth,
       mockConfig: {
         isEnabled: true,
         statusCode: 200,
@@ -127,79 +133,135 @@ const createRequest = async () => {
         body: requestBody
       });
     } else {
-      error.value = 'No folder or collection specified';
-      isSubmitting.value = false;
+      curlError.value = 'No folder or collection specified';
+      isCreating.value = false;
       return;
     }
 
-    emit('created', result);
+    emit('imported', result);
     handleClose();
   } catch (e: any) {
-    error.value = e.data?.message || e.message || 'Failed to create request';
+    curlError.value = e.data?.message || e.message || 'Failed to create request';
   } finally {
-    isSubmitting.value = false;
+    isCreating.value = false;
   }
+};
+
+const loadExampleCurl = () => {
+  curlCommand.value = `curl -X POST "https://api.example.com/users" \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer your-token-here" \\
+  -d '{
+    "name": "John Doe",
+    "email": "john@example.com"
+  }'`;
 };
 </script>
 
 <template>
-  <Modal :show="show" title="Create New Request" size="lg" @close="handleClose">
-    <div v-if="error" class="mb-4 p-3 bg-accent-red/10 border border-accent-red/30 rounded-md">
-      <p class="text-sm text-accent-red">{{ error }}</p>
+  <Modal :show="show" title="Import from cURL" size="lg" @close="handleClose">
+    <div v-if="curlError" class="mb-4 p-3 bg-accent-red/10 border border-accent-red/30 rounded-md">
+      <div class="flex items-start gap-2">
+        <svg class="text-accent-red flex-shrink-0 mt-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+        <div class="text-sm text-accent-red">{{ curlError }}</div>
+      </div>
     </div>
-    <div class="mb-4">
-      <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide mb-1.5">Request Name</label>
-      <input
-        v-model="form.name"
-        placeholder="Get Users"
-        class="w-full py-2.5 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(0,122,255,0.2)]"
-        :disabled="isSubmitting"
-        @keyup.enter="createRequest"
-      />
+    
+    <div v-if="curlSuccess" class="mb-4 p-3 bg-accent-green/10 border border-accent-green/30 rounded-md">
+      <div class="flex items-start gap-2">
+        <svg class="text-accent-green flex-shrink-0 mt-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        <div>
+          <div class="text-sm text-accent-green font-medium">cURL parsed successfully!</div>
+          <div class="text-xs text-text-secondary mt-1">
+            <span class="font-medium">{{ parsedData?.method }}</span> {{ parsedData?.url }}
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="flex gap-2 mb-4">
-      <div class="w-28">
-        <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide mb-1.5">Method</label>
-        <select
-          v-model="form.method"
-          class="w-full py-2.5 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue cursor-pointer"
+
+    <div class="mb-3">
+      <div class="flex items-center justify-between mb-1.5">
+        <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide">Paste cURL Command</label>
+        <button 
+          @click="loadExampleCurl"
+          class="text-xs text-accent-orange hover:underline"
+          :disabled="isParsingCurl"
         >
-          <option v-for="m in methods" :key="m" :value="m">{{ m }}</option>
-        </select>
+          Load Example
+        </button>
       </div>
-      <div class="flex-1">
-        <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide mb-1.5">URL</label>
-        <input
-          v-model="form.url"
-          placeholder="https://api.example.com/users"
-          class="w-full py-2.5 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(0,122,255,0.2)]"
-          :disabled="isSubmitting"
-          @keyup.enter="createRequest"
-        />
+      <textarea
+        v-model="curlCommand"
+        :placeholder="curlPlaceholder"
+        class="w-full h-40 py-2.5 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm font-mono focus:outline-none focus:border-accent-blue resize-y"
+        :disabled="isParsingCurl || isCreating"
+      ></textarea>
+      <p class="text-xs text-text-muted mt-1.5">
+        Supports: -X, -H, -d, -u, -F, --data, --data-raw, --data-binary, --form, and more
+      </p>
+    </div>
+
+    <div class="flex gap-2 mb-4">
+      <button 
+        class="btn btn-secondary flex-1" 
+        @click="resetCurl"
+        :disabled="isParsingCurl || isCreating || !curlCommand"
+      >
+        Clear
+      </button>
+      <button 
+        class="btn btn-primary flex-1" 
+        @click="parseCurlCommand"
+        :disabled="!canParseCurl"
+      >
+        <svg v-if="isParsingCurl" class="animate-spin mr-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+        </svg>
+        <svg v-else class="mr-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <line x1="12" y1="18" x2="12" y2="12"></line>
+          <line x1="9" y1="15" x2="15" y2="15"></line>
+        </svg>
+        {{ isParsingCurl ? 'Parsing...' : 'Parse Command' }}
+      </button>
+    </div>
+
+    <!-- Parse Instructions -->
+    <div class="p-3 bg-bg-tertiary rounded-lg">
+      <h4 class="text-[10px] font-medium text-text-secondary uppercase tracking-wide mb-2">Supported cURL Options</h4>
+      <div class="grid grid-cols-2 gap-2 text-xs text-text-muted">
+        <div><code class="text-accent-orange">-X, --request</code> HTTP method</div>
+        <div><code class="text-accent-orange">-H, --header</code> Headers</div>
+        <div><code class="text-accent-orange">-d, --data</code> Request body</div>
+        <div><code class="text-accent-orange">-u, --user</code> Basic auth</div>
+        <div><code class="text-accent-orange">-F, --form</code> Form data</div>
+        <div><code class="text-accent-orange">-b, --cookie</code> Cookies</div>
+        <div><code class="text-accent-orange">--data-raw</code> Raw body data</div>
+        <div><code class="text-accent-orange">--url</code> Target URL</div>
       </div>
     </div>
-    <div class="mb-4">
-      <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide mb-1.5">Headers (JSON, optional)</label>
-      <textarea
-        v-model="form.headers"
-        placeholder='{"Content-Type": "application/json"}'
-        class="w-full h-20 py-2.5 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm font-mono focus:outline-none focus:border-accent-blue resize-y"
-        :disabled="isSubmitting"
-      ></textarea>
-    </div>
-    <div v-if="['POST', 'PUT', 'PATCH'].includes(form.method)" class="mb-4">
-      <label class="block text-xs font-medium text-text-secondary uppercase tracking-wide mb-1.5">Body (JSON, optional)</label>
-      <textarea
-        v-model="form.body"
-        placeholder='{"name": "John"}'
-        class="w-full h-32 py-2.5 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm font-mono focus:outline-none focus:border-accent-blue resize-y"
-        :disabled="isSubmitting"
-      ></textarea>
-    </div>
+
     <template #footer>
-      <button class="btn btn-secondary" @click="handleClose" :disabled="isSubmitting">Cancel</button>
-      <button class="btn btn-primary" @click="createRequest" :disabled="!canSubmit">
-        {{ isSubmitting ? 'Creating...' : 'Create Request' }}
+      <button class="btn btn-secondary" @click="handleClose" :disabled="isParsingCurl || isCreating">
+        Cancel
+      </button>
+      <button 
+        v-if="curlSuccess"
+        class="btn btn-primary" 
+        @click="createRequestFromCurl"
+        :disabled="!canCreate"
+      >
+        <svg v-if="isCreating" class="animate-spin mr-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+        </svg>
+        {{ isCreating ? 'Creating...' : 'Create Request' }}
       </button>
     </template>
   </Modal>

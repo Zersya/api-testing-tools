@@ -56,7 +56,7 @@ export default defineEventHandler(async (event) => {
   if (!canManage) {
     throw createError({
       statusCode: 403,
-      statusMessage: 'Only workspace owner can create share links'
+      statusMessage: 'Only workspace owners can create share links'
     });
   }
 

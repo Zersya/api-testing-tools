@@ -36,3 +36,9 @@ settings/*
 /src-tauri/gen
 /src-tauri/Cargo.lock
 /src-tauri/.env
+
+# Monitoring configs (contains email addresses and infrastructure details)
+/monitoring/
+
+# Implementation docs (contains sensitive configuration details)
+DATADOG_IMPLEMENTATION.md

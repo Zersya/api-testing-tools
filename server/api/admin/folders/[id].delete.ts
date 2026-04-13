@@ -1,6 +1,7 @@
 import { db } from '../../../db';
 import { folders } from '../../../db/schema';
 import { eq } from 'drizzle-orm';
+import { cache, CacheKeys } from '../../../utils/cache';
 
 // Helper function to count all descendant folders
 function countDescendants(allFolders: typeof folders.$inferSelect[], parentId: string): number {
@@ -48,6 +49,12 @@ export default defineEventHandler(async (event) => {
     // Delete the folder (cascade will handle child folders)
     await db.delete(folders)
       .where(eq(folders.id, id));
+
+    // Invalidate cache for the user
+    const user = event.context.user;
+    if (user?.id) {
+      cache.delete(CacheKeys.workspaceTree(user.id));
+    }
 
     return {
       success: true,

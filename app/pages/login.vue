@@ -30,7 +30,8 @@ const isLoadingProviders = ref(true);
 const fetchSsoProviders = async () => {
   try {
     isLoadingProviders.value = true;
-    const data = await api.get<SsoProvidersResponse>('/api/auth/sso/providers');
+    const { get: apiGet } = useApiClient();
+    const data = await apiGet<SsoProvidersResponse>('/api/auth/sso/providers');
     ssoProviders.value = data;
   } catch (e) {
     console.error('Failed to fetch SSO providers:', e);
@@ -65,9 +66,6 @@ const loginWithSso = async (providerType: string, providerId?: string) => {
     window.location.href = `/api/auth/sso/${providerType}/login${params}`;
   }
 };
-
-import { useApiClient } from '~~/composables/useApiFetch';
-const api = useApiClient()
 
 const login = async () => {
   isLoading.value = true;

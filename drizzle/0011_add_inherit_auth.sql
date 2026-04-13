@@ -1,0 +1,1 @@
+ALTER TABLE "saved_requests" ADD COLUMN "inherit_auth" integer DEFAULT 0;

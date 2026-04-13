@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { watch, watchEffect, nextTick } from 'vue';
+import { watch, nextTick, onMounted, onUnmounted, type Ref } from 'vue';
+import { debounce } from 'perfect-debounce';
 import RequestBuilder from '~/components/RequestBuilder.vue';
 import CodeExamples from '~/components/CodeExamples.vue';
 import SaveRequestDialog from '~/components/SaveRequestDialog.vue';
-import RequestTabs, { type OpenTab } from '~/components/RequestTabs.vue';
+import RequestTabs, { type OpenTab, type PersistedOpenTab } from '~/components/RequestTabs.vue';
 import ImportModal from '~/components/ImportModal.vue';
 import MethodBadge from '~/components/MethodBadge.vue';
 import ApiDocumentationViewer from '~/components/ApiDocumentationViewer.vue';
@@ -11,11 +12,16 @@ import ResponseComparison from '~/components/ResponseComparison.vue';
 import KeyboardShortcutsHelpModal from '~/components/KeyboardShortcutsHelpModal.vue';
 import RenameWorkspaceModal from '~/components/RenameWorkspaceModal.vue';
 import ShareWorkspaceModal from '~/components/ShareWorkspaceModal.vue';
+import TeamCollectionWarningDialog from '~/components/TeamCollectionWarningDialog.vue';
+import VariableInput from '~/components/VariableInput.vue';
+import EnvironmentManager from '~/components/EnvironmentManager.vue';
 import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
 import { useApiClient, useApiFetch } from '~~/composables/useApiFetch';
+import { useExampleData } from '~/composables/useExampleData';
 
 // API client for programmatic requests
 const api = useApiClient();
+const { normalizeExampleData } = useExampleData();
 
 interface Collection {
   id: string;
@@ -56,14 +62,54 @@ interface HttpRequest {
     responseBody: Record<string, unknown> | string | null;
     responseHeaders: Record<string, string>;
   } | null;
+  preScript?: string | null;
+  postScript?: string | null;
+  pathVariables?: Record<string, { value: string; description?: string }> | null;
+  bodyFormat?: 'none' | 'json' | 'form-data' | 'urlencoded' | 'raw' | 'binary';
+  jsonBody?: string;
+  rawBody?: string;
+  rawContentType?: string;
+  formDataParams?: Array<{
+    key: string;
+    value: string;
+    enabled: boolean;
+    type: 'text' | 'file';
+  }>;
+  paramNotes?: Record<string, Record<string, string>> | null;
   order: number;
   createdAt: Date;
   updatedAt: Date;
 }
 
-// Tabs state - must be defined before any await statements
-const openTabs = ref<OpenTab[]>([]);
-const activeTabKey = ref<string | null>(null);
+interface PersistedTabSession {
+  tabs: PersistedOpenTab[];
+  activeTabKey: string | null;
+}
+
+interface RequestDraftSnapshot {
+  method: string;
+  url: string;
+  headers: Record<string, string> | null;
+  body: Record<string, unknown> | string | null;
+  auth: {
+    type: string;
+    inherit?: boolean;
+    credentials?: Record<string, string>;
+  } | null;
+  inheritAuth?: number;
+  mockConfig?: HttpRequest['mockConfig'];
+  preScript?: string | null;
+  postScript?: string | null;
+  pathVariables?: HttpRequest['pathVariables'];
+  paramNotes?: HttpRequest['paramNotes'];
+  bodyFormat?: HttpRequest['bodyFormat'];
+  jsonBody?: string;
+  rawBody?: string;
+  rawContentType?: string;
+  formDataParams?: HttpRequest['formDataParams'];
+}
+
+const REQUEST_TABS_SETTINGS_KEY = 'requestTabsSession';
 
 const { data: mocks, refresh: refreshMocks, error } = await useApiFetch<Mock[]>('/api/admin/mocks');
 const { data: collections, refresh: refreshCollections } = await useApiFetch<Collection[]>('/api/admin/collections');
@@ -140,6 +186,227 @@ const currentWorkspaceId = computed(() => selectedWorkspaceId.value);
 const currentProjectId = computed(() => selectedProjectId.value);
 
 const hasWorkspaces = computed(() => workspaces.value && workspaces.value.length > 0);
+
+const REQUEST_BODY_FORMATS = ['none', 'json', 'form-data', 'urlencoded', 'raw', 'binary'] as const;
+type RequestBodyFormat = typeof REQUEST_BODY_FORMATS[number];
+
+const POSTMAN_BODY_FORMAT_META_KEY = '__mockServiceBodyFormat';
+const POSTMAN_FORM_DATA_PARAMS_META_KEY = '__mockServiceFormDataParams';
+
+const isRequestBodyRecord = (value: unknown): value is Record<string, unknown> => {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+};
+
+const isRequestBodyFormat = (value: unknown): value is RequestBodyFormat => {
+  return typeof value === 'string' && REQUEST_BODY_FORMATS.includes(value as RequestBodyFormat);
+};
+
+interface NormalizedImportedBodyPayload {
+  body: HttpRequest['body'];
+  bodyFormat?: HttpRequest['bodyFormat'];
+  rawBody?: string;
+  rawContentType?: string;
+  formDataParams?: NonNullable<HttpRequest['formDataParams']>;
+}
+
+const normalizeImportedBodyPayload = (body: HttpRequest['body']): NormalizedImportedBodyPayload => {
+  if (!isRequestBodyRecord(body)) {
+    return { body };
+  }
+
+  const bodyFormatValue = body[POSTMAN_BODY_FORMAT_META_KEY];
+  if (!isRequestBodyFormat(bodyFormatValue)) {
+    return { body };
+  }
+
+  if (bodyFormatValue === 'form-data' || bodyFormatValue === 'urlencoded') {
+    const rawParams = body[POSTMAN_FORM_DATA_PARAMS_META_KEY];
+    const formDataParams = Array.isArray(rawParams)
+      ? rawParams
+          .filter((param): param is Record<string, unknown> => isRequestBodyRecord(param))
+          .map(param => ({
+            key: typeof param.key === 'string' ? param.key : '',
+            value: typeof param.value === 'string' ? param.value : '',
+            enabled: param.enabled !== false,
+            type: param.type === 'file' ? 'file' as const : 'text' as const
+          }))
+      : [];
+
+    return {
+      body: null,
+      bodyFormat: bodyFormatValue,
+      formDataParams
+    };
+  }
+
+  if (bodyFormatValue === 'raw') {
+    const rawBodyValue = body.body;
+    let rawBody = '';
+
+    if (typeof rawBodyValue === 'string') {
+      rawBody = rawBodyValue;
+    } else if (rawBodyValue !== null && rawBodyValue !== undefined) {
+      try {
+        rawBody = JSON.stringify(rawBodyValue);
+      } catch {
+        rawBody = String(rawBodyValue);
+      }
+    }
+
+    return {
+      body: rawBody,
+      bodyFormat: 'raw',
+      rawBody,
+      rawContentType: typeof body.rawContentType === 'string' && body.rawContentType
+        ? body.rawContentType
+        : undefined
+    };
+  }
+
+  if (bodyFormatValue === 'none') {
+    return {
+      body: null,
+      bodyFormat: 'none'
+    };
+  }
+
+  return {
+    body,
+    bodyFormat: bodyFormatValue
+  };
+};
+
+const normalizeRequestForTab = (request: Partial<HttpRequest>): HttpRequest => {
+  const normalizedBody = request.body === undefined
+    ? null
+    : request.body as Record<string, unknown> | string | null;
+  const importedBodyPayload = normalizeImportedBodyPayload(normalizedBody);
+
+  return {
+  id: typeof request.id === 'string' ? request.id : '',
+  folderId: typeof request.folderId === 'string' || request.folderId === null ? request.folderId : '',
+  collectionId: typeof request.collectionId === 'string' || request.collectionId === null ? request.collectionId : null,
+  name: typeof request.name === 'string' && request.name.trim().length > 0 ? request.name : 'Untitled Request',
+  method: typeof request.method === 'string' ? request.method : 'GET',
+  url: typeof request.url === 'string' ? request.url : '',
+  headers: request.headers && typeof request.headers === 'object' && !Array.isArray(request.headers)
+    ? request.headers as Record<string, string>
+    : null,
+  body: importedBodyPayload.body,
+  auth: request.auth && typeof request.auth === 'object'
+    ? request.auth as HttpRequest['auth']
+    : null,
+  inheritAuth: typeof request.inheritAuth === 'number' ? request.inheritAuth : 0,
+  mockConfig: request.mockConfig && typeof request.mockConfig === 'object'
+    ? request.mockConfig as NonNullable<HttpRequest['mockConfig']>
+    : null,
+  preScript: typeof request.preScript === 'string' ? request.preScript : '',
+  postScript: typeof request.postScript === 'string' ? request.postScript : '',
+  pathVariables: request.pathVariables && typeof request.pathVariables === 'object' && !Array.isArray(request.pathVariables)
+    ? request.pathVariables as NonNullable<HttpRequest['pathVariables']>
+    : null,
+  bodyFormat: request.bodyFormat === 'json' || request.bodyFormat === 'raw' || request.bodyFormat === 'form-data' || request.bodyFormat === 'urlencoded' || request.bodyFormat === 'binary' || request.bodyFormat === 'none'
+    ? request.bodyFormat
+    : importedBodyPayload.bodyFormat,
+  jsonBody: typeof request.jsonBody === 'string' ? request.jsonBody : '',
+  rawBody: typeof request.rawBody === 'string' ? request.rawBody : (importedBodyPayload.rawBody ?? ''),
+  rawContentType: typeof request.rawContentType === 'string' ? request.rawContentType : importedBodyPayload.rawContentType,
+  formDataParams: Array.isArray(request.formDataParams)
+    ? request.formDataParams.map((param: any) => ({
+        key: typeof param?.key === 'string' ? param.key : '',
+        value: typeof param?.value === 'string' ? param.value : '',
+        enabled: param?.enabled !== false,
+        type: param?.type === 'file' ? 'file' : 'text'
+      }))
+    : importedBodyPayload.formDataParams,
+  paramNotes: request.paramNotes && typeof request.paramNotes === 'object' && !Array.isArray(request.paramNotes)
+    ? request.paramNotes as NonNullable<HttpRequest['paramNotes']>
+    : null,
+  order: typeof request.order === 'number' ? request.order : 0,
+  createdAt: request.createdAt ? new Date(request.createdAt) : new Date(),
+  updatedAt: request.updatedAt ? new Date(request.updatedAt) : new Date()
+};
+};
+
+const normalizeOpenTab = (tab: Partial<OpenTab> | null | undefined): OpenTab | null => {
+  if (!tab || typeof tab !== 'object' || typeof tab.key !== 'string' || !tab.key) {
+    return null;
+  }
+
+  return {
+    key: tab.key,
+    hasUnsavedChanges: Boolean(tab.hasUnsavedChanges),
+    request: normalizeRequestForTab((tab as OpenTab).request || {}),
+    // Preserve persisted UI state fields
+    response: (tab as OpenTab).response,
+    activeBuilderTab: (tab as OpenTab).activeBuilderTab,
+    scriptLogs: (tab as OpenTab).scriptLogs,
+    draftSnapshot: (tab as OpenTab).draftSnapshot,
+    expandedNodes: (tab as OpenTab).expandedNodes
+  };
+};
+
+const serializeOpenTabs = (): PersistedTabSession => ({
+  tabs: openTabs.value.map(tab => ({
+    key: tab.key,
+    hasUnsavedChanges: tab.hasUnsavedChanges,
+    request: {
+      ...tab.request,
+      createdAt: tab.request.createdAt instanceof Date ? tab.request.createdAt.toISOString() : tab.request.createdAt,
+      updatedAt: tab.request.updatedAt instanceof Date ? tab.request.updatedAt.toISOString() : tab.request.updatedAt
+    },
+    // Persist UI state fields
+    response: tab.response,
+    activeBuilderTab: tab.activeBuilderTab,
+    scriptLogs: tab.scriptLogs,
+    draftSnapshot: tab.draftSnapshot,
+    expandedNodes: tab.expandedNodes
+  })) as OpenTab[],
+  activeTabKey: activeTabKey.value
+});
+
+const hydrateOpenTabs = (session: PersistedTabSession | null | undefined) => {
+  if (!session || !Array.isArray(session.tabs)) {
+    return;
+  }
+
+  // Build a lookup map by key from persisted tabs for safe state restoration
+  const persistedTabMap = new Map<string, PersistedTabSession['tabs'][number]>();
+  session.tabs.forEach(tab => {
+    if (tab && typeof tab.key === 'string') {
+      persistedTabMap.set(tab.key, tab);
+    }
+  });
+
+  const normalizedTabs = session.tabs
+    .map(tab => normalizeOpenTab(tab))
+    .filter((tab): tab is OpenTab => Boolean(tab));
+
+  // Restore persisted UI state fields using key-based lookup (not index-based)
+  // This prevents misalignment when tabs are filtered during normalization
+  normalizedTabs.forEach((tab) => {
+    const persistedTab = persistedTabMap.get(tab.key);
+    if (persistedTab) {
+      tab.response = persistedTab.response;
+      tab.activeBuilderTab = persistedTab.activeBuilderTab;
+      tab.scriptLogs = persistedTab.scriptLogs;
+      tab.draftSnapshot = persistedTab.draftSnapshot;
+      tab.expandedNodes = persistedTab.expandedNodes;
+    }
+  });
+
+  openTabs.value = normalizedTabs;
+
+  const requestedActiveKey = typeof session.activeTabKey === 'string'
+    ? session.activeTabKey
+    : null;
+  const activeTab = requestedActiveKey
+    ? normalizedTabs.find(tab => tab.key === requestedActiveKey)
+    : normalizedTabs[0] || null;
+
+  activeTabKey.value = activeTab?.key || null;
+  selectedRequest.value = activeTab?.request || null;
+};
 
 interface EnvironmentVariable {
   id: string;
@@ -350,6 +617,7 @@ const activateEnvironment = async (environmentId: string | null) => {
 const environmentSettingsEnvironments = ref<Environment[]>([]);
 const environmentSettingsSecretValues = ref<Record<string, string>>({});
 const isEnvironmentSettingsLoading = ref(false);
+const environmentRefreshTrigger = ref(0);
 
 const showEnvironmentCreateModal = ref(false);
 const showEnvironmentRenameModal = ref(false);
@@ -572,12 +840,20 @@ const addVariableFromSettings = async (environment: Environment) => {
       }
     });
     await refreshEnvironmentSources();
+    environmentRefreshTrigger.value++;
   } catch (e: any) {
     alert('Error adding variable: ' + (e.data?.message || e.message));
   }
 };
 
 const updateVariableFromSettings = async (variable: EnvironmentVariable, key: string, value: string, isSecret: boolean) => {
+  // Validate inputs
+  if (!variable?.id) {
+    console.error('Invalid variable:', variable);
+    alert('Error: Variable is invalid');
+    return;
+  }
+
   if (isSecret) {
     environmentSettingsSecretValues.value[variable.id] = value;
   }
@@ -585,12 +861,13 @@ const updateVariableFromSettings = async (variable: EnvironmentVariable, key: st
   try {
     await api.put(`/api/admin/variables/${variable.id}`, {
       body: {
-        key: key.trim(),
-        value: isSecret ? environmentSettingsSecretValues.value[variable.id] : value,
-        isSecret
+        key: key?.trim() || variable.key,
+        value: isSecret ? environmentSettingsSecretValues.value[variable.id] : (value ?? variable.value),
+        isSecret: isSecret ?? variable.isSecret
       }
     });
     await refreshEnvironmentSources();
+    environmentRefreshTrigger.value++;
   } catch (e: any) {
     alert('Error updating variable: ' + (e.data?.message || e.message));
   }
@@ -627,6 +904,8 @@ const toggleSecretFromSettings = (variable: EnvironmentVariable) => {
       value: environmentSettingsSecretValues.value[variable.id] || variable.value,
       isSecret: newIsSecret
     }
+  }).then(() => {
+    environmentRefreshTrigger.value++;
   }).catch((e: any) => {
     variable.isSecret = !newIsSecret;
     if (newIsSecret) {
@@ -642,6 +921,7 @@ const deleteVariableFromSettings = async (variableId: string) => {
   try {
     await api.delete(`/api/admin/variables/${variableId}`);
     await refreshEnvironmentSources();
+    environmentRefreshTrigger.value++;
   } catch (e: any) {
     alert('Error deleting variable: ' + (e.data?.message || e.message));
   }
@@ -688,7 +968,7 @@ const findCollectionByFolderId = (folderId: string): { collectionId: string; fol
       for (const collection of project.collections) {
         const findInFolder = (folders: any[]): string | null => {
           for (const folder of folders) {
-            if (folder.id === folderId) return folder.id;
+            if (folder.id === folderId) return collection.id;
             if (folder.children?.length) {
               const found = findInFolder(folder.children);
               if (found) return found;
@@ -696,18 +976,143 @@ const findCollectionByFolderId = (folderId: string): { collectionId: string; fol
           }
           return null;
         };
-        const found = findInFolder(collection.folders);
-        if (found) {
-          return { collectionId: collection.id, folderId: found };
-        }
+        const foundCollectionId = findInFolder(collection.folders);
+        if (foundCollectionId) return { collectionId: foundCollectionId, folderId };
       }
     }
   }
   return null;
 };
 
+// Helper to check if a request belongs to a shared workspace (not owned by current user)
+const checkIfRequestIsInSharedWorkspace = (request: any): boolean => {
+  if (!request || !workspaces.value) return false;
+  
+  for (const workspace of workspaces.value) {
+    for (const project of workspace.projects) {
+      for (const collection of project.collections) {
+        // Check if request is in this collection's root requests
+        if (collection.requests?.some((r: any) => r.id === request.id)) {
+          return workspace.isShared === true || workspace.isOwner === false;
+        }
+        
+        // Check if request is in any folder
+        const findInFolders = (folders: any[]): boolean => {
+          for (const folder of folders) {
+            if (folder.requests?.some((r: any) => r.id === request.id)) {
+              return true;
+            }
+            if (folder.children?.length) {
+              const found = findInFolders(folder.children);
+              if (found) return true;
+            }
+          }
+          return false;
+        };
+        
+        if (findInFolders(collection.folders || [])) {
+          return workspace.isShared === true || workspace.isOwner === false;
+        }
+      }
+    }
+  }
+  return false;
+};
+
+const syncWorkspaceSelectionForRequest = (request: Partial<HttpRequest> | null | undefined) => {
+  if (!request || !workspaces.value?.length) {
+    return;
+  }
+
+  const requestId = typeof request.id === 'string' ? request.id : '';
+  const requestFolderId = typeof request.folderId === 'string' ? request.folderId : null;
+  const requestCollectionId = typeof request.collectionId === 'string' ? request.collectionId : null;
+
+  for (const workspace of workspaces.value) {
+    for (const project of workspace.projects) {
+      const matchingCollection = project.collections.find((collection: any) => {
+        if (requestCollectionId && collection.id === requestCollectionId) {
+          return true;
+        }
+
+        if (requestFolderId) {
+          const containsFolder = (folders: any[]): boolean => folders.some((folder: any) => {
+            if (folder.id === requestFolderId) {
+              return true;
+            }
+
+            return Array.isArray(folder.children) && containsFolder(folder.children);
+          });
+
+          if (containsFolder(collection.folders || [])) {
+            return true;
+          }
+        }
+
+        if (requestId) {
+          if (collection.requests?.some((savedRequest: any) => savedRequest.id === requestId)) {
+            return true;
+          }
+
+          const containsRequestInFolders = (folders: any[]): boolean => folders.some((folder: any) => {
+            if (folder.requests?.some((savedRequest: any) => savedRequest.id === requestId)) {
+              return true;
+            }
+
+            return Array.isArray(folder.children) && containsRequestInFolders(folder.children);
+          });
+
+          if (containsRequestInFolders(collection.folders || [])) {
+            return true;
+          }
+        }
+
+        return false;
+      });
+
+      if (matchingCollection) {
+        selectedWorkspaceId.value = workspace.id;
+        selectedProjectId.value = project.id;
+        return;
+      }
+    }
+  }
+};
+
+const buildPersistedRequestFromDraft = (request: HttpRequest, draft?: RequestDraftSnapshot): HttpRequest => {
+  const normalizedRequest = normalizeRequestForTab(request);
+
+  if (!draft) {
+    return normalizedRequest;
+  }
+
+  return normalizeRequestForTab({
+    ...normalizedRequest,
+    method: draft.method,
+    url: draft.url,
+    headers: draft.headers ?? null,
+    body: draft.body ?? null,
+    auth: draft.auth ?? null,
+    inheritAuth: draft.inheritAuth ?? normalizedRequest.inheritAuth ?? 0,
+    mockConfig: draft.mockConfig ?? null,
+    preScript: draft.preScript ?? '',
+    postScript: draft.postScript ?? '',
+    pathVariables: draft.pathVariables ?? null,
+    bodyFormat: draft.bodyFormat,
+    jsonBody: draft.jsonBody ?? '',
+    rawBody: draft.rawBody ?? '',
+    rawContentType: draft.rawContentType,
+    formDataParams: draft.formDataParams?.map(param => ({
+      key: param.key,
+      value: param.value,
+      enabled: param.enabled !== false,
+      type: param.type === 'file' ? 'file' : 'text'
+    }))
+  });
+};
+
 if (error.value && error.value.statusCode === 401) {
-    await navigateTo('/login');
+  await navigateTo('/login');
 }
 
 // Modals
@@ -727,6 +1132,55 @@ const projectWorkspaceId = ref<string | null>(null);
 const showWorkspaceModal = ref(false);
 const showRenameWorkspaceModal = ref(false);
 const workspaceToRename = ref<{ id: string; name: string } | null>(null);
+
+// Code Examples Panel Toggle (default ON, persisted in localStorage)
+const CODE_EXAMPLES_STORAGE_KEY = 'showCodeExamplesPanel';
+const showCodeExamples = ref(true);
+
+// Load saved preference
+onMounted(() => {
+  const saved = localStorage.getItem(CODE_EXAMPLES_STORAGE_KEY);
+  if (saved !== null) {
+    showCodeExamples.value = saved === 'true';
+  }
+  
+  // Add keyboard shortcut: Cmd/Ctrl + Shift + C
+  window.addEventListener('keydown', handleCodeExamplesKeydown);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleCodeExamplesKeydown);
+});
+
+// Keyboard shortcut handler
+const handleCodeExamplesKeydown = (e: KeyboardEvent) => {
+  // Cmd/Ctrl + Shift + C to toggle Code Examples
+  if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'c') {
+    e.preventDefault();
+    toggleCodeExamples();
+  }
+};
+
+// Watch and save preference
+watch(showCodeExamples, (newValue) => {
+  localStorage.setItem(CODE_EXAMPLES_STORAGE_KEY, String(newValue));
+});
+
+// Toggle function
+const toggleCodeExamples = () => {
+  showCodeExamples.value = !showCodeExamples.value;
+};
+
+// Ref for AppSidebar to access its exposed properties
+const appSidebarRef = ref<{ activeView: Ref<'hierarchy' | 'mocks' | 'history' | 'definitions'> } | null>(null);
+
+// Track sidebar active view locally (updated via event from AppSidebar)
+const sidebarActiveView = ref<'hierarchy' | 'mocks' | 'history' | 'definitions'>('hierarchy');
+
+// Computed property to check if non-workspace sidebar view is active (mocks, definitions, history)
+const isMockSidebarActive = computed(() => {
+  return ['mocks', 'definitions', 'history'].includes(sidebarActiveView.value);
+});
 
 // Delete workspace modal state
 const showDeleteWorkspaceConfirm = ref(false);
@@ -761,12 +1215,161 @@ const tryItError = ref('');
 const tryItTime = ref(0);
 const selectedCollectionForNewMock = ref<string | null>(null);
 
+// Tabs state
+const openTabs = ref<OpenTab[]>([]);
+const activeTabKey = ref<string | null>(null);
+const isHydratingRequestTabs = ref(false);
+const hasHydratedRequestTabs = ref(false);
+const lastPersistedTabsSignature = ref('');
+
+const getActiveOpenTab = () => {
+  if (!activeTabKey.value) {
+    return null;
+  }
+
+  return openTabs.value.find(tab => tab.key === activeTabKey.value) || null;
+};
+
+const syncSelectedRequestWithActiveTab = () => {
+  const activeTab = getActiveOpenTab();
+  selectedRequest.value = activeTab?.request || null;
+  
+  // Check if the synced request is in a shared workspace
+  if (selectedRequest.value) {
+    isSharedWorkspace.value = checkIfRequestIsInSharedWorkspace(selectedRequest.value);
+  } else {
+    isSharedWorkspace.value = false;
+  }
+};
+
+const saveRequestTabsSession = async (session: PersistedTabSession, keepalive = false) => {
+  if (keepalive && typeof window !== 'undefined') {
+    await fetch(`/api/admin/settings?key=${REQUEST_TABS_SETTINGS_KEY}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ session }),
+      keepalive: true,
+      credentials: 'include'
+    });
+    return;
+  }
+
+  await $fetch('/api/admin/settings', {
+    method: 'POST',
+    query: { key: REQUEST_TABS_SETTINGS_KEY },
+    body: { session }
+  });
+};
+
+const persistRequestTabsNow = async (keepalive = false) => {
+  if (isHydratingRequestTabs.value || !hasHydratedRequestTabs.value) {
+    return;
+  }
+
+  const session = serializeOpenTabs();
+  const signature = JSON.stringify(session);
+
+  if (signature === lastPersistedTabsSignature.value) {
+    return;
+  }
+
+  try {
+    await saveRequestTabsSession(session, keepalive);
+    lastPersistedTabsSignature.value = signature;
+  } catch (error) {
+    console.error('Failed to persist request tabs session:', error);
+  }
+};
+
+const persistRequestTabsDebounced = debounce(async () => {
+  await persistRequestTabsNow(false);
+}, 300);
+
+const queuePersistRequestTabs = () => {
+  if (isHydratingRequestTabs.value || !hasHydratedRequestTabs.value) {
+    return;
+  }
+
+  persistRequestTabsDebounced();
+};
+
+const loadPersistedRequestTabs = async () => {
+  isHydratingRequestTabs.value = true;
+
+  try {
+    const data = await $fetch<{ session?: PersistedTabSession }>('/api/admin/settings', {
+      query: { key: REQUEST_TABS_SETTINGS_KEY }
+    });
+
+    hydrateOpenTabs(data.session);
+
+    const activeTab = getActiveOpenTab();
+    if (activeTab) {
+      syncWorkspaceSelectionForRequest(activeTab.request);
+    }
+
+    lastPersistedTabsSignature.value = JSON.stringify(serializeOpenTabs());
+  } catch (error) {
+    console.error('Failed to hydrate request tabs session:', error);
+  } finally {
+    isHydratingRequestTabs.value = false;
+    hasHydratedRequestTabs.value = true;
+    syncSelectedRequestWithActiveTab();
+  }
+};
+
+const handleWindowVisibilityChange = () => {
+  if (document.visibilityState === 'hidden') {
+    persistRequestTabsDebounced.cancel();
+    void persistRequestTabsNow(true);
+  }
+};
+
+const handleWindowBeforeUnload = () => {
+  persistRequestTabsDebounced.cancel();
+  void persistRequestTabsNow(true);
+};
+
+watch([openTabs, activeTabKey], () => {
+  if (isHydratingRequestTabs.value) {
+    return;
+  }
+
+  syncSelectedRequestWithActiveTab();
+  queuePersistRequestTabs();
+}, { deep: true });
+
+onMounted(async () => {
+  // Check localStorage for hide warning preference
+  if (typeof window !== 'undefined') {
+    hideTeamWarningForever.value = localStorage.getItem('hideTeamCollectionSaveWarning') === 'true';
+  }
+  
+  await loadPersistedRequestTabs();
+  window.addEventListener('beforeunload', handleWindowBeforeUnload);
+  document.addEventListener('visibilitychange', handleWindowVisibilityChange);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('beforeunload', handleWindowBeforeUnload);
+  document.removeEventListener('visibilitychange', handleWindowVisibilityChange);
+  persistRequestTabsDebounced.cancel();
+});
+
 // Helper to create a new tab key
 const createTabKey = () => `tab-${crypto.randomUUID()}`;
 
 // Save dialog state
 const requestToSave = ref<any>(null);
 const requestToSaveAs = ref<any>(null);
+
+// Team collection warning dialog state
+const showTeamWarningDialog = ref(false);
+const pendingSaveRequest = ref<any>(null);
+const hideTeamWarningForever = ref(false);
+const isSharedWorkspace = ref(false);
 
 const resourceForm = ref({
   name: '',
@@ -785,7 +1388,17 @@ const collectionForm = ref({
   projectId: '',
   name: '',
   description: '',
-  color: '#6366f1'
+  color: '#6366f1',
+  authType: '',
+  authConfig: {
+    key: '',
+    value: '',
+    addTo: 'header' as 'header' | 'query',
+    username: '',
+    password: '',
+    token: '',
+    accessToken: ''
+  }
 });
 const collectionToDelete = ref<Collection | null>(null);
 const groupToDelete = ref<{ collectionId: string, name: string, mocks: Mock[] } | null>(null);
@@ -1006,6 +1619,7 @@ const handleSelectMock = (mock: any) => {
     activeTabKey.value = null;
     tryItResponse.value = null;
     tryItError.value = '';
+    isSharedWorkspace.value = false;
 };
 
 const createResource = async () => {
@@ -1153,10 +1767,17 @@ const goToEdit = (id: string) => {
 const handleSelectRequest = (request: HttpRequest) => {
   activeAdminPanel.value = 'requests';
   selectedMock.value = null;
+
+  syncWorkspaceSelectionForRequest(request);
+  const normalizedRequest = normalizeRequestForTab(request);
+  
+  // Check if this request is in a shared workspace
+  isSharedWorkspace.value = checkIfRequestIsInSharedWorkspace(normalizedRequest);
   
   // Check if tab already exists for this request
-  const existingTab = openTabs.value.find(tab => tab.request.id === request.id);
+  const existingTab = openTabs.value.find(tab => tab.request.id === normalizedRequest.id);
   if (existingTab) {
+    existingTab.request = normalizeRequestForTab(existingTab.request);
     activeTabKey.value = existingTab.key;
     selectedRequest.value = existingTab.request;
   } else {
@@ -1164,7 +1785,7 @@ const handleSelectRequest = (request: HttpRequest) => {
     const newTabKey = createTabKey();
     const newTab: OpenTab = {
       key: newTabKey,
-      request: { ...request },
+      request: normalizedRequest,
       hasUnsavedChanges: false
     };
     openTabs.value.push(newTab);
@@ -1178,9 +1799,13 @@ const handleSelectTab = (tabKey: string) => {
   activeAdminPanel.value = 'requests';
   const tab = openTabs.value.find(t => t.key === tabKey);
   if (tab) {
+    syncWorkspaceSelectionForRequest(tab.request);
     activeTabKey.value = tabKey;
     selectedRequest.value = tab.request;
     selectedMock.value = null;
+    
+    // Check if this request is in a shared workspace
+    isSharedWorkspace.value = checkIfRequestIsInSharedWorkspace(tab.request);
   }
 };
 
@@ -1199,6 +1824,29 @@ const handleCloseTab = (tabKey: string) => {
     } else {
       activeTabKey.value = null;
       selectedRequest.value = null;
+      isSharedWorkspace.value = false;
+    }
+  }
+};
+
+const handleCloseTabs = (tabKeys: string[]) => {
+  const activeIndex = openTabs.value.findIndex(t => t.key === activeTabKey.value);
+  const closingActive = tabKeys.includes(activeTabKey.value || '');
+  
+  // Filter out the tabs to close
+  openTabs.value = openTabs.value.filter(t => !tabKeys.includes(t.key));
+  
+  // If closing the active tab, switch to another
+  if (closingActive) {
+    if (openTabs.value.length > 0) {
+      // Try to select the tab at the same index, or the last one if it was at the end
+      const newIndex = Math.min(Math.max(0, activeIndex - 1), openTabs.value.length - 1);
+      activeTabKey.value = openTabs.value[newIndex].key;
+      selectedRequest.value = openTabs.value[newIndex].request;
+    } else {
+      activeTabKey.value = null;
+      selectedRequest.value = null;
+      isSharedWorkspace.value = false;
     }
   }
 };
@@ -1208,12 +1856,18 @@ const handleNewTab = () => {
   const newRequest: HttpRequest = {
     id: '',
     folderId: '',
+    collectionId: null,
     name: 'Untitled Request',
     method: 'GET',
     url: '',
     headers: null,
     body: null,
     auth: null,
+    bodyFormat: 'none',
+    jsonBody: '',
+    rawBody: '',
+    rawContentType: 'text/plain',
+    formDataParams: [],
     order: 0,
     createdAt: new Date(),
     updatedAt: new Date()
@@ -1228,6 +1882,7 @@ const handleNewTab = () => {
   openTabs.value.push(newTab);
   activeTabKey.value = newTabKey;
   selectedRequest.value = newRequest;
+  isSharedWorkspace.value = false;
 };
 
 const handleReorderTabs = (fromIndex: number, toIndex: number) => {
@@ -1235,24 +1890,94 @@ const handleReorderTabs = (fromIndex: number, toIndex: number) => {
   openTabs.value.splice(toIndex, 0, tab);
 };
 
-const updateTabUnsavedStatus = (request: HttpRequest, hasUnsavedChanges: boolean) => {
-  const tab = openTabs.value.find(t => t.key === activeTabKey.value);
-  if (tab) {
-  // Match either by ID (for saved requests) or by active tab (for new requests)
-    const isMatchingRequest = request.id 
-      ? tab.request.id === request.id 
-      : true;
+const updateTabUnsavedStatus = (
+  request: HttpRequest,
+  hasUnsavedChanges: boolean,
+  draft?: RequestDraftSnapshot
+) => {
+  const tabIndex = openTabs.value.findIndex(t => t.key === activeTabKey.value);
+  if (tabIndex === -1) {
+    return;
+  }
+
+  const tab = openTabs.value[tabIndex];
+  const isMatchingRequest = request.id
+    ? tab.request.id === request.id
+    : true;
+
+  if (!isMatchingRequest) {
+    return;
+  }
+
+  // Update the unsaved changes flag - create new object to trigger reactivity
+  openTabs.value[tabIndex] = {
+    ...tab,
+    hasUnsavedChanges
+  };
+  
+  // Only update request data if draft is provided (actual changes)
+  if (draft) {
+    const nextRequest = buildPersistedRequestFromDraft(request, draft);
+    openTabs.value[tabIndex] = {
+      ...openTabs.value[tabIndex],
+      request: nextRequest
+    };
     
-    if (isMatchingRequest) {
-      tab.hasUnsavedChanges = hasUnsavedChanges;
-      if (!hasUnsavedChanges) {
-        tab.request = { ...request };
-      }
+    // Only update selectedRequest if it's the active tab and actually different
+    if (activeTabKey.value === tab.key && selectedRequest.value?.id === nextRequest.id) {
+      // Capture the expected tab key before deferring
+      const expectedKey = tab.key;
+      // Use nextTick to avoid circular updates during Vue's render cycle
+      nextTick(() => {
+        // Verify the tab is still active before mutating selection
+        // This prevents setting selectedRequest back to a prior tab if user switched tabs
+        if (activeTabKey.value !== expectedKey) return;
+        selectedRequest.value = nextRequest;
+        isSharedWorkspace.value = checkIfRequestIsInSharedWorkspace(nextRequest);
+      });
     }
   }
 };
 
+// Handle state changes from RequestBuilder for persistence
+const handleBuilderStateChange = (state: {
+  response: any;
+  activeTab: string;
+  scriptLogs: any[];
+  expandedNodes: string[];
+}) => {
+  const tab = openTabs.value.find(t => t.key === activeTabKey.value);
+  if (!tab) {
+    return;
+  }
+
+  // Update the tab's persisted state
+  tab.response = state.response;
+  tab.activeBuilderTab = state.activeTab as any;
+  tab.scriptLogs = state.scriptLogs;
+  tab.expandedNodes = state.expandedNodes;
+};
+
 const handleSaveRequest = async (request: any) => {
+  // Check if this is a shared workspace and warning not disabled
+  const isShared = checkIfRequestIsInSharedWorkspace(request);
+  
+  if (isShared && !hideTeamWarningForever.value) {
+    // Store request and show warning dialog
+    pendingSaveRequest.value = request;
+    isSharedWorkspace.value = true;
+    showTeamWarningDialog.value = true;
+    return;
+  }
+  
+  isSharedWorkspace.value = isShared;
+  
+  // Proceed with actual save
+  await executeSave(request);
+};
+
+// Execute the actual save after warning confirmation or if no warning needed
+const executeSave = async (request: any) => {
   requestToSave.value = request;
   
   console.log('[Frontend Save] Request mockConfig:', request.mockConfig);
@@ -1266,10 +1991,12 @@ const handleSaveRequest = async (request: any) => {
       headers: request.headers,
       body: request.body,
       auth: request.auth,
+      inheritAuth: request.inheritAuth,
       mockConfig: request.mockConfig,
       preScript: request.preScript,
       postScript: request.postScript,
-      pathVariables: request.pathVariables
+      pathVariables: request.pathVariables,
+      paramNotes: request.paramNotes
     };
     
     console.log('[Frontend Save] Sending body:', JSON.stringify(body, null, 2));
@@ -1279,14 +2006,16 @@ const handleSaveRequest = async (request: any) => {
         method: 'PUT',
         body
       });
+
+      const normalizedRequest = normalizeRequestForTab(request);
       
       // Update selectedRequest if it matches
       if (selectedRequest.value && selectedRequest.value.id === request.id) {
-        selectedRequest.value = { ...request };
+        selectedRequest.value = normalizedRequest;
       }
       
       // Reset unsaved flag on the tab
-      updateTabUnsavedStatus(request, false);
+      updateTabUnsavedStatus(normalizedRequest, false);
       
       // Refresh workspaces to update the tree with latest data
       await refreshWorkspaces();
@@ -1347,6 +2076,31 @@ const handleSaveAsRequest = (request: any) => {
   showSaveAsDialog.value = true;
 };
 
+// Team Collection Warning Dialog handlers
+const onTeamWarningConfirm = async () => {
+  showTeamWarningDialog.value = false;
+  if (pendingSaveRequest.value) {
+    await executeSave(pendingSaveRequest.value);
+    pendingSaveRequest.value = null;
+  }
+};
+
+const onTeamWarningCancel = () => {
+  showTeamWarningDialog.value = false;
+  pendingSaveRequest.value = null;
+};
+
+const onHideForeverChange = (value: boolean) => {
+  hideTeamWarningForever.value = value;
+  if (typeof window !== 'undefined') {
+    if (value) {
+      localStorage.setItem('hideTeamCollectionSaveWarning', 'true');
+    } else {
+      localStorage.removeItem('hideTeamCollectionSaveWarning');
+    }
+  }
+};
+
 const handleSave = async (data: any) => {
   if (!requestToSave.value) return;
 
@@ -1402,6 +2156,7 @@ const handleSave = async (data: any) => {
             headers: requestToSave.value.headers,
             body: requestToSave.value.body,
             auth: requestToSave.value.auth,
+            inheritAuth: requestToSave.value.inheritAuth,
             mockConfig: requestToSave.value.mockConfig,
             preScript: requestToSave.value.preScript,
             postScript: requestToSave.value.postScript,
@@ -1417,9 +2172,12 @@ const handleSave = async (data: any) => {
       if (activeTabKey.value) {
         const tab = openTabs.value.find(t => t.key === activeTabKey.value);
         if (tab) {
-          tab.request = newRequest;
+          const normalizedNewRequest = normalizeRequestForTab(newRequest);
+          tab.request = normalizedNewRequest;
           tab.hasUnsavedChanges = false;
-          selectedRequest.value = newRequest;
+          selectedRequest.value = normalizedNewRequest;
+          isSharedWorkspace.value = checkIfRequestIsInSharedWorkspace(normalizedNewRequest);
+          syncWorkspaceSelectionForRequest(normalizedNewRequest);
         }
       }
     } else {
@@ -1433,16 +2191,18 @@ const handleSave = async (data: any) => {
           headers: requestToSave.value.headers,
           body: requestToSave.value.body,
           auth: requestToSave.value.auth,
+          inheritAuth: requestToSave.value.inheritAuth,
           mockConfig: requestToSave.value.mockConfig,
           preScript: requestToSave.value.preScript,
           postScript: requestToSave.value.postScript,
-          pathVariables: requestToSave.value.pathVariables
+          pathVariables: requestToSave.value.pathVariables,
+          paramNotes: requestToSave.value.paramNotes
         }
       });
 
       // Also update selectedRequest if it matches
       if (selectedRequest.value && selectedRequest.value.id === requestToSave.value.id) {
-        selectedRequest.value = {
+        const normalizedUpdatedRequest = normalizeRequestForTab({
           ...selectedRequest.value,
           name: data.name,
           method: requestToSave.value.method,
@@ -1450,11 +2210,16 @@ const handleSave = async (data: any) => {
           headers: requestToSave.value.headers,
           body: requestToSave.value.body,
           auth: requestToSave.value.auth,
+          inheritAuth: requestToSave.value.inheritAuth,
           mockConfig: requestToSave.value.mockConfig,
           preScript: requestToSave.value.preScript,
           postScript: requestToSave.value.postScript,
-          pathVariables: requestToSave.value.pathVariables
-        };
+          pathVariables: requestToSave.value.pathVariables,
+          paramNotes: requestToSave.value.paramNotes
+        });
+
+        selectedRequest.value = normalizedUpdatedRequest;
+        isSharedWorkspace.value = checkIfRequestIsInSharedWorkspace(normalizedUpdatedRequest);
       }
       
       // Reset unsaved flag on the tab
@@ -1471,6 +2236,9 @@ const handleSave = async (data: any) => {
 
 const handleSaveAs = async (data: any) => {
   if (!requestToSaveAs.value) return;
+
+  const originalRequest = requestToSaveAs.value;
+  const sourceTabKey = activeTabKey.value;
 
   try {
     // Check if we need to create a folder first
@@ -1498,11 +2266,12 @@ const handleSaveAs = async (data: any) => {
         method: 'POST',
         body: {
           name: data.name,
-          method: requestToSaveAs.value.method,
-          url: requestToSaveAs.value.url,
-          headers: requestToSaveAs.value.headers,
-          body: requestToSaveAs.value.body,
-          auth: requestToSaveAs.value.auth
+          method: originalRequest.method,
+          url: originalRequest.url,
+          headers: originalRequest.headers,
+          body: originalRequest.body,
+          auth: originalRequest.auth,
+          inheritAuth: originalRequest.inheritAuth
         }
       });
     } else if (data.collectionId) {
@@ -1511,11 +2280,12 @@ const handleSaveAs = async (data: any) => {
         method: 'POST',
         body: {
           name: data.name,
-          method: requestToSaveAs.value.method,
-          url: requestToSaveAs.value.url,
-          headers: requestToSaveAs.value.headers,
-          body: requestToSaveAs.value.body,
-          auth: requestToSaveAs.value.auth
+          method: originalRequest.method,
+          url: originalRequest.url,
+          headers: originalRequest.headers,
+          body: originalRequest.body,
+          auth: originalRequest.auth,
+          inheritAuth: originalRequest.inheritAuth
         }
       });
     } else {
@@ -1527,25 +2297,61 @@ const handleSaveAs = async (data: any) => {
     requestToSaveAs.value = null;
     await refreshWorkspaces();
 
-    // Select the newly created request (this creates a new tab)
-    await handleSelectRequest(newRequest);
-    
-    // Reset unsaved flag on the original tab's request
-    if (activeTabKey.value) {
-      const tab = openTabs.value.find(t => t.key === activeTabKey.value);
-      if (tab) {
-        tab.hasUnsavedChanges = false;
-        tab.request = { ...requestToSaveAs.value };
+    if (sourceTabKey) {
+      const sourceTab = openTabs.value.find(t => t.key === sourceTabKey);
+      if (sourceTab) {
+        sourceTab.hasUnsavedChanges = false;
+        sourceTab.request = normalizeRequestForTab(originalRequest);
       }
     }
+
+    // Select the newly created request (this creates a new tab)
+    await handleSelectRequest(newRequest);
   } catch (e: any) {
     alert('Error saving request as: ' + (e.data?.message || e.message));
   }
 };
 
 const openCreateRequest = (folderId?: string | null, collectionId?: string) => {
+  // Create a new empty request tab with folder/collection association
+  activeAdminPanel.value = 'requests';
+  
+  const newRequest: HttpRequest = {
+    id: '',
+    folderId: folderId || '',
+    collectionId: collectionId || null,
+    name: 'Untitled Request',
+    method: 'GET',
+    url: '',
+    headers: null,
+    body: null,
+    auth: null,
+    bodyFormat: 'none',
+    jsonBody: '',
+    rawBody: '',
+    rawContentType: 'text/plain',
+    formDataParams: [],
+    order: 0,
+    createdAt: new Date(),
+    updatedAt: new Date()
+  };
+  
+  const newTabKey = createTabKey();
+  const newTab: OpenTab = {
+    key: newTabKey,
+    request: newRequest,
+    hasUnsavedChanges: true
+  };
+  openTabs.value.push(newTab);
+  activeTabKey.value = newTabKey;
+  selectedRequest.value = newRequest;
+  isSharedWorkspace.value = false;
+};
+
+// For importing from cURL - shows the modal
+const openImportCurl = (folderId?: string | null, collectionId?: string) => {
   if (folderId) {
-    // Creating request in a folder
+    // Importing to a folder
     const folder = findFolderInWorkspaces(folderId);
     requestFolderId.value = folderId;
     requestFolderName.value = folder?.name || 'Unknown Folder';
@@ -1553,7 +2359,7 @@ const openCreateRequest = (folderId?: string | null, collectionId?: string) => {
     requestCollectionName.value = '';
     showRequestModal.value = true;
   } else if (collectionId) {
-    // Creating request at collection root
+    // Importing to collection root
     const collection = findCollectionInWorkspaces(collectionId);
     requestFolderId.value = null;
     requestFolderName.value = '';
@@ -1562,6 +2368,21 @@ const openCreateRequest = (folderId?: string | null, collectionId?: string) => {
     showRequestModal.value = true;
   } else {
     alert('Please select a folder or collection first');
+  }
+};
+
+const handleCurlImported = async (result: any) => {
+  // Close the modal
+  showRequestModal.value = false;
+  requestFolderId.value = null;
+  requestCollectionId.value = null;
+  
+  // Refresh workspaces to show the new request
+  await refreshWorkspaces();
+  
+  // Open the newly created request in a tab
+  if (result && result.id) {
+    handleSelectRequest(result);
   }
 };
 
@@ -1689,9 +2510,10 @@ const getPreviewForEndpoint = (method: string, path: string) => {
       const responseObj = responses[successKey];
       if (responseObj?.content?.['application/json']) {
         const mediaType = responseObj.content['application/json'];
-        responseData = mediaType.example || 
+        const rawExample = mediaType.example || 
           (mediaType.examples ? Object.values(mediaType.examples)[0]?.value : {}) || 
           (mediaType.schema ? generateMockDataFromSchema(mediaType.schema) : {});
+        responseData = normalizeExampleData(rawExample);
       }
     }
   } else {
@@ -1701,9 +2523,10 @@ const getPreviewForEndpoint = (method: string, path: string) => {
       const responseObj = responses[errorKey];
       if (responseObj?.content?.['application/json']) {
         const mediaType = responseObj.content['application/json'];
-        responseData = mediaType.example || 
+        const rawExample = mediaType.example || 
           (mediaType.examples ? Object.values(mediaType.examples)[0]?.value : {}) || 
           (mediaType.schema ? generateMockDataFromSchema(mediaType.schema) : {});
+        responseData = normalizeExampleData(rawExample);
       }
     }
   }
@@ -1787,13 +2610,35 @@ const openCreateCollection = (projectId?: string) => {
     showCollectionModal.value = true;
 };
 
-const openEditCollection = (collection: Collection) => {
+const openEditCollection = async (collection: Collection) => {
     collectionModalMode.value = 'edit';
+    
+    // Fetch fresh auth config from API to ensure we have latest data
+    let authConfig: any = null;
+    try {
+        const authData = await $fetch(`/api/admin/collections/${collection.id}/auth`);
+        authConfig = authData.authConfig;
+    } catch (error) {
+        console.error('Failed to fetch collection auth:', error);
+        // Fallback to tree data if API fails
+        authConfig = (collection as any).authConfig;
+    }
+    
     collectionForm.value = {
         id: collection.id,
         name: collection.name,
         description: collection.description || '',
-        color: collection.color
+        color: collection.color,
+        authType: authConfig?.type || '',
+        authConfig: {
+            key: authConfig?.credentials?.key || '',
+            value: authConfig?.credentials?.value || '',
+            addTo: authConfig?.credentials?.addTo || 'header',
+            username: authConfig?.credentials?.username || '',
+            password: authConfig?.credentials?.password || '',
+            token: authConfig?.credentials?.token || '',
+            accessToken: authConfig?.credentials?.accessToken || ''
+        }
     };
     showCollectionModal.value = true;
 };
@@ -1813,15 +2658,57 @@ const saveCollection = async () => {
                 }
             });
         } else {
-            await api.post('/api/admin/collections', {
+            // Update collection basic info using the proper database endpoint
+            await $fetch(`/api/admin/collections/${collectionForm.value.id}`, {
                 method: 'PUT',
                 body: {
-                    id: collectionForm.value.id,
                     name: collectionForm.value.name,
                     description: collectionForm.value.description,
                     color: collectionForm.value.color
                 }
             });
+            
+            // Update collection auth if configured
+            const authPayload: any = {};
+            
+            if (collectionForm.value.authType) {
+                authPayload.type = collectionForm.value.authType;
+                authPayload.credentials = {};
+                
+                if (collectionForm.value.authType === 'basic') {
+                    authPayload.credentials = {
+                        username: collectionForm.value.authConfig.username,
+                        password: collectionForm.value.authConfig.password
+                    };
+                } else if (collectionForm.value.authType === 'bearer') {
+                    authPayload.credentials = {
+                        token: collectionForm.value.authConfig.token
+                    };
+                } else if (collectionForm.value.authType === 'api-key') {
+                    authPayload.credentials = {
+                        key: collectionForm.value.authConfig.key,
+                        value: collectionForm.value.authConfig.value,
+                        addTo: collectionForm.value.authConfig.addTo
+                    };
+                } else if (collectionForm.value.authType === 'oauth2') {
+                    authPayload.credentials = {
+                        accessToken: collectionForm.value.authConfig.accessToken
+                    };
+                }
+            } else {
+                authPayload.type = 'none';
+                authPayload.credentials = {};
+            }
+            
+            await $fetch(`/api/admin/collections/${collectionForm.value.id}/auth`, {
+                method: 'POST',
+                body: { authConfig: authPayload }
+            });
+            
+            // Refresh collection auth in the RequestBuilder if it's showing a request from this collection
+            if (requestBuilderRef.value && activeCollectionId.value === collectionForm.value.id) {
+                requestBuilderRef.value.refreshCollectionAuth();
+            }
         }
         showCollectionModal.value = false;
         refreshWorkspaces();
@@ -1975,6 +2862,7 @@ const deleteRequest = async () => {
         
         if (selectedRequest.value?.id === requestId) {
             selectedRequest.value = null;
+            isSharedWorkspace.value = false;
         }
         
         await refreshWorkspaces();
@@ -2128,6 +3016,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
       :workspaces="workspaces || []"
       :selected-workspace-id="selectedWorkspaceId"
       :current-user-email="currentUserEmail"
+      :is-mock-sidebar-active="isMockSidebarActive"
       @open-settings="openSettings"
       @export-open-a-p-i="exportOpenAPI"
       @import-open-a-p-i="openImportModal"
@@ -2144,6 +3033,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
     <div class="flex flex-1 overflow-hidden">
       <!-- Sidebar -->
       <AppSidebar
+        ref="appSidebarRef"
         :collections="collections || []"
         :mocks="mocks || []"
         :selected-mock-id="selectedMock?.id"
@@ -2156,6 +3046,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
         @create-resource="showResourceModal = true"
         @create-collection="openCreateCollection"
         @create-request="openCreateRequest"
+        @import-curl="openImportCurl"
         @create-folder="openCreateFolder"
         @create-project="openCreateProject"
         @create-workspace="openCreateWorkspace"
@@ -2179,6 +3070,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
         @reorder-requests="handleReorderRequests"
         @select-workspace="handleWorkspaceSelect($event)"
         @import-complete="definitionsRefreshTrigger++"
+        @active-view-change="sidebarActiveView = $event"
       />
 
       <!-- Main Content -->
@@ -2241,13 +3133,6 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
                   {{ project.name }}
                 </option>
               </select>
-              <button class="btn btn-primary" @click="openEnvironmentCreateModal" :disabled="!currentProjectId">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="12" y1="5" x2="12" y2="19"></line>
-                  <line x1="5" y1="12" x2="19" y2="12"></line>
-                </svg>
-                New Environment
-              </button>
             </div>
           </div>
 
@@ -2255,128 +3140,22 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
             Select a workspace and project to manage environments.
           </div>
 
-          <div v-else-if="environmentSettingsEnvironments.length === 0" class="flex-1 flex flex-col items-center justify-center text-center">
-            <h3 class="text-lg font-semibold text-text-primary mb-2">No environments yet</h3>
-            <p class="text-text-secondary mb-4 max-w-sm">Create your first environment for development, staging, or production variables.</p>
-            <button class="btn btn-primary" @click="openEnvironmentCreateModal">
-              Create Environment
-            </button>
-          </div>
-
-          <div v-else class="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-2 gap-6 pb-4">
-            <div v-for="environment in environmentSettingsEnvironments" :key="environment.id" class="bg-bg-secondary border border-border-default rounded-xl overflow-hidden">
-              <div class="p-4 border-b border-border-default">
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-3">
-                    <div class="flex items-center gap-2.5">
-                      <template v-if="environment.isMockEnvironment">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                          <path d="M17.5 19c0-1.7-1.3-3-3-3h-11c-1.7 0-3 1.3-3 3 0 1.7 1.3 3 3 3h11c1.7 0 3-1.3 3-3z"/>
-                          <path d="M17.5 19c0-2.5-2-4.5-4.5-4.5h-7c-2.5 0-4.5 2-4.5 4.5s2 4.5 4.5 4.5h7c2.5 0 4.5-2 4.5-4.5z"/>
-                          <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
-                        </svg>
-                      </template>
-                      <template v-else>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" :class="environment.isActive ? 'text-accent-green' : 'text-text-muted'">
-                          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
-                        </svg>
-                      </template>
-                      <h3 class="text-sm font-semibold" :class="environment.isMockEnvironment ? 'text-purple-400' : 'text-text-primary'">{{ environment.name }}</h3>
-                    </div>
-                    <span v-if="environment.isMockEnvironment" class="py-0.5 px-2 bg-purple-500/15 text-purple-400 text-[10px] font-semibold uppercase rounded-full">Mock</span>
-                    <span v-else-if="environment.isActive" class="py-0.5 px-2 bg-accent-green/15 text-accent-green text-[10px] font-semibold uppercase rounded-full">Active</span>
-                  </div>
-                  <div class="flex items-center gap-1">
-                    <button v-if="!environment.isActive" class="flex items-center justify-center w-8 h-8 bg-transparent border-none rounded text-text-muted cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-green" @click="activateEnvironmentFromSettings(environment)" title="Activate">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                      </svg>
-                    </button>
-                    <button v-if="!environment.isMockEnvironment" class="flex items-center justify-center w-8 h-8 bg-transparent border-none rounded text-text-muted cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-text-primary" @click="openEnvironmentRenameModal(environment)" title="Rename">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
-                      </svg>
-                    </button>
-                    <button v-if="!environment.isMockEnvironment" class="flex items-center justify-center w-8 h-8 bg-transparent border-none rounded text-text-muted cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-text-primary" @click="openEnvironmentDuplicateModal(environment)" title="Duplicate">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="9" y="9" width="13" height="13" rx="2"></rect>
-                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                      </svg>
-                    </button>
-                    <button v-if="!environment.isMockEnvironment" class="flex items-center justify-center w-8 h-8 bg-transparent border-none rounded text-text-muted cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-red" @click="openEnvironmentDeleteModal(environment)" title="Delete">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="3 6 5 6 21 6"></polyline>
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div class="p-4">
-                <div class="flex items-center justify-between mb-3">
-                  <span class="text-xs font-medium text-text-secondary uppercase tracking-wide">{{ environment.variables.length }} Variable{{ environment.variables.length !== 1 ? 's' : '' }}</span>
-                  <button class="flex items-center gap-1 text-xs font-medium text-accent-blue border-none bg-transparent cursor-pointer transition-all duration-fast hover:text-accent-blue/80" @click="addVariableFromSettings(environment)">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <line x1="12" y1="5" x2="12" y2="19"></line>
-                      <line x1="5" y1="12" x2="19" y2="12"></line>
-                    </svg>
-                    Add Variable
-                  </button>
-                </div>
-
-                <div v-if="environment.variables.length === 0" class="py-8 text-center">
-                  <p class="text-xs text-text-muted">No variables defined for this environment</p>
-                </div>
-
-                <div v-else class="space-y-2">
-                  <div v-for="variable in environment.variables" :key="variable.id" class="flex items-center gap-2 group">
-                    <input
-                      v-model="variable.key"
-                      @blur="updateVariableFromSettings(variable, variable.key, variable.value, variable.isSecret)"
-                      @keyup.enter="($event.target as HTMLInputElement).blur()"
-                      class="flex-1 py-1.5 px-2 bg-bg-input border border-border-default rounded-md text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(59,130,246,0.2)]"
-                      placeholder="Variable name"
-                    />
-                    <div class="flex-1 flex items-center gap-2">
-                      <input
-                        :key="`input-${variable.id}-${variable.isSecret ? 'secret' : 'text'}`"
-                        v-model="variable.value"
-                        @blur="updateVariableFromSettings(variable, variable.key, variable.value, variable.isSecret)"
-                        @keyup.enter="($event.target as HTMLInputElement).blur()"
-                        :type="variable.isSecret ? 'password' : 'text'"
-                        class="w-full py-1.5 px-2 bg-bg-input border border-border-default rounded-md text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(59,130,246,0.2)]"
-                        placeholder="Variable value"
-                      />
-                      <button
-                        @click="toggleSecretFromSettings(variable)"
-                        :class="[
-                          'flex items-center justify-center w-8 h-8 border-none rounded cursor-pointer transition-all duration-fast',
-                          variable.isSecret ? 'bg-accent-yellow/15 text-accent-yellow hover:bg-accent-yellow/25' : 'bg-bg-hover text-text-muted hover:text-text-primary'
-                        ]"
-                        :title="variable.isSecret ? 'Secret (click to reveal)' : 'Not secret (click to hide)'"
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                          <circle cx="12" cy="12" r="3"></circle>
-                        </svg>
-                      </button>
-                    </div>
-                    <button
-                      @click="deleteVariableFromSettings(variable.id)"
-                      class="flex items-center justify-center w-8 h-8 bg-transparent border-none rounded text-text-muted cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-red opacity-0 group-hover:opacity-100"
-                      title="Delete variable"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <EnvironmentManager
+            v-else
+            :environments="environmentSettingsEnvironments"
+            :project-id="currentProjectId"
+            :is-loading="isEnvironmentSettingsLoading"
+            :secret-values="environmentSettingsSecretValues"
+            @create="openEnvironmentCreateModal"
+            @activate="activateEnvironmentFromSettings"
+            @rename="(env, name) => { environmentToRename.value = env; environmentRenameForm.value.name = name; showEnvironmentRenameModal.value = true; }"
+            @duplicate="(env) => { environmentToDuplicate.value = env; showEnvironmentDuplicateConfirm.value = true; }"
+            @delete="(env) => { environmentToDelete.value = env; showEnvironmentDeleteConfirm.value = true; }"
+            @add:variable="addVariableFromSettings"
+            @update:variable="updateVariableFromSettings"
+            @delete:variable="deleteVariableFromSettings"
+            @toggle:secret="toggleSecretFromSettings"
+          />
         </div>
 
         <!-- Empty State -->
@@ -2628,6 +3407,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
             :active-tab-key="activeTabKey"
             @select-tab="handleSelectTab"
             @close-tab="handleCloseTab"
+            @close-tabs="handleCloseTabs"
             @new-tab="handleNewTab"
             @reorder-tabs="handleReorderTabs"
           />
@@ -2638,34 +3418,107 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
             <div class="flex-1 overflow-auto">
               <RequestBuilder
                 ref="requestBuilderRef"
-                :key="activeTabKey"
                 :request="selectedRequest"
+                :tab-key="activeTabKey"
                 :workspace-id="currentWorkspaceId"
                 :environment-id="activeEnvironment?.id"
                 :project-id="currentProjectId"
+                :collection-id="activeCollectionId"
+                :initial-response="getActiveOpenTab()?.response"
+                :initial-active-tab="getActiveOpenTab()?.activeBuilderTab"
+                :initial-script-logs="getActiveOpenTab()?.scriptLogs"
+                :initial-expanded-nodes="getActiveOpenTab()?.expandedNodes"
+                :is-shared-workspace="isSharedWorkspace"
+                :refresh-trigger="environmentRefreshTrigger"
                 @save-request="handleSaveRequest"
                 @save-as-request="handleSaveAsRequest"
                 @unsaved-changes="updateTabUnsavedStatus"
+                @state-change="handleBuilderStateChange"
               />
             </div>
             
-            <!-- Code Examples Sidebar -->
-            <div class="w-[380px] border-l border-border-default bg-bg-sidebar flex flex-col flex-shrink-0">
-              <CodeExamples
-                :method="requestBuilderRef?.form?.method || selectedRequest.method"
-                :url="requestBuilderRef?.form?.url || selectedRequest.url"
-                :headers="requestBuilderRef?.headers || []"
-                :query-params="requestBuilderRef?.queryParams || []"
-                :body="requestBuilderRef?.bodyFormat === 'json' ? requestBuilderRef?.jsonBody : requestBuilderRef?.bodyFormat === 'raw' ? requestBuilderRef?.rawBody : null"
-                :body-format="requestBuilderRef?.bodyFormat || 'none'"
-                :auth-type="requestBuilderRef?.authType || 'none'"
-                :bearer-token="requestBuilderRef?.bearerToken"
-                :basic-auth="requestBuilderRef?.basicAuth"
-                :api-key="requestBuilderRef?.apiKey"
-                :variables="activeEnvironmentVariables"
-                :is-mock-environment="isActiveEnvironmentMock"
-                :collection-id="activeCollectionId"
-              />
+            <!-- Code Examples Sidebar with Integrated Toggle -->
+            <div class="flex flex-row items-stretch flex-shrink-0">
+              <!-- Toggle Handle - Integrated into layout, not floating -->
+              <button
+                @click="toggleCodeExamples"
+                class="w-8 flex flex-col items-center justify-center bg-bg-sidebar border-l border-border-default hover:bg-bg-hover transition-all duration-200 group relative"
+                :title="showCodeExamples ? 'Hide Code Examples (Cmd+Shift+C)' : 'Show Code Examples (Cmd+Shift+C)'"
+              >
+                <!-- Vertical Label -->
+                <span 
+                  class="text-[10px] font-medium tracking-wider whitespace-nowrap transition-colors duration-200"
+                  :class="showCodeExamples ? 'text-text-secondary group-hover:text-text-primary' : 'text-accent-blue group-hover:text-accent-blue'"
+                  style="writing-mode: vertical-rl; text-orientation: mixed; transform: rotate(180deg);"
+                >
+                  {{ showCodeExamples ? 'CODE' : 'CODE' }}
+                </span>
+                
+                <!-- Arrow Icon - Shows direction to open/close -->
+                <svg 
+                  width="14" 
+                  height="14" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  stroke-width="2"
+                  class="mt-2 arrow-icon"
+                  :class="[
+                    showCodeExamples 
+                      ? 'text-text-muted group-hover:text-text-primary arrow-open' 
+                      : 'text-accent-blue group-hover:text-accent-blue arrow-closed'
+                  ]"
+                >
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+                
+                <!-- Active indicator dot when hidden -->
+                <span 
+                  v-if="!showCodeExamples"
+                  class="absolute top-2 right-1 w-1.5 h-1.5 bg-accent-blue rounded-full animate-pulse"
+                ></span>
+              </button>
+              
+              <!-- Code Examples Panel -->
+              <transition
+                enter-active-class="code-panel-enter"
+                leave-active-class="code-panel-leave"
+              >
+                <div 
+                  v-if="showCodeExamples"
+                  class="code-panel border-l border-border-default bg-bg-sidebar flex flex-col flex-shrink-0 overflow-hidden"
+                >
+                  <!-- Panel Header with Close Button -->
+                  <div class="flex items-center justify-between px-3 py-2 border-b border-border-default bg-bg-secondary/50">
+                    <span class="text-xs font-semibold text-text-secondary uppercase tracking-wider">Code Examples</span>
+                    <button
+                      @click="toggleCodeExamples"
+                      class="p-1 text-text-muted hover:text-text-primary transition-colors duration-150 rounded hover:bg-bg-hover"
+                      title="Hide Code Examples (Cmd+Shift+C)"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="15 18 9 12 15 6"></polyline>
+                      </svg>
+                    </button>
+                  </div>
+                  
+                  <CodeExamples
+                    :method="requestBuilderRef?.form?.method || selectedRequest.method"
+                    :url="requestBuilderRef?.form?.url || selectedRequest.url"
+                    :headers="requestBuilderRef?.headers || []"
+                    :query-params="requestBuilderRef?.queryParams || []"
+                    :body="requestBuilderRef?.bodyFormat === 'json' ? requestBuilderRef?.jsonBody : requestBuilderRef?.bodyFormat === 'raw' ? requestBuilderRef?.rawBody : null"
+                    :body-format="requestBuilderRef?.bodyFormat || 'none'"
+                    :auth-type="requestBuilderRef?.authType || 'none'"
+                    :bearer-token="requestBuilderRef?.bearerToken"
+                    :basic-auth="requestBuilderRef?.basicAuth"
+                    :api-key="requestBuilderRef?.apiKey"
+                    :variables="activeEnvironmentVariables"
+                    :is-mock-environment="isActiveEnvironmentMock"
+                    :collection-id="activeCollectionId"
+                  />
+                </div>
+              </transition>
             </div>
           </div>
           
@@ -2894,6 +3747,118 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
           ></button>
         </div>
       </div>
+
+      <!-- Auth Settings Section (only for edit mode) -->
+      <div v-if="collectionModalMode === 'edit'" class="mb-4 pt-4 border-t border-border-default">
+        <div class="flex items-center justify-between mb-3">
+          <label class="text-xs font-medium text-text-secondary uppercase tracking-wide">Collection Auth</label>
+          <span class="text-[10px] text-text-muted">Inherited by all requests in this collection</span>
+        </div>
+        
+        <div class="space-y-3">
+          <select 
+            v-model="collectionForm.authType"
+            class="w-full py-2.5 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue"
+          >
+            <option value="">No Auth</option>
+            <option value="basic">Basic Auth</option>
+            <option value="bearer">Bearer Token</option>
+            <option value="api-key">API Key</option>
+            <option value="oauth2">OAuth 2.0</option>
+          </select>
+
+          <!-- Basic Auth -->
+          <div v-if="collectionForm.authType === 'basic'" class="space-y-2 p-3 bg-bg-tertiary rounded border border-border-default">
+            <div>
+              <label class="text-xs text-text-muted">Username</label>
+              <VariableInput 
+                v-model="collectionForm.authConfig.username" 
+                :variables="activeEnvironment?.variables || []"
+                placeholder="username"
+                class="w-full mt-1"
+              />
+            </div>
+            <div>
+              <label class="text-xs text-text-muted">Password</label>
+              <VariableInput 
+                v-model="collectionForm.authConfig.password" 
+                :variables="activeEnvironment?.variables || []"
+                type="password"
+                placeholder="password"
+                class="w-full mt-1"
+              />
+            </div>
+          </div>
+
+          <!-- Bearer Token -->
+          <div v-if="collectionForm.authType === 'bearer'" class="p-3 bg-bg-tertiary rounded border border-border-default">
+            <label class="text-xs text-text-muted">Token</label>
+            <VariableInput 
+              v-model="collectionForm.authConfig.token" 
+              :variables="activeEnvironment?.variables || []"
+              type="password"
+              placeholder="Bearer token"
+              class="w-full mt-1"
+            />
+          </div>
+
+          <!-- API Key -->
+          <div v-if="collectionForm.authType === 'api-key'" class="space-y-2 p-3 bg-bg-tertiary rounded border border-border-default">
+            <div>
+              <label class="text-xs text-text-muted">Key Name</label>
+              <VariableInput 
+                v-model="collectionForm.authConfig.key" 
+                :variables="activeEnvironment?.variables || []"
+                placeholder="X-API-Key"
+                class="w-full mt-1"
+              />
+            </div>
+            <div>
+              <label class="text-xs text-text-muted">Value</label>
+              <VariableInput 
+                v-model="collectionForm.authConfig.value" 
+                :variables="activeEnvironment?.variables || []"
+                type="password"
+                placeholder="API key value"
+                class="w-full mt-1"
+              />
+            </div>
+            <div class="flex gap-2 mt-2">
+              <button
+                @click="collectionForm.authConfig.addTo = 'header'"
+                class="flex-1 py-2 px-3 rounded text-xs font-medium transition-all"
+                :class="collectionForm.authConfig.addTo === 'header' ? 'bg-accent-blue text-white' : 'bg-bg-input text-text-secondary border border-border-default'"
+              >
+                Header
+              </button>
+              <button
+                @click="collectionForm.authConfig.addTo = 'query'"
+                class="flex-1 py-2 px-3 rounded text-xs font-medium transition-all"
+                :class="collectionForm.authConfig.addTo === 'query' ? 'bg-accent-blue text-white' : 'bg-bg-input text-text-secondary border border-border-default'"
+              >
+                Query
+              </button>
+            </div>
+          </div>
+
+          <!-- OAuth 2.0 -->
+          <div v-if="collectionForm.authType === 'oauth2'" class="space-y-2 p-3 bg-bg-tertiary rounded border border-border-default">
+            <div>
+              <label class="text-xs text-text-muted">Access Token</label>
+              <VariableInput 
+                v-model="collectionForm.authConfig.accessToken" 
+                :variables="activeEnvironment?.variables || []"
+                type="password"
+                placeholder="OAuth access token"
+                class="w-full mt-1"
+              />
+            </div>
+            <div class="text-[10px] text-text-muted">
+              Configure full OAuth settings in request editor
+            </div>
+          </div>
+        </div>
+      </div>
       <template #footer>
         <button class="btn btn-secondary" @click="showCollectionModal = false">Cancel</button>
         <button class="btn btn-primary" @click="saveCollection">
@@ -3035,6 +4000,14 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
         <button class="btn btn-primary" @click="renameItem">Rename</button>
       </template>
     </Modal>
+
+    <!-- Team Collection Warning Dialog -->
+    <TeamCollectionWarningDialog
+      v-model="showTeamWarningDialog"
+      @confirm="onTeamWarningConfirm"
+      @cancel="onTeamWarningCancel"
+      @update:hideForever="onHideForeverChange"
+    />
 
     <!-- Save Request Dialog -->
     <SaveRequestDialog
@@ -3202,7 +4175,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
       @created="handleFolderCreated"
     />
 
-    <!-- Create Request Modal -->
+    <!-- Import from cURL Modal -->
     <CreateRequestModal
       :show="showRequestModal"
       :folder-id="requestFolderId || ''"
@@ -3210,7 +4183,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
       :collection-id="requestCollectionId || ''"
       :collection-name="requestCollectionName"
       @close="showRequestModal = false; requestFolderId = null; requestCollectionId = null"
-      @created="refreshWorkspaces()"
+      @imported="handleCurlImported"
     />
 
     <!-- Keyboard Shortcuts Help Modal -->
@@ -3220,3 +4193,101 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
     />
   </div>
 </template>
+
+<style scoped>
+/* ============ SMOOTH CODE PANEL ANIMATIONS ============ */
+
+.code-panel {
+  width: 380px;
+  max-width: 380px;
+}
+
+/* Enter animation - smooth spring-like motion */
+.code-panel-enter {
+  animation: slideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Leave animation - smooth ease out */
+.code-panel-leave {
+  animation: slideOut 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes slideIn {
+  0% {
+    opacity: 0;
+    max-width: 0;
+    transform: translateX(20px);
+  }
+  60% {
+    opacity: 1;
+    max-width: 380px;
+    transform: translateX(-2px);
+  }
+  100% {
+    opacity: 1;
+    max-width: 380px;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideOut {
+  0% {
+    opacity: 1;
+    max-width: 380px;
+    transform: translateX(0);
+  }
+  40% {
+    opacity: 0.8;
+    max-width: 100px;
+    transform: translateX(-5px);
+  }
+  100% {
+    opacity: 0;
+    max-width: 0;
+    transform: translateX(10px);
+  }
+}
+
+/* Smooth arrow icon rotation */
+.arrow-icon {
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s ease;
+}
+
+.arrow-open {
+  transform: rotate(90deg);
+}
+
+.arrow-closed {
+  transform: rotate(-90deg);
+}
+
+/* Indicator dot pulse animation */
+.animate-pulse {
+  animation: smoothPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes smoothPulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(0.85);
+  }
+}
+
+/* Hover transitions for toggle handle */
+button {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Content fade when panel closes/opens */
+.code-panel > * {
+  transition: opacity 0.2s ease;
+}
+
+.code-panel-leave .code-panel > * {
+  opacity: 0;
+}
+</style>

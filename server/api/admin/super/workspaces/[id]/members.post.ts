@@ -72,10 +72,10 @@ export default defineEventHandler(async (event) => {
   }
 
   // Validate permission
-  if (!['view', 'edit'].includes(body.permission)) {
+  if (!['view', 'edit', 'owner'].includes(body.permission)) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'Permission must be "view" or "edit"'
+      statusMessage: 'Permission must be "view", "edit", or "owner"'
     });
   }
 

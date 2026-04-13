@@ -1,6 +1,8 @@
 import { db } from '../../../db';
 import { savedRequests } from '../../../db/schema';
 import { eq } from 'drizzle-orm';
+import { trackResourceAction } from '../../../services/usageTracking';
+import { cache, CacheKeys } from '../../../utils/cache';
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id');
@@ -30,6 +32,23 @@ export default defineEventHandler(async (event) => {
     // Delete the request
     await db.delete(savedRequests)
       .where(eq(savedRequests.id, id));
+
+    // Track analytics
+    const user = event.context.user;
+    if (user?.id) {
+      trackResourceAction({
+        userId: user.id,
+        userEmail: user.email,
+        workspaceId: user.workspaceId || 'personal',
+        action: 'delete',
+        resourceType: 'request',
+        resourceId: id,
+        resourceName: existing.name,
+      });
+      
+      // Invalidate cache for this user
+      cache.delete(CacheKeys.workspaceTree(user.id));
+    }
 
     return {
       success: true,

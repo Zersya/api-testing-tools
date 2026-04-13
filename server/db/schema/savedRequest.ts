@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp, check } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, timestamp, check, index } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { folders } from './folder';
 import { collections } from './collection';
@@ -15,6 +15,7 @@ export type RequestHeaders = Record<string, string>;
 export type RequestBody = Record<string, unknown> | string | null;
 export type RequestAuth = {
   type: 'none' | 'basic' | 'bearer' | 'api-key' | 'oauth2';
+  inherit?: boolean;
   credentials?: Record<string, string>;
 } | null;
 
@@ -39,6 +40,17 @@ export type RequestPathVariables = Record<string, {
   description?: string;
 }>;
 
+/**
+ * Notes/comments for request parameters (query, headers, form data, urlencoded)
+ * Keyed by parameter key for each category
+ */
+export type RequestParamNotes = {
+  queryParams?: Record<string, string>;
+  headers?: Record<string, string>;
+  formData?: Record<string, string>;
+  urlencoded?: Record<string, string>;
+};
+
 export const savedRequests = pgTable('saved_requests', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   folderId: text('folder_id')
@@ -51,10 +63,12 @@ export const savedRequests = pgTable('saved_requests', {
   headers: text('headers').$type<RequestHeaders>(),
   body: text('body').$type<RequestBody>(),
   auth: text('auth').$type<RequestAuth>(),
+  inheritAuth: integer('inherit_auth').default(0),
   mockConfig: text('mock_config').$type<MockConfig>(),
-  preScript: text('pre_script'), // JavaScript code to run before request
-  postScript: text('post_script'), // JavaScript code to run after request
+  preScript: text('pre_script'),
+  postScript: text('post_script'),
   pathVariables: text('path_variables').$type<RequestPathVariables>(),
+  paramNotes: text('param_notes').$type<RequestParamNotes>(),
   order: integer('order').notNull().default(0),
   createdAt: timestamp('created_at')
     .notNull()
@@ -63,6 +77,9 @@ export const savedRequests = pgTable('saved_requests', {
     .notNull()
     .defaultNow()
 }, (table) => ({
+  folderIdx: index('idx_requests_folder').on(table.folderId),
+  collectionIdx: index('idx_requests_collection').on(table.collectionId),
+  orderIdx: index('idx_requests_order').on(table.order),
   folderOrCollectionCheck: check('folder_or_collection_check', 
     sql`${table.folderId} IS NOT NULL OR ${table.collectionId} IS NOT NULL`
   ),

@@ -15,6 +15,10 @@ import type { HttpMethod, RequestData, ResponseData } from '../../db/schema/requ
 import type { MockConfig } from '../../db/schema/savedRequest';
 import { eq, inArray, sql, and } from 'drizzle-orm';
 import { executePreScript, executePostScript, type ScriptLogEntry } from '../../services/script-runner';
+import { getMagicVariableValue } from '../../utils/magic-variables';
+import { trackServerError, setSpanTags, finishSpanWithError } from '../../utils/error-tracking';
+import { trackRequestExecution, trackSlowRequest } from '../../utils/datadog-metrics';
+import tracer from 'dd-trace';
 
 interface EnvironmentVariable {
   id: string;
@@ -60,6 +64,11 @@ interface ProxyResponse {
   };
   scriptLogs?: ScriptLogEntry[];
   scriptErrors?: string[];
+  environmentChanges?: Array<{
+    key: string;
+    value: string;
+    action: 'set' | 'unset';
+  }>;
 }
 
 interface ProxyErrorResponse {
@@ -94,8 +103,27 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
   let scriptModifiedHeaders: Record<string, string> | undefined;
   let scriptModifiedBody: any;
 
+  // Create Datadog span for this proxy request
+  const span = tracer.startSpan('proxy.request', {
+    tags: {
+      'span.kind': 'server',
+    },
+  });
+
+  // Declare body outside try block so it's accessible in catch block
+  let body: ProxyRequestBody | undefined;
+
   try {
-    const body = await readBody<ProxyRequestBody>(event);
+    body = await readBody<ProxyRequestBody>(event);
+    
+    // Set span tags with request info
+    setSpanTags(span, {
+      'proxy.method': body.method,
+      'proxy.url': body.url,
+      'proxy.workspace_id': body.workspaceId,
+      'proxy.environment_id': body.environmentId,
+      'proxy.saved_request_id': body.savedRequestId,
+    });
 
     if (!body.url) {
       throw createError({
@@ -186,65 +214,66 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
           console.log('[Proxy] Variables found:', environmentVariablesList.length);
           console.log('[Proxy] Variable keys:', environmentVariablesList.map(v => v.key));
 
-          if (environmentVariablesList && environmentVariablesList.length > 0) {
-            const variables: Record<string, string> = {};
-            environmentVariablesList.forEach((v: EnvironmentVariable) => {
-              variables[v.key] = v.value;
-            });
+          const variables: Record<string, string> = {};
+          environmentVariablesList.forEach((v: EnvironmentVariable) => {
+            variables[v.key] = v.value;
+          });
 
-            const substituteWithLimit = (input: string, maxIterations: number = 10): string => {
-              let result = input;
-              let iterations = 0;
-              // Match both {{...}} and URL-encoded %7B%7B...%7D%7D
-              const variablePattern = /(\{\{|%7B%7B)([^{}%]+)(\}\}|%7D%7D)/g;
+          const substituteWithLimit = (input: string, maxIterations: number = 10): string => {
+            let result = input;
+            let iterations = 0;
+            // Match both {{...}} and URL-encoded %7B%7B...%7D%7D
+            const variablePattern = /(\{\{|%7B%7B)([^{}%]+)(\}\}|%7D%7D)/g;
 
-              let match;
-              while ((match = variablePattern.exec(result)) !== null && iterations < maxIterations) {
-                const trimmedName = match[2].trim();
-                console.log(`[Proxy] Substituting {{${trimmedName}}}:`, variables.hasOwnProperty(trimmedName) ? 'FOUND' : 'NOT FOUND');
-                if (variables.hasOwnProperty(trimmedName)) {
-                  result = result.replace(match[0], variables[trimmedName]);
-                  variablePattern.lastIndex = 0;
-                  iterations++;
-                }
+            let match;
+            while ((match = variablePattern.exec(result)) !== null && iterations < maxIterations) {
+              const trimmedName = match[2].trim();
+              let replacement: string | undefined = variables[trimmedName];
+              if (replacement === undefined) {
+                const magicValue = getMagicVariableValue(trimmedName);
+                if (magicValue !== null) replacement = magicValue;
               }
-
-              if (iterations >= maxIterations) {
-                variableWarnings.push(`Variable substitution limit reached (possible circular reference)`);
-              }
-
-              return result;
-            };
-
-            const originalUrl = body.url;
-            resolvedUrl = substituteWithLimit(body.url);
-            console.log('[Proxy] URL substitution:', { original: originalUrl, resolved: resolvedUrl });
-            
-            if (resolvedUrl !== originalUrl) {
-              resolvedValues = { ...resolvedValues, url: resolvedUrl };
-            }
-
-            for (const [key, value] of Object.entries(resolvedHeaders)) {
-              if (typeof value === 'string' && value.includes('{{')) {
-                resolvedHeaders[key] = substituteWithLimit(value);
+              if (replacement !== undefined) {
+                console.log(`[Proxy] Substituting {{${trimmedName}}}:`, variables.hasOwnProperty(trimmedName) ? 'ENV' : 'MAGIC');
+                result = result.replace(match[0], replacement);
+                variablePattern.lastIndex = 0;
+                iterations++;
               }
             }
 
-            if (resolvedBody && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
-              if (typeof resolvedBody === 'string') {
-                resolvedBody = substituteWithLimit(resolvedBody);
-              } else {
-                const bodyStr = JSON.stringify(resolvedBody);
-                const substitutedBody = substituteWithLimit(bodyStr);
-                try {
-                  resolvedBody = JSON.parse(substitutedBody);
-                } catch {
-                  resolvedBody = substitutedBody;
-                }
+            if (iterations >= maxIterations) {
+              variableWarnings.push(`Variable substitution limit reached (possible circular reference)`);
+            }
+
+            return result;
+          };
+
+          const originalUrl = body.url;
+          resolvedUrl = substituteWithLimit(body.url);
+          console.log('[Proxy] URL substitution:', { original: originalUrl, resolved: resolvedUrl });
+
+          if (resolvedUrl !== originalUrl) {
+            resolvedValues = { ...resolvedValues, url: resolvedUrl };
+          }
+
+          for (const [key, value] of Object.entries(resolvedHeaders)) {
+            if (typeof value === 'string' && value.includes('{{')) {
+              resolvedHeaders[key] = substituteWithLimit(value);
+            }
+          }
+
+          if (resolvedBody && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+            if (typeof resolvedBody === 'string') {
+              resolvedBody = substituteWithLimit(resolvedBody);
+            } else {
+              const bodyStr = JSON.stringify(resolvedBody);
+              const substitutedBody = substituteWithLimit(bodyStr);
+              try {
+                resolvedBody = JSON.parse(substitutedBody);
+              } catch {
+                resolvedBody = substitutedBody;
               }
             }
-          } else {
-            console.log('[Proxy] WARNING: No variables found in environment');
           }
         } else {
           console.log('[Proxy] WARNING: Environment not found');
@@ -627,10 +656,23 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
       responseBody = null;
     }
 
+    // Track environment variable changes from post-script
+    let environmentChanges: Array<{ key: string; value: string; action: 'set' | 'unset' }> = [];
+
     // Execute post-script if available
     if (savedRequest?.postScript && body.environmentId) {
       try {
         console.log('[Proxy] Executing post-script');
+
+        // Calculate response size in bytes
+        let responseSize = 0;
+        if (responseBody) {
+          if (typeof responseBody === 'string') {
+            responseSize = Buffer.byteLength(responseBody, 'utf8');
+          } else if (typeof responseBody === 'object') {
+            responseSize = Buffer.byteLength(JSON.stringify(responseBody), 'utf8');
+          }
+        }
 
         const postResult = await executePostScript({
           code: savedRequest.postScript,
@@ -646,11 +688,19 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
             headers: responseHeaders,
             body: responseBody
           },
-          environmentId: body.environmentId
+          environmentId: body.environmentId,
+          responseTimeMs: endTime - startTime,
+          responseSize: responseSize
         });
 
         scriptLogs.push(...postResult.logs);
         scriptErrors.push(...postResult.errors);
+
+        // Capture environment changes from post-script
+        if (postResult.environmentChanges && postResult.environmentChanges.length > 0) {
+          environmentChanges = postResult.environmentChanges;
+          console.log('[Proxy] Post-script environment changes:', environmentChanges);
+        }
 
         if (postResult.success) {
           console.log('[Proxy] Post-script executed successfully');
@@ -677,7 +727,8 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
       variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined,
       resolvedValues: resolvedValues && Object.keys(resolvedValues).length > 0 ? resolvedValues : undefined,
       scriptLogs: scriptLogs.length > 0 ? scriptLogs : undefined,
-      scriptErrors: scriptErrors.length > 0 ? scriptErrors : undefined
+      scriptErrors: scriptErrors.length > 0 ? scriptErrors : undefined,
+      environmentChanges: environmentChanges.length > 0 ? environmentChanges : undefined
     };
 
     if (body.workspaceId) {
@@ -708,16 +759,77 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
       }
     }
 
+    // Track successful request metrics
+    trackRequestExecution(
+      body.method, 
+      response.status, 
+      endTime - startTime, 
+      true, 
+      {
+        workspace_id: body.workspaceId || 'none',
+        environment_id: body.environmentId || 'none',
+      }
+    );
+    
+    // Track slow requests
+    trackSlowRequest(endTime - startTime);
+    
+    // Finish span with success
+    setSpanTags(span, {
+      'proxy.success': true,
+      'proxy.status_code': response.status,
+      'proxy.response_time': endTime - startTime,
+    });
+    span.finish();
+
     return proxyResponse;
 
   } catch (error: any) {
     const errorEndTime = Date.now();
+    const duration = errorEndTime - startTime;
+    const config = useRuntimeConfig();
+
+    // Track error in Datadog
+    trackServerError(error, {
+      type: 'proxy_error',
+      requestId: body?.savedRequestId,
+      workspaceId: body?.workspaceId,
+      metadata: {
+        url: body?.url,
+        method: body?.method,
+        variableWarnings,
+        scriptErrors,
+      },
+    });
+    
+    // Track failed request metrics
+    trackRequestExecution(
+      body?.method || 'UNKNOWN',
+      0,
+      duration,
+      false,
+      {
+        workspace_id: body?.workspaceId || 'none',
+        error_type: error.code || 'UNKNOWN',
+      }
+    );
 
     if (error.statusCode) {
+      // Finish span with error before throwing
+      finishSpanWithError(span, error);
       throw error;
     }
 
     if (error.name === 'TimeoutError' || error.code === 'ABORT_ERR' || error.message?.includes('timeout')) {
+      // Set error tags on span
+      setSpanTags(span, {
+        'proxy.error_type': 'timeout',
+        'proxy.timeout': true,
+        'proxy.error': true,
+        'proxy.error_code': 'TIMEOUT',
+      });
+      finishSpanWithError(span, error);
+      
       return {
         success: false,
         error: {
@@ -728,7 +840,7 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
         timing: {
           startTime: new Date(startTime).toISOString(),
           endTime: new Date(errorEndTime).toISOString(),
-          durationMs: errorEndTime - startTime
+          durationMs: duration
         },
         variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined,
         scriptLogs: scriptLogs.length > 0 ? scriptLogs : undefined,
@@ -737,6 +849,15 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
     }
 
     if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND' || error.code === 'ECONNRESET') {
+      // Set error tags on span
+      setSpanTags(span, {
+        'proxy.error_type': 'network',
+        'proxy.network_error': error.code,
+        'proxy.error': true,
+        'proxy.error_code': error.code,
+      });
+      finishSpanWithError(span, error);
+      
       return {
         success: false,
         error: {
@@ -756,6 +877,15 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
     }
 
     if (error.code === 'EAI_AGAIN' || error.code === 'ENOENT') {
+      // Set error tags on span
+      setSpanTags(span, {
+        'proxy.error_type': 'dns',
+        'proxy.dns_error': true,
+        'proxy.error': true,
+        'proxy.error_code': 'DNS_ERROR',
+      });
+      finishSpanWithError(span, error);
+      
       return {
         success: false,
         error: {
@@ -775,6 +905,15 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
     }
 
     if (error.code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' || error.code === 'CERT_HAS_EXPIRED' || error.message?.includes('SSL') || error.message?.includes('certificate')) {
+      // Set error tags on span
+      setSpanTags(span, {
+        'proxy.error_type': 'ssl',
+        'proxy.ssl_error': true,
+        'proxy.error': true,
+        'proxy.error_code': 'SSL_ERROR',
+      });
+      finishSpanWithError(span, error);
+      
       return {
         success: false,
         error: {
@@ -793,6 +932,14 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
       };
     }
 
+    // Set generic error tags on span
+    setSpanTags(span, {
+      'proxy.error_type': 'unknown',
+      'proxy.error': true,
+      'proxy.error_code': error.code || 'UNKNOWN_ERROR',
+    });
+    finishSpanWithError(span, error);
+    
     return {
       success: false,
       error: {

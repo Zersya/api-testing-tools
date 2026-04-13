@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
+
+definePageMeta({
+  middleware: ['super-admin']
+});
+
 import RequestBuilder from '~/components/RequestBuilder.vue';
 import SuperAdminInviteModal from '~/components/SuperAdminInviteModal.vue';
+import FeedbackConfigPanel from '~/components/FeedbackConfigPanel.vue';
+import FeedbackAnalytics from '~/components/FeedbackAnalytics.vue';
 import { useApiClient } from '~~/composables/useApiFetch';
 
 // Types
@@ -139,6 +146,9 @@ const expandedWorkspaces = ref<Set<string>>(new Set());
 const expandedProjects = ref<Set<string>>(new Set());
 const expandedCollections = ref<Set<string>>(new Set());
 const expandedFolders = ref<Set<string>>(new Set());
+
+// Active tab state
+const activeTab = ref<'workspaces' | 'feedback'>('workspaces');
 
 // Tooltip state
 const tooltipVisible = ref(false);
@@ -281,6 +291,14 @@ const getSelectedEnvironment = (): Environment | null => {
   if (!selectedEnvironmentId.value) return null;
   const envs = getAvailableEnvironments();
   return envs.find(e => e.id === selectedEnvironmentId.value) || null;
+};
+
+const activateEnvironment = (env: Environment) => {
+  // Just update local state for preview - don't persist to DB
+  // This allows Super Admin to preview requests with different environments
+  // without affecting the workspace owner's active environment
+  selectedEnvironmentId.value = env.id;
+  showEnvironmentDropdown.value = false;
 };
 
 // Close dropdown when clicking outside
@@ -532,8 +550,38 @@ const collapseAll = () => {
       </div>
     </div>
 
-    <!-- Main Content -->
-    <div class="flex-1 flex overflow-hidden">
+    <!-- Tabs -->
+    <div class="px-4 pt-3 border-b border-border-default bg-bg-secondary">
+      <nav class="flex gap-6">
+        <button
+          @click="activeTab = 'workspaces'"
+          class="pb-3 text-[13px] font-medium border-b-2 transition-colors"
+          :class="activeTab === 'workspaces'
+            ? 'border-accent-blue text-accent-blue'
+            : 'border-transparent text-text-secondary hover:text-text-primary'"
+        >
+          Workspaces
+        </button>
+        <button
+          @click="activeTab = 'feedback'"
+          class="pb-3 text-[13px] font-medium border-b-2 transition-colors"
+          :class="activeTab === 'feedback'
+            ? 'border-accent-blue text-accent-blue'
+            : 'border-transparent text-text-secondary hover:text-text-primary'"
+        >
+          Feedback
+        </button>
+        <button
+          @click="navigateTo('/admin/super-usage')"
+          class="pb-3 text-[13px] font-medium border-b-2 transition-colors border-transparent text-text-secondary hover:text-text-primary"
+        >
+          Usage
+        </button>
+      </nav>
+    </div>
+
+    <!-- Workspaces Tab -->
+    <div v-if="activeTab === 'workspaces'" class="flex-1 flex overflow-hidden">
       <!-- Left Panel - Tree View -->
       <div class="w-[450px] flex flex-col bg-bg-sidebar border-r border-border-default overflow-hidden">
         <!-- Loading State -->
@@ -838,7 +886,7 @@ const collapseAll = () => {
                     <button
                       v-for="env in getAvailableEnvironments()"
                       :key="env.id"
-                      @click="selectedEnvironmentId = env.id; showEnvironmentDropdown = false"
+                      @click="activateEnvironment(env)"
                       :class="[
                         'w-full flex items-center gap-2 px-3 py-2 text-left text-[13px] transition-colors',
                         selectedEnvironmentId === env.id ? 'bg-accent-blue/10 text-accent-blue' : 'text-text-primary hover:bg-bg-hover'
@@ -894,6 +942,14 @@ const collapseAll = () => {
             />
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Feedback Tab -->
+    <div v-else-if="activeTab === 'feedback'" class="flex-1 overflow-hidden overflow-y-auto p-6">
+      <div class="max-w-6xl mx-auto space-y-6">
+        <FeedbackConfigPanel />
+        <FeedbackAnalytics />
       </div>
     </div>
 

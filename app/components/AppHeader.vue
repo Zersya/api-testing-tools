@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import EnvironmentSwitcher from './EnvironmentSwitcher.vue';
 import WorkspaceSwitcher from './WorkspaceSwitcher.vue';
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, inject } from 'vue';
 import { useApiClient } from '~~/composables/useApiFetch';
+import { useFeedback } from '../composables/useFeedback';
 
 const api = useApiClient();
 
@@ -34,6 +35,7 @@ interface Props {
   workspaces?: Workspace[];
   selectedWorkspaceId?: string | null;
   currentUserEmail?: string | null;
+  isMockSidebarActive?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -44,7 +46,8 @@ const props = withDefaults(defineProps<Props>(), {
   currentProjectId: null,
   workspaces: () => [],
   selectedWorkspaceId: null,
-  currentUserEmail: null
+  currentUserEmail: null,
+  isMockSidebarActive: false
 });
 
 const emit = defineEmits<{
@@ -101,6 +104,10 @@ const checkSuperAdmin = async () => {
     isSuperAdmin.value = false;
   }
 };
+
+// Feedback feature
+const { shouldShowFeedback } = useFeedback();
+const openFeedbackModal = inject<() => void>('openFeedbackModal');
 
 const checkAuth = async () => {
   try {
@@ -210,9 +217,9 @@ watch(() => authState.value?.user?.email, async (newEmail) => {
 
     <!-- Right Section -->
     <div class="flex items-center gap-2">
-      <!-- Workspace Switcher -->
+      <!-- Workspace Switcher - Hidden when Mocks sidebar is active -->
       <WorkspaceSwitcher
-        v-if="!isEnvironmentsPage"
+        v-if="!isEnvironmentsPage && !isMockSidebarActive"
         :workspaces="workspaces"
         :selected-workspace-id="selectedWorkspaceId"
         :current-user-email="currentUserEmail"
@@ -223,11 +230,11 @@ watch(() => authState.value?.user?.email, async (newEmail) => {
         @delete="emit('deleteWorkspace', $event)"
       />
 
-      <div class="w-px h-6 bg-border-default mx-1"></div>
+      <div v-if="!isEnvironmentsPage && !isMockSidebarActive" class="w-px h-6 bg-border-default mx-1"></div>
 
-      <!-- Environment Switcher -->
+      <!-- Environment Switcher - Hidden when Mocks sidebar is active -->
       <EnvironmentSwitcher
-        v-if="!isEnvironmentsPage"
+        v-if="!isEnvironmentsPage && !isMockSidebarActive"
         :environments="environments"
         :active-environment-id="activeEnvironmentId"
         @update:active-environment-id="emit('activateEnvironment', $event)"
@@ -235,9 +242,9 @@ watch(() => authState.value?.user?.email, async (newEmail) => {
         @create="emit('createEnvironment')"
       />
 
-      <!-- Import Button -->
+      <!-- Import Button - Hidden when Mocks sidebar is active -->
       <button
-        v-if="showActions && !isEnvironmentsPage"
+        v-if="showActions && !isEnvironmentsPage && !isMockSidebarActive"
         class="inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 bg-bg-tertiary text-text-secondary border border-border-default rounded-md cursor-pointer text-[13px] font-medium transition-all duration-fast hover:bg-bg-hover hover:text-text-primary hover:border-accent-orange"
         @click="emit('importOpenAPI')"
         title="Import OpenAPI"
@@ -250,9 +257,9 @@ watch(() => authState.value?.user?.email, async (newEmail) => {
         <span>Import</span>
       </button>
 
-      <!-- Export Button -->
+      <!-- Export Button - Hidden when Mocks sidebar is active -->
       <button
-        v-if="showActions && !isEnvironmentsPage"
+        v-if="showActions && !isEnvironmentsPage && !isMockSidebarActive"
         class="inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 bg-bg-tertiary text-text-secondary border border-border-default rounded-md cursor-pointer text-[13px] font-medium transition-all duration-fast hover:bg-bg-hover hover:text-text-primary hover:border-accent-orange"
         @click="emit('exportOpenAPI')"
         title="Export OpenAPI"
@@ -265,9 +272,9 @@ watch(() => authState.value?.user?.email, async (newEmail) => {
         <span>Export</span>
       </button>
 
-      <!-- Settings Button -->
+      <!-- Settings Button - Only shown when Mocks sidebar is active -->
       <button
-        v-if="showActions && !isEnvironmentsPage"
+        v-if="showActions && !isEnvironmentsPage && isMockSidebarActive"
         class="inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 bg-transparent text-text-secondary border-none rounded-md cursor-pointer text-[13px] font-medium transition-all duration-fast hover:bg-bg-hover hover:text-text-primary"
         @click="emit('openSettings')"
         title="Settings"
@@ -289,6 +296,19 @@ watch(() => authState.value?.user?.email, async (newEmail) => {
           <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
         </svg>
         <span>Super Admin</span>
+      </button>
+
+      <!-- Feedback Button -->
+      <button
+        v-if="shouldShowFeedback"
+        @click="openFeedbackModal?.()"
+        class="inline-flex items-center gap-1.5 py-1.5 px-2.5 bg-indigo-600 text-white rounded-md cursor-pointer text-[13px] font-medium transition-all duration-fast hover:bg-indigo-700"
+        title="Give Feedback"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+        <span>Feedback</span>
       </button>
 
       <!-- User Menu -->
@@ -328,6 +348,7 @@ watch(() => authState.value?.user?.email, async (newEmail) => {
 
           <!-- Menu Items -->
           <a
+            v-if="isSuperAdmin"
             href="/admin/sso"
             class="flex items-center gap-2 px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors duration-fast"
           >

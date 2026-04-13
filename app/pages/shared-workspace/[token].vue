@@ -3,6 +3,7 @@ import RequestBuilder from '~/components/RequestBuilder.vue';
 import CodeExamples from '~/components/CodeExamples.vue';
 import MethodBadge from '~/components/MethodBadge.vue';
 import FolderTreeItem from '~/components/FolderTreeItem.vue';
+import TeamCollectionWarningDialog from '~/components/TeamCollectionWarningDialog.vue';
 
 
 
@@ -21,8 +22,20 @@ interface HttpRequest {
   body: Record<string, unknown> | string | null;
   auth: {
     type: string;
+    inherit?: boolean;
     credentials?: Record<string, string>;
   } | null;
+  pathVariables?: Record<string, { value: string; description?: string }> | null;
+  inheritAuth?: number;
+  mockConfig?: {
+    isEnabled: boolean;
+    statusCode: number;
+    delay: number;
+    responseBody: Record<string, unknown> | string | null;
+    responseHeaders: Record<string, string>;
+  } | null;
+  preScript?: string;
+  postScript?: string;
   order: number;
   createdAt: Date;
   updatedAt: Date;
@@ -91,6 +104,11 @@ const error = ref<any>(null);
 const selectedEnvironments = ref<Record<string, string>>({});
 
 onMounted(async () => {
+  // Check localStorage for hide warning preference
+  if (typeof window !== 'undefined') {
+    hideTeamWarningForever.value = localStorage.getItem('hideTeamCollectionSaveWarning') === 'true';
+  }
+  
   try {
     const response = await api.get<SharedWorkspace>(`/api/shared-workspace/${token.value}`);
     workspace.value = response;
@@ -118,6 +136,11 @@ onMounted(async () => {
 const selectedRequest = ref<HttpRequest | null>(null);
 const selectedFolderId = ref<string | null>(null);
 const selectedProjectId = ref<string | null>(null);
+
+// Team collection warning dialog state
+const showTeamWarningDialog = ref(false);
+const pendingSaveRequest = ref<HttpRequest | null>(null);
+const hideTeamWarningForever = ref(false);
 
 // RequestBuilder ref for accessing current request state
 const requestBuilderRef = ref<any>(null);
@@ -273,6 +296,17 @@ const onEnvironmentChange = (projectId: string, environmentId: string) => {
 const handleRequestSave = async (request: HttpRequest) => {
   if (!canEdit.value || !selectedRequest.value) return;
   
+  // Always show warning for shared workspaces (unless disabled)
+  if (!hideTeamWarningForever.value) {
+    pendingSaveRequest.value = request;
+    showTeamWarningDialog.value = true;
+    return;
+  }
+  
+  await executeSharedSave(request);
+};
+
+const executeSharedSave = async (request: HttpRequest) => {
   try {
     // Save via shared workspace API
     await api.request(`/api/shared-workspace/${token.value}/requests/${request.id}`, {
@@ -284,7 +318,12 @@ const handleRequestSave = async (request: HttpRequest) => {
         url: request.url,
         headers: request.headers,
         body: request.body,
-        auth: request.auth
+        auth: request.auth,
+        pathVariables: request.pathVariables,
+        inheritAuth: request.inheritAuth,
+        mockConfig: request.mockConfig,
+        preScript: request.preScript,
+        postScript: request.postScript
       }
     });
 
@@ -295,6 +334,30 @@ const handleRequestSave = async (request: HttpRequest) => {
     workspace.value = response;
   } catch (err) {
     console.error('Failed to save request:', err);
+  }
+};
+
+const onTeamWarningConfirm = async () => {
+  showTeamWarningDialog.value = false;
+  if (pendingSaveRequest.value) {
+    await executeSharedSave(pendingSaveRequest.value);
+    pendingSaveRequest.value = null;
+  }
+};
+
+const onTeamWarningCancel = () => {
+  showTeamWarningDialog.value = false;
+  pendingSaveRequest.value = null;
+};
+
+const onHideForeverChange = (value: boolean) => {
+  hideTeamWarningForever.value = value;
+  if (typeof window !== 'undefined') {
+    if (value) {
+      localStorage.setItem('hideTeamCollectionSaveWarning', 'true');
+    } else {
+      localStorage.removeItem('hideTeamCollectionSaveWarning');
+    }
   }
 };
 
@@ -460,7 +523,9 @@ const goBack = () => {
               ref="requestBuilderRef"
               :request="selectedRequest"
               :environment-id="currentEnvironmentId"
+              :collection-id="currentCollectionId"
               :read-only="isReadOnly"
+              :is-shared-workspace="true"
               @save-request="handleRequestSave"
             />
           </div>
@@ -498,5 +563,13 @@ const goBack = () => {
         </div>
       </main>
     </div>
+    
+    <!-- Team Collection Warning Dialog -->
+    <TeamCollectionWarningDialog
+      v-model="showTeamWarningDialog"
+      @confirm="onTeamWarningConfirm"
+      @cancel="onTeamWarningCancel"
+      @update:hideForever="onHideForeverChange"
+    />
   </div>
 </template>

@@ -66,10 +66,25 @@ export default defineNuxtConfig({
     adminPassword: process.env.ADMIN_PASSWORD || 'admin123',
     jwtSecret: process.env.JWT_SECRET || 'super-secret-jwt-key-change-me',
     nodeEnv: process.env.NODE_ENV || 'development',
+
+    // Server-side only (SECRET) - Datadog configuration
+    datadogApiKey: process.env.DATADOG_API_KEY,
+    datadogSite: process.env.DATADOG_SITE || 'us5.datadoghq.com',
+    datadogEnv: process.env.DATADOG_ENV || process.env.DD_ENV || 'development',
+
+    // Client-side (PUBLIC) - Datadog RUM configuration
     public: {
       appUrl: process.env.APP_URL || 'http://localhost:3000',
       apiBaseUrl: process.env.NUXT_PUBLIC_API_BASE_URL || 'https://api-mock.transtrack.id',
-      appVersion
+      appVersion,
+
+      // Datadog RUM Configuration
+      datadogApplicationId: process.env.DATADOG_APPLICATION_ID,
+      datadogClientToken: process.env.DATADOG_CLIENT_TOKEN,
+      datadogSite: process.env.DATADOG_SITE || 'us5.datadoghq.com',
+      datadogService: 'postrack-web',
+      datadogEnv: process.env.DATADOG_ENV || process.env.DD_ENV || 'development',
+      datadogVersion: appVersion,
     }
   }
 })

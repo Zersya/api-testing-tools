@@ -1,7 +1,17 @@
 import { db } from '../../db';
-import { workspaces, projects, collections, folders, savedRequests } from '../../db/schema';
-import { eq, desc, asc, inArray } from 'drizzle-orm';
+import { workspaces, projects, collections, folders, savedRequests, requestExamples } from '../../db/schema';
+import { eq, desc, asc, inArray, or } from 'drizzle-orm';
 import { getAccessibleWorkspaceIds, getWorkspacePermissionsBatch } from '../../utils/permissions';
+import { cache, CacheKeys } from '../../utils/cache';
+
+interface RequestExampleItem {
+  id: string;
+  name: string;
+  statusCode: number;
+  headers: Record<string, string> | null;
+  body: Record<string, unknown> | string | null;
+  isDefault: boolean;
+}
 
 interface RequestItem {
   id: string;
@@ -26,9 +36,11 @@ interface RequestItem {
   preScript: string | null;
   postScript: string | null;
   pathVariables: Record<string, { value: string; description?: string }> | null;
+  paramNotes: Record<string, Record<string, string>> | null;
   order: number;
   createdAt: Date;
   updatedAt: Date;
+  examples: RequestExampleItem[];
 }
 
 interface FolderWithRequestsAndChildren {
@@ -122,6 +134,15 @@ export default defineEventHandler(async (event) => {
     return [];
   }
 
+  // Check cache first
+  const cacheKey = CacheKeys.workspaceTree(user.id);
+  const cachedTree = cache.get<WorkspaceWithProjects[]>(cacheKey);
+  
+  if (cachedTree) {
+    console.log('[Tree API] Returning cached tree for user:', user.id);
+    return cachedTree;
+  }
+
   try {
     // Get all workspace IDs this user can access
     const accessibleIds = await getAccessibleWorkspaceIds(user.id, user.email);
@@ -134,40 +155,96 @@ export default defineEventHandler(async (event) => {
       return [];
     }
 
-    // Fetch only accessible workspaces
+    // OPTIMIZED: Use cascading filtered queries instead of loading all data
+    // Step 1: Fetch only accessible workspaces
     const allWorkspaces = await db
       .select()
       .from(workspaces)
       .where(inArray(workspaces.id, accessibleIds))
       .orderBy(desc(workspaces.createdAt));
 
-    const allProjects = await db
-      .select()
-      .from(projects);
+    // Step 2: Fetch only projects in accessible workspaces
+    const allProjects = accessibleIds.length > 0
+      ? await db
+          .select()
+          .from(projects)
+          .where(inArray(projects.workspaceId, accessibleIds))
+      : [];
 
-    const allCollections = await db
-      .select()
-      .from(collections);
+    const projectIds = allProjects.map(p => p.id);
 
-    const allFolders = await db
-      .select()
-      .from(folders);
+    // Step 3: Fetch only collections in those projects
+    const allCollections = projectIds.length > 0
+      ? await db
+          .select()
+          .from(collections)
+          .where(inArray(collections.projectId, projectIds))
+      : [];
 
-    const allRequestsRaw = await db
-      .select()
-      .from(savedRequests)
-      .orderBy(asc(savedRequests.order));
+    const collectionIds = allCollections.map(c => c.id);
 
-    // Parse JSON fields from text columns
+    // Step 4: Fetch only folders in those collections
+    const allFolders = collectionIds.length > 0
+      ? await db
+          .select()
+          .from(folders)
+          .where(inArray(folders.collectionId, collectionIds))
+      : [];
+
+    const folderIds = allFolders.map(f => f.id);
+
+    // Step 5: Fetch only requests in those collections/folders
+    const allRequestsRaw = collectionIds.length > 0
+      ? await db
+          .select()
+          .from(savedRequests)
+          .where(
+            or(
+              inArray(savedRequests.collectionId, collectionIds),
+              inArray(savedRequests.folderId, folderIds)
+            )
+          )
+          .orderBy(asc(savedRequests.order))
+      : [];
+
+    // Step 6: Fetch examples only for loaded requests
+    const requestIds = allRequestsRaw.map(r => r.id);
+    const allExamplesRaw = requestIds.length > 0
+      ? await db
+          .select()
+          .from(requestExamples)
+          .where(inArray(requestExamples.requestId, requestIds))
+      : [];
+
+    // Parse JSON fields from text columns for examples (keep requestId for filtering)
+    const allExamples = allExamplesRaw.map(ex => ({
+      ...ex,
+      headers: parseJsonField<Record<string, string>>(ex.headers),
+      body: parseJsonField<Record<string, unknown> | string>(ex.body)
+    }));
+
+    // Parse JSON fields from text columns and associate examples with requests
     const allRequests: RequestItem[] = allRequestsRaw.map(req => {
       const parsedHeaders = parseJsonField<Record<string, string>>(req.headers);
+      const requestExamplesList = allExamples
+        .filter(ex => ex.requestId === req.id)
+        .map(ex => ({
+          id: ex.id,
+          name: ex.name,
+          statusCode: ex.statusCode,
+          headers: ex.headers,
+          body: ex.body,
+          isDefault: ex.isDefault
+        }));
       return {
         ...req,
         headers: parsedHeaders,
         body: parseJsonField<Record<string, unknown> | string>(req.body),
         auth: parseJsonField<RequestItem['auth']>(req.auth),
         mockConfig: parseJsonField<RequestItem['mockConfig']>(req.mockConfig),
-        pathVariables: parseJsonField<RequestItem['pathVariables']>(req.pathVariables)
+        pathVariables: parseJsonField<RequestItem['pathVariables']>(req.pathVariables),
+        paramNotes: parseJsonField<RequestItem['paramNotes']>(req.paramNotes),
+        examples: requestExamplesList
       };
     });
 
@@ -208,6 +285,7 @@ export default defineEventHandler(async (event) => {
 
               return {
                 ...collection,
+                authConfig: parseJsonField<Record<string, unknown>>(collection.authConfig),
                 folders: folderTree,
                 requests: collectionRootRequests,
                 folderCount,
@@ -224,6 +302,9 @@ export default defineEventHandler(async (event) => {
       };
     });
 
+    // Cache for 30 seconds (adjust based on your needs)
+    cache.set(cacheKey, workspacesWithProjects, 30000);
+    
     return workspacesWithProjects;
   } catch (error) {
     console.error('Error fetching workspace tree:', error);

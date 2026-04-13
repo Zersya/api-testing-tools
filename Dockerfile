@@ -49,4 +49,4 @@ ENV NUXT_HOST=0.0.0.0
 ENV NUXT_PORT=3000
 ENV DATABASE_PATH=/app/data/sqlite.db
 
-CMD ["node", ".output/server/index.mjs"]
+CMD ["node", "--require", "dd-trace/init", ".output/server/index.mjs"]

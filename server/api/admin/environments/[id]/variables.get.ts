@@ -53,7 +53,7 @@ export default defineEventHandler(async (event) => {
     // Check if user has access to this workspace (Super Admin bypass)
     const isAdmin = isSuperAdmin(user.email);
     if (!isAdmin) {
-      const accessibleIds = await getAccessibleWorkspaceIds(user.id);
+      const accessibleIds = await getAccessibleWorkspaceIds(user.id, user.email);
       if (!accessibleIds.includes(project.workspaceId)) {
         throw createError({
           statusCode: 403,

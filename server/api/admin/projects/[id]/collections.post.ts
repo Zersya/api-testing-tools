@@ -2,6 +2,8 @@ import { db } from '../../../../db';
 import { projects, collections } from '../../../../db/schema';
 import { eq } from 'drizzle-orm';
 import { getAccessibleWorkspaceIds } from '../../../../utils/permissions';
+import { trackResourceAction } from '../../../../services/usageTracking';
+import { cache, CacheKeys } from '../../../../utils/cache';
 
 interface CreateCollectionBody {
   name: string;
@@ -93,7 +95,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // Check if user has access to this workspace
-    const accessibleIds = await getAccessibleWorkspaceIds(user.id);
+    const accessibleIds = await getAccessibleWorkspaceIds(user.id, user.email);
     if (!accessibleIds.includes(project.workspaceId)) {
       throw createError({
         statusCode: 403,
@@ -128,6 +130,20 @@ export default defineEventHandler(async (event) => {
         authConfig
       })
       .returning())[0];
+
+    // Track analytics
+    trackResourceAction({
+      userId: user.id,
+      userEmail: user.email,
+      workspaceId: user.workspaceId || 'personal',
+      action: 'create',
+      resourceType: 'collection',
+      resourceId: newCollection.id,
+      resourceName: trimmedName,
+    });
+
+    // Invalidate cache for the user
+    cache.delete(CacheKeys.workspaceTree(user.id));
 
     return newCollection;
   } catch (error: any) {

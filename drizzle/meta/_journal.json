@@ -57,6 +57,69 @@
       "when": 1772519703952,
       "tag": "0007_fresh_serpent_society",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1773726631281,
+      "tag": "0008_ambitious_stardust",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1774865750282,
+      "tag": "0009_gifted_nico_minoru",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1775127754723,
+      "tag": "0010_sharp_king_cobra",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1775128100485,
+      "tag": "0011_add_inherit_auth",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1775446649938,
+      "tag": "0012_strong_wraith",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1775625102815,
+      "tag": "0013_natural_puppet_master",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1775637218071,
+      "tag": "0014_damp_thunderbolt_ross",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1775637220000,
+      "tag": "0015_add_feedback_visibility_voting",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1776053934862,
+      "tag": "0016_gigantic_wilson_fisk",
+      "breakpoints": true
     }
   ]
 }

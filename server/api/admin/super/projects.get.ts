@@ -10,7 +10,7 @@ import {
   environments,
   environmentVariables
 } from '../../../db/schema';
-import { eq, desc, asc, isNull, inArray } from 'drizzle-orm';
+import { eq, desc, asc, isNull, inArray, or } from 'drizzle-orm';
 import { isSuperAdmin, getWorkspaceOwnerEmail } from '../../../utils/permissions';
 import { getUserEmailOrFallback } from '../../../utils/userMapping';
 
@@ -35,6 +35,7 @@ interface RequestItem {
     responseHeaders: Record<string, string>;
   } | null;
   pathVariables: Record<string, { value: string; description?: string }> | null;
+  paramNotes: Record<string, Record<string, string>> | null;
   order: number;
   createdAt: Date;
   updatedAt: Date;
@@ -219,30 +220,54 @@ export default defineEventHandler(async (event) => {
     // Get search query
     const query = getQuery(event);
     const searchTerm = (query.search as string) || '';
-    
-    // Fetch all data
-    const allWorkspaces = await db
-      .select()
-      .from(workspaces)
-      .orderBy(desc(workspaces.createdAt));
-    
-    const allProjects = await db
-      .select()
-      .from(projects);
-    
-    const allCollections = await db
-      .select()
-      .from(collections);
-    
-    const allFolders = await db
-      .select()
-      .from(folders);
-    
-    const allRequestsRaw = await db
-      .select()
-      .from(savedRequests)
-      .orderBy(asc(savedRequests.order));
-    
+
+    // Batch queries to reduce concurrent connection usage (max 3 connections per batch)
+    // Batch 1: Fetch top-level workspace data
+    const [allWorkspaces, allMembers, allShares] = await Promise.all([
+      db.select().from(workspaces).orderBy(desc(workspaces.createdAt)),
+      db.select().from(workspaceMembers),
+      db.select().from(workspaceShares)
+    ]);
+
+    // Batch 2: Fetch projects for all workspaces
+    const workspaceIds = allWorkspaces.map(w => w.id);
+    const allProjects = workspaceIds.length > 0 
+      ? await db.select().from(projects).where(inArray(projects.workspaceId, workspaceIds))
+      : [];
+
+    // Batch 3: Fetch collections and environments for all projects
+    const projectIds = allProjects.map(p => p.id);
+    const [allCollections, allEnvironments] = projectIds.length > 0
+      ? await Promise.all([
+          db.select().from(collections).where(inArray(collections.projectId, projectIds)),
+          db.select().from(environments).where(inArray(environments.projectId, projectIds)).orderBy(desc(environments.createdAt))
+        ])
+      : [[], []];
+
+    // Batch 4: Fetch folders and environment variables (need folderIds for requests query)
+    const collectionIds = allCollections.map(c => c.id);
+    const environmentIds = allEnvironments.map(e => e.id);
+    const [allFolders, allEnvironmentVariables] = await Promise.all([
+      collectionIds.length > 0 
+        ? db.select().from(folders).where(inArray(folders.collectionId, collectionIds))
+        : [],
+      environmentIds.length > 0
+        ? db.select().from(environmentVariables).where(inArray(environmentVariables.environmentId, environmentIds))
+        : []
+    ]);
+
+    // Batch 5: Fetch requests using both collectionIds and folderIds
+    // Requests can be at collection root (collectionId set) OR inside folders (folderId set)
+    const folderIds = allFolders.map(f => f.id);
+    const allRequestsRaw = (collectionIds.length > 0 || folderIds.length > 0)
+      ? await db.select().from(savedRequests).where(
+          or(
+            inArray(savedRequests.collectionId, collectionIds),
+            inArray(savedRequests.folderId, folderIds)
+          )
+        ).orderBy(asc(savedRequests.order))
+      : [];
+
     // Parse JSON fields from requests
     const allRequests: RequestItem[] = allRequestsRaw.map(req => ({
       ...req,
@@ -250,9 +275,10 @@ export default defineEventHandler(async (event) => {
       body: parseJsonField<Record<string, unknown> | string>(req.body),
       auth: parseJsonField<RequestItem['auth']>(req.auth),
       mockConfig: parseJsonField<RequestItem['mockConfig']>(req.mockConfig),
-      pathVariables: parseJsonField<RequestItem['pathVariables']>(req.pathVariables)
+      pathVariables: parseJsonField<RequestItem['pathVariables']>(req.pathVariables),
+      paramNotes: parseJsonField<Record<string, Record<string, string>>>(req.paramNotes)
     }));
-    
+
     // Group requests by folder
     const requestsPerFolder = new Map<string, RequestItem[]>();
     for (const request of allRequests) {
@@ -262,18 +288,7 @@ export default defineEventHandler(async (event) => {
         requestsPerFolder.set(request.folderId, existing);
       }
     }
-    
-    // Fetch all environments
-    const allEnvironments = await db
-      .select()
-      .from(environments)
-      .orderBy(desc(environments.createdAt));
-    
-    // Fetch all environment variables
-    const allEnvironmentVariables = await db
-      .select()
-      .from(environmentVariables);
-    
+
     // Group variables by environment
     const variablesPerEnvironment = new Map<string, EnvironmentVariable[]>();
     for (const variable of allEnvironmentVariables) {
@@ -281,16 +296,7 @@ export default defineEventHandler(async (event) => {
       existing.push(variable);
       variablesPerEnvironment.set(variable.environmentId, existing);
     }
-    
-    // Fetch workspace sharing info
-    const allMembers = await db
-      .select()
-      .from(workspaceMembers);
-    
-    const allShares = await db
-      .select()
-      .from(workspaceShares);
-    
+
     // Build the response structure
     const workspacesWithDetails: WorkspaceWithDetails[] = allWorkspaces.map(workspace => {
       // Get owner email

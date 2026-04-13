@@ -225,6 +225,30 @@ const getStatusColor = (statusCode: number): string => {
   return 'text-text-secondary';
 };
 
+// Helper function to format example body properly
+const formatExampleBody = (body: Record<string, unknown> | string | null): string => {
+  if (!body) return '';
+  
+  // If it's already a string, check if it's valid JSON
+  if (typeof body === 'string') {
+    // Handle placeholder text like "JSON:"
+    if (body.trim() === 'JSON:' || body.trim() === 'JSON') {
+      return '{}';
+    }
+    // Try to parse as JSON and re-format
+    try {
+      const parsed = JSON.parse(body);
+      return JSON.stringify(parsed, null, 2);
+    } catch {
+      // If not valid JSON, return as-is
+      return body;
+    }
+  }
+  
+  // If it's an object, stringify it
+  return JSON.stringify(body, null, 2);
+};
+
 watch(() => props.requestId, () => {
   fetchExamples();
 }, { immediate: true });
@@ -332,7 +356,7 @@ onMounted(() => {
         <!-- Response body preview -->
         <div v-if="example.body" class="mt-2">
           <div class="text-xs text-text-muted mb-1">Response Body</div>
-          <pre class="p-3 bg-bg-tertiary rounded-md text-xs font-mono text-text-secondary overflow-x-auto max-h-32 overflow-y-auto">{{ typeof example.body === 'string' ? example.body : JSON.stringify(example.body, null, 2) }}</pre>
+          <pre class="p-3 bg-bg-tertiary rounded-md text-xs font-mono text-text-secondary overflow-x-auto max-h-32 overflow-y-auto">{{ formatExampleBody(example.body) }}</pre>
         </div>
         
         <!-- Response headers preview -->

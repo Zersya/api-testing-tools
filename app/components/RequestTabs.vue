@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import type { ProxyResponse, ProxyErrorResponse, TabType, RequestDraftSnapshot } from './RequestBuilder.vue';
+
 interface HttpRequest {
   id: string;
-  folderId: string;
+  folderId: string | null;
+  collectionId?: string | null;
   name: string;
   method: string;
   url: string;
@@ -11,6 +14,26 @@ interface HttpRequest {
     type: string;
     credentials?: Record<string, string>;
   } | null;
+  mockConfig?: {
+    isEnabled: boolean;
+    statusCode: number;
+    delay: number;
+    responseBody: Record<string, unknown> | string | null;
+    responseHeaders: Record<string, string>;
+  } | null;
+  preScript?: string | null;
+  postScript?: string | null;
+  pathVariables?: Record<string, { value: string; description?: string }> | null;
+  bodyFormat?: 'none' | 'json' | 'form-data' | 'urlencoded' | 'raw' | 'binary';
+  jsonBody?: string;
+  rawBody?: string;
+  rawContentType?: string;
+  formDataParams?: Array<{
+    key: string;
+    value: string;
+    enabled: boolean;
+    type: 'text' | 'file';
+  }>;
   order: number;
   createdAt: Date;
   updatedAt: Date;
@@ -20,21 +43,47 @@ export interface OpenTab {
   request: HttpRequest;
   hasUnsavedChanges: boolean;
   key: string;
+  // UI state persistence fields
+  response?: ProxyResponse | ProxyErrorResponse | null;
+  activeBuilderTab?: TabType;
+  scriptLogs?: Array<{ phase: 'pre' | 'post'; type: 'log' | 'error' | 'warn'; message: string; timestamp: number }>;
+  draftSnapshot?: RequestDraftSnapshot;
+  expandedNodes?: string[];
 }
+
+// Persisted version of OpenTab with serializable types for storage
+export type PersistedOpenTab = {
+  key: OpenTab['key'];
+  hasUnsavedChanges: OpenTab['hasUnsavedChanges'];
+  request: OpenTab['request'];
+  response?: any; // Serialized response data
+  activeBuilderTab?: string; // Serialized tab type as string
+  scriptLogs?: any[]; // Serialized script logs
+  draftSnapshot?: RequestDraftSnapshot;
+  expandedNodes?: string[]; // Serialized expanded node paths
+};
+
+// Types imported from RequestBuilder.vue to avoid duplication:
+// - ProxyResponse, ProxyErrorResponse
+// - TabType
+// - RequestDraftSnapshot
 
 interface Props {
   openTabs: OpenTab[];
   activeTabKey: string | null;
 }
 
-defineProps<Props>();
+const props = defineProps<Props>();
 
 const emit = defineEmits<{
   selectTab: [key: string];
   closeTab: [key: string];
+  closeTabs: [keys: string[]];
   newTab: [];
   reorderTabs: [fromIndex: number, toIndex: number];
 }>();
+
+import { onMounted, onUnmounted, ref } from 'vue';
 
 const draggedIndex = ref<number | null>(null);
 
@@ -91,6 +140,74 @@ const handleDrop = (event: DragEvent, toIndex: number) => {
 const handleDragEnd = () => {
   draggedIndex.value = null;
 };
+
+// Context Menu State & Methods
+const contextMenuVisible = ref(false);
+const contextMenuPosition = ref({ x: 0, y: 0 });
+const targetTabIndex = ref<number | null>(null);
+
+const contextMenuRef = ref<HTMLElement | null>(null);
+
+const closeContextMenu = (event?: MouseEvent) => {
+  if (event && contextMenuVisible.value && contextMenuRef.value) {
+    const target = event.target as HTMLElement;
+    if (contextMenuRef.value.contains(target)) {
+      return; // Do not close if clicking inside the menu (let the buttons handle their own close)
+    }
+  }
+  contextMenuVisible.value = false;
+};
+
+const handleContextMenu = (event: MouseEvent, index: number) => {
+  event.preventDefault();
+  event.stopPropagation();
+  contextMenuVisible.value = true;
+  contextMenuPosition.value = { x: event.clientX, y: event.clientY };
+  targetTabIndex.value = index;
+};
+
+const closeOpenedTab = () => {
+  if (targetTabIndex.value !== null && props.openTabs[targetTabIndex.value]) {
+    emit('closeTabs', [props.openTabs[targetTabIndex.value].key]);
+  }
+  closeContextMenu();
+};
+
+const closeOtherTabs = () => {
+  if (targetTabIndex.value !== null && props.openTabs[targetTabIndex.value]) {
+    const targetKey = props.openTabs[targetTabIndex.value].key;
+    const keysToClose = props.openTabs.filter(t => t.key !== targetKey).map(t => t.key);
+    emit('closeTabs', keysToClose);
+  }
+  closeContextMenu();
+};
+
+const closeTabsToRight = () => {
+  if (targetTabIndex.value !== null && targetTabIndex.value < props.openTabs.length - 1) {
+    const keysToClose = props.openTabs.slice(targetTabIndex.value + 1).map(t => t.key);
+    emit('closeTabs', keysToClose);
+  }
+  closeContextMenu();
+};
+
+const closeTabsToLeft = () => {
+  if (targetTabIndex.value !== null && targetTabIndex.value > 0) {
+    const keysToClose = props.openTabs.slice(0, targetTabIndex.value).map(t => t.key);
+    emit('closeTabs', keysToClose);
+  }
+  closeContextMenu();
+};
+
+onMounted(() => {
+  document.addEventListener('click', closeContextMenu as EventListener);
+  // Optional: hide on scroll
+  document.addEventListener('scroll', closeContextMenu as EventListener, true);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('click', closeContextMenu as EventListener);
+  document.removeEventListener('scroll', closeContextMenu as EventListener, true);
+});
 </script>
 
 <template>
@@ -101,6 +218,7 @@ const handleDragEnd = () => {
       :draggable="true"
       @click="handleTabClick(tab.key)"
       @mouseup="handleMiddleClick($event, tab.key)"
+      @contextmenu.prevent="handleContextMenu($event, index)"
       @dragstart="handleDragStart($event, index)"
       @dragover="handleDragOver"
       @drop="handleDrop($event, index)"
@@ -155,5 +273,48 @@ const handleDragEnd = () => {
         <line x1="5" y1="12" x2="19" y2="12"></line>
       </svg>
     </button>
+
+    <!-- Context Menu -->
+    <Teleport to="body">
+      <div
+        v-if="contextMenuVisible"
+        ref="contextMenuRef"
+        class="fixed z-[100] bg-bg-primary border border-border-default rounded shadow-lg py-1 min-w-[160px] text-sm text-text-primary flex flex-col"
+        :style="{ top: `${contextMenuPosition.y}px`, left: `${contextMenuPosition.x}px` }"
+        @contextmenu.prevent
+      >
+        <button
+          @click="closeOpenedTab"
+          class="w-full text-left px-3 py-1.5 hover:bg-bg-secondary hover:text-accent-blue transition-colors duration-fast"
+        >
+          Close Opened Tab
+        </button>
+        <button
+          @click="closeOtherTabs"
+          class="w-full text-left px-3 py-1.5 hover:bg-bg-secondary hover:text-accent-blue transition-colors duration-fast"
+          :disabled="openTabs.length <= 1"
+          :class="{ 'opacity-50 cursor-not-allowed': openTabs.length <= 1 }"
+        >
+          Close Other Tabs
+        </button>
+        <div class="h-px bg-border-default my-1"></div>
+        <button
+          @click="closeTabsToRight"
+          class="w-full text-left px-3 py-1.5 hover:bg-bg-secondary hover:text-accent-blue transition-colors duration-fast"
+          :disabled="targetTabIndex === null || targetTabIndex === openTabs.length - 1"
+          :class="{ 'opacity-50 cursor-not-allowed': targetTabIndex === null || targetTabIndex === openTabs.length - 1 }"
+        >
+          Close Tabs to the Right
+        </button>
+        <button
+          @click="closeTabsToLeft"
+          class="w-full text-left px-3 py-1.5 hover:bg-bg-secondary hover:text-accent-blue transition-colors duration-fast"
+          :disabled="targetTabIndex === null || targetTabIndex === 0"
+          :class="{ 'opacity-50 cursor-not-allowed': targetTabIndex === null || targetTabIndex === 0 }"
+        >
+          Close Tabs to the Left
+        </button>
+      </div>
+    </Teleport>
   </div>
 </template>
