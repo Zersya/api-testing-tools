@@ -36,8 +36,8 @@
             {
               "identifier": "http:allow-fetch",
               "allow": [
-                { "url": "https://api-mock.transtrack.id" },
-                { "url": "https://api-mock.transtrack.id/**" },
+                { "url": "https://postrack.transtrack.co" },
+                { "url": "https://postrack.transtrack.co/**" },
                 { "url": "http://localhost:3000" },
                 { "url": "http://localhost:3000/**" }
               ]
@@ -68,7 +68,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhGNTgxRjFDMDc1RjRERDMKUldUbll3ZVNYQy9QdUV5Nlg1Yi9rQ3cyNDk2eUtKZWF2aHRUQTV0c1k2d0dDeDJBR2J5Mk1qb1AK",
       "endpoints": [
-        "https://api-mock.transtrack.id/api/app/updates"
+        "https://postrack.transtrack.co/api/app/updates"
       ]
     }
   }

@@ -9,7 +9,7 @@ const router = useRouter();
 const getApiBaseUrl = () => {
   // In Tauri production build, use the external API
   if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
-    return 'https://api-mock.transtrack.id';
+    return 'https://postrack.transtrack.co';
   }
   // In web/dev mode, use relative URL
   return '';

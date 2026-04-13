@@ -38,7 +38,7 @@ export default defineEventHandler(async (event) => {
   }
 
   // Build update info for the requesting platform
-  const baseUrl = 'https://api-mock.transtrack.id/updates';
+  const baseUrl = 'https://postrack.transtrack.co/updates';
 
   let updateInfo: any = {
     version: latestVersion,

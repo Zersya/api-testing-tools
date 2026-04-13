@@ -11,7 +11,7 @@ if (isTauri) {
     return ''
   }
 
-  const TAURI_API_BASE_URL = (getConfiguredApiBaseUrl() || 'https://api-mock.transtrack.id').replace(/\/+$/, '')
+  const TAURI_API_BASE_URL = (getConfiguredApiBaseUrl() || 'https://postrack.transtrack.co').replace(/\/+$/, '')
 
   const buildUrl = (path: string): string => {
     if (path.startsWith('http://') || path.startsWith('https://')) return path

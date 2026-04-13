@@ -75,7 +75,7 @@ export default defineNuxtConfig({
     // Client-side (PUBLIC) - Datadog RUM configuration
     public: {
       appUrl: process.env.APP_URL || 'http://localhost:3000',
-      apiBaseUrl: process.env.NUXT_PUBLIC_API_BASE_URL || 'https://api-mock.transtrack.id',
+      apiBaseUrl: process.env.NUXT_PUBLIC_API_BASE_URL || 'https://postrack.transtrack.co',
       appVersion,
 
       // Datadog RUM Configuration

@@ -11,7 +11,7 @@ function isTauri(): boolean {
 /**
  * Fallback API base URL for Tauri app when runtime config is missing
  */
-const DEFAULT_TAURI_API_BASE_URL = 'https://api-mock.transtrack.id'
+const DEFAULT_TAURI_API_BASE_URL = 'https://postrack.transtrack.co'
 
 function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, '')

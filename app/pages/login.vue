@@ -63,7 +63,7 @@ const loginWithSso = async (providerType: string, providerId?: string) => {
     // Tauri: Navigate to external API for SSO
     // The external API will redirect to Keycloak, then back to the API
     // We need to add the external API URL since this is a static build
-    window.location.href = `https://api-mock.transtrack.id/api/auth/sso/${providerType}/login${params}`;
+    window.location.href = `https://postrack.transtrack.co/api/auth/sso/${providerType}/login${params}`;
   } else {
     // Web: Use standard redirect flow
     window.location.href = `/api/auth/sso/${providerType}/login${params}`;

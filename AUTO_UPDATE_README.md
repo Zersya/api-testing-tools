@@ -7,7 +7,7 @@ This document describes the auto-update feature for the Mock Service macOS app.
 The app uses Tauri's built-in updater plugin with a custom update server.
 
 - **Backend:** `tauri-plugin-updater`
-- **Update Server:** Custom endpoint at `https://api-mock.transtrack.id/api/app/updates`
+- **Update Server:** Custom endpoint at `https://postrack.transtrack.co/api/app/updates`
 - **Frontend:** Vue components with reactive state management
 
 ## Architecture
@@ -109,7 +109,7 @@ This will output a public key. Copy it and update `tauri.conf.json`:
   "updater": {
     "pubkey": "YOUR_PUBLIC_KEY_HERE",
     "endpoints": [
-      "https://api-mock.transtrack.id/api/app/updates"
+      "https://postrack.transtrack.co/api/app/updates"
     ]
   }
 }
@@ -174,7 +174,7 @@ The update server returns JSON in this format:
   "version": "0.2.2",
   "notes": "## What's New...",
   "pub_date": "2024-01-15T10:30:00Z",
-  "url": "https://api-mock.transtrack.id/updates/mock-service_0.2.2_aarch64.app.tar.gz",
+  "url": "https://postrack.transtrack.co/updates/mock-service_0.2.2_aarch64.app.tar.gz",
   "signature": "base64-encoded-signature"
 }
 ```
