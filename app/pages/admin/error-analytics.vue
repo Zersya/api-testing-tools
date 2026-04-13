@@ -252,6 +252,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import Modal from '~/components/Modal.vue'
+import { useApiClient } from '~~/composables/useApiFetch'
 
 const startDate = ref(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
 const endDate = ref(new Date().toISOString().split('T')[0])
@@ -325,9 +326,11 @@ const recentErrors = computed(() => {
   return analytics.value?.recentErrors || []
 })
 
+const api = useApiClient()
+
 const fetchAnalytics = async () => {
   try {
-    const response = await $fetch<Analytics>('/api/analytics/errors', {
+    const response = await api.get<Analytics>('/api/analytics/errors', {
       query: {
         startDate: startDate.value,
         endDate: endDate.value,

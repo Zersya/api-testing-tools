@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue'
 import { datadogRum } from '@datadog/browser-rum'
+import { useApiClient } from '~~/composables/useApiFetch'
 
 export interface User {
   id: string
@@ -39,7 +40,8 @@ export function useUser() {
 
   const fetchUser = async (): Promise<User | null> => {
     try {
-      const response = await $fetch<{ status: string; user?: User }>('/api/auth/check')
+      const api = useApiClient()
+      const response = await api.get<{ status: string; user?: User }>('/api/auth/check')
       if (response.status === 'logged_in' && response.user) {
         setUser(response.user)
         return response.user

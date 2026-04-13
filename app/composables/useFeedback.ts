@@ -1,4 +1,5 @@
 import { ref, computed } from 'vue';
+import { useApiClient } from '~~/composables/useApiFetch';
 
 export interface FeedbackQuestion {
   id: string;
@@ -34,10 +35,12 @@ const isLoading = ref(false);
 const hasSubmitted = ref(false);
 
 export function useFeedback() {
+  const api = useApiClient();
+
   const fetchStatus = async (): Promise<FeedbackStatus> => {
     try {
       isLoading.value = true;
-      const response = await $fetch<FeedbackStatus>('/api/feedback/status');
+      const response = await api.get<FeedbackStatus>('/api/feedback/status');
       feedbackStatus.value = response;
       return response;
     } catch (error) {
@@ -50,8 +53,7 @@ export function useFeedback() {
   
   const submitFeedback = async (submission: FeedbackSubmission): Promise<{ success: boolean; submissionId?: string }> => {
     try {
-      const response = await $fetch<{ success: boolean; submissionId: string }>('/api/feedback/submit', {
-        method: 'POST',
+      const response = await api.post<{ success: boolean; submissionId: string }>('/api/feedback/submit', {
         body: submission
       });
       

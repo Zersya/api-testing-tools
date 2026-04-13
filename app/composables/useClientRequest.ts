@@ -13,6 +13,7 @@
  */
 
 import type { ProxyResponse, ProxyErrorResponse } from '~/components/RequestBuilder.vue';
+import { useApiClient } from '~~/composables/useApiFetch';
 
 // Magic variable generators (client-side subset of server implementation)
 const MAGIC_GENERATORS: Record<string, () => string> = {
@@ -306,8 +307,8 @@ async function executePreScript(
   environmentId: string
 ): Promise<ScriptExecutionResult> {
   try {
-    const result = await $fetch<ScriptExecutionResult>('/api/scripts/execute', {
-      method: 'POST',
+    const api = useApiClient();
+    const result = await api.post<ScriptExecutionResult>('/api/scripts/execute', {
       body: {
         scriptType: 'pre',
         code,
@@ -337,8 +338,8 @@ async function executePostScript(
   responseSize: number
 ): Promise<ScriptExecutionResult> {
   try {
-    const result = await $fetch<ScriptExecutionResult>('/api/scripts/execute', {
-      method: 'POST',
+    const api = useApiClient();
+    const result = await api.post<ScriptExecutionResult>('/api/scripts/execute', {
       body: {
         scriptType: 'post',
         code,
@@ -364,9 +365,8 @@ async function executePostScript(
  */
 async function fetchSavedRequest(savedRequestId: string): Promise<{ preScript?: string; postScript?: string } | null> {
   try {
-    const result = await $fetch<{ id: string; preScript: string | null; postScript: string | null }>(`/api/admin/requests/${savedRequestId}`, {
-      method: 'GET'
-    });
+    const api = useApiClient();
+    const result = await api.get<{ id: string; preScript: string | null; postScript: string | null }>(`/api/admin/requests/${savedRequestId}`);
     return {
       preScript: result.preScript || undefined,
       postScript: result.postScript || undefined
@@ -391,8 +391,8 @@ async function logToHistory(
   }
 ): Promise<void> {
   try {
-    await $fetch('/api/history/log', {
-      method: 'POST',
+    const api = useApiClient();
+    await api.post('/api/history/log', {
       body: {
         ...data,
         timestamp: new Date().toISOString()
@@ -450,7 +450,8 @@ export async function executeClientRequest(
 
     if (environmentId) {
       try {
-        const envVars = await $fetch<Array<{ key: string; value: string }>>(`/api/admin/environments/${environmentId}/variables`);
+        const api = useApiClient();
+        const envVars = await api.get<Array<{ key: string; value: string }>>(`/api/admin/environments/${environmentId}/variables`);
         variables = envVars.reduce((acc, v) => {
           acc[v.key] = v.value;
           return acc;

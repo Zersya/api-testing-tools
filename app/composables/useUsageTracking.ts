@@ -1,4 +1,5 @@
 import type { UsageEventType, ResourceType } from '#build/server/db/schema/usageAnalytics';
+import { useApiClient } from '~~/composables/useApiFetch';
 
 export interface UsageEventInput {
   eventType: UsageEventType;
@@ -41,11 +42,11 @@ function getEventType(action: 'create' | 'update' | 'delete', resourceType: Reso
 export function useUsageTracking() {
   const pendingEvents = ref<UsageEventInput[]>([]);
   const isTracking = ref(false);
+  const api = useApiClient();
 
   const trackEvent = async (event: UsageEventInput) => {
     try {
-      await $fetch('/api/admin/usage/track', {
-        method: 'POST',
+      await api.post('/api/admin/usage/track', {
         body: event
       });
     } catch (error) {
@@ -61,8 +62,7 @@ export function useUsageTracking() {
     if (events.length === 0) return;
 
     try {
-      await $fetch('/api/admin/usage/track-batch', {
-        method: 'POST',
+      await api.post('/api/admin/usage/track-batch', {
         body: { events }
       });
     } catch (error) {

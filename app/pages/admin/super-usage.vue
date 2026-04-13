@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, computed } from 'vue';
+import { useApiClient } from '~~/composables/useApiFetch';
 
 interface OverviewStats {
   totalEvents: number;
@@ -97,6 +98,9 @@ const activeTab = ref<'overview' | 'users' | 'workspaces' | 'events'>('overview'
 const isLoading = ref(false);
 const error = ref<string | null>(null);
 
+// Initialize API client for Tauri compatibility
+const api = useApiClient();
+
 // Overview data
 const overviewStats = ref<OverviewStats | null>(null);
 
@@ -138,7 +142,7 @@ const getStartDate = (days: number): string => {
 const fetchOverview = async () => {
   try {
     const days = dateRange.value === '7d' ? 7 : dateRange.value === '30d' ? 30 : 90;
-    const response = await $fetch<OverviewStats>('/api/admin/super/usage/overview', {
+    const response = await api.get<OverviewStats>('/api/admin/super/usage/overview', {
       query: {
         startDate: getStartDate(days),
         endDate: new Date().toISOString(),
@@ -153,7 +157,7 @@ const fetchOverview = async () => {
 const fetchUsers = async () => {
   try {
     const days = dateRange.value === '7d' ? 7 : dateRange.value === '30d' ? 30 : 90;
-    const response = await $fetch<{ users: UserStat[]; total: number; limit: number; offset: number }>('/api/admin/super/usage/users', {
+    const response = await api.get<{ users: UserStat[]; total: number; limit: number; offset: number }>('/api/admin/super/usage/users', {
       query: {
         startDate: getStartDate(days),
         endDate: new Date().toISOString(),
@@ -171,7 +175,7 @@ const fetchUsers = async () => {
 const fetchWorkspaces = async () => {
   try {
     const days = dateRange.value === '7d' ? 7 : dateRange.value === '30d' ? 30 : 90;
-    const response = await $fetch<{ workspaces: WorkspaceStat[]; total: number }>('/api/admin/super/usage/workspaces', {
+    const response = await api.get<{ workspaces: WorkspaceStat[]; total: number }>('/api/admin/super/usage/workspaces', {
       query: {
         startDate: getStartDate(days),
         endDate: new Date().toISOString(),
@@ -197,7 +201,7 @@ const fetchEvents = async () => {
     if (eventFilters.value.eventType) query.eventType = eventFilters.value.eventType;
     if (eventFilters.value.resourceType) query.resourceType = eventFilters.value.resourceType;
     
-    const response = await $fetch<{ events: UsageEvent[]; total: number; filters: any }>('/api/admin/super/usage/events', {
+    const response = await api.get<{ events: UsageEvent[]; total: number; filters: any }>('/api/admin/super/usage/events', {
       query,
     });
     eventsList.value = response.events;
@@ -210,7 +214,7 @@ const fetchEvents = async () => {
 const fetchTrends = async () => {
   try {
     const days = dateRange.value === '7d' ? 7 : dateRange.value === '30d' ? 30 : 90;
-    const response = await $fetch<{ trends: TrendData[] }>('/api/admin/super/usage/trends', {
+    const response = await api.get<{ trends: TrendData[] }>('/api/admin/super/usage/trends', {
       query: {
         startDate: getStartDate(days),
         endDate: new Date().toISOString(),
