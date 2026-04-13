@@ -1,6 +1,7 @@
 import { db, schema } from '../db';
 import { eq, and, or, isNull } from 'drizzle-orm';
 import { substituteVariables } from '../utils/variable-substitution';
+import { environments, environmentVariables } from '../db/schema';
 
 interface Collection {
     id: string;

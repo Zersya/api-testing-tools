@@ -4,12 +4,14 @@
  * 
  * Serves mock responses from savedRequests.mockConfig
  * Used when CLOUD MOCK environment is active
+ * Falls through to real HTTP request when no mock is configured
  */
 
 import { db } from '../../db';
 import { savedRequests, folders, collections } from '../../db/schema';
 import type { MockConfig } from '../../db/schema/savedRequest';
 import { eq, and } from 'drizzle-orm';
+import { executePreScript, executePostScript, type ScriptLogEntry } from '../../services/script-runner';
 
 interface Collection {
     id: string;
