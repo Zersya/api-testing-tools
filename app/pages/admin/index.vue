@@ -804,7 +804,7 @@ const addVariableFromSettings = async (environment: Environment) => {
         isSecret: false
       }
     });
-    await refreshEnvironmentSources();
+    await refreshEnvironmentSettings();
     environmentRefreshTrigger.value++;
   } catch (e: any) {
     alert('Error adding variable: ' + (e.data?.message || e.message));
@@ -832,7 +832,7 @@ const updateVariableFromSettings = async (variable: EnvironmentVariable, key: st
         isSecret: isSecret ?? variable.isSecret
       }
     });
-    await refreshEnvironmentSources();
+    await refreshEnvironmentSettings();
     environmentRefreshTrigger.value++;
   } catch (e: any) {
     alert('Error updating variable: ' + (e.data?.message || e.message));
@@ -889,7 +889,7 @@ const deleteVariableFromSettings = async (variableId: string) => {
     await $fetch(`/api/admin/variables/${variableId}`, {
       method: 'DELETE'
     });
-    await refreshEnvironmentSources();
+    await refreshEnvironmentSettings();
     environmentRefreshTrigger.value++;
   } catch (e: any) {
     alert('Error deleting variable: ' + (e.data?.message || e.message));
