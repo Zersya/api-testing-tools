@@ -1,6 +1,9 @@
+import { useApiClient } from '~~/composables/useApiFetch';
+
 export default defineNuxtRouteMiddleware(async (to, from) => {
     try {
-        const response = await useRequestFetch()<{ isSuperAdmin: boolean }>('/api/admin/super/check');
+        const api = useApiClient();
+        const response = await api.get<{ isSuperAdmin: boolean }>('/api/admin/super/check');
         if (!response.isSuperAdmin) {
             return navigateTo('/');
         }
