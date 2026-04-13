@@ -2969,7 +2969,6 @@ const sendRequest = async () => {
   isLoading.value = true;
   response.value = null;
   scriptLogs.value = [];
-  activeTab.value = 'response';
   searchQuery.value = '';
   showSearch.value = false;
   searchMatches.value = [];
