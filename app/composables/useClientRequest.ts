@@ -565,7 +565,22 @@ export async function executeClientRequest(
     // Make the actual request
     let response: Response;
     try {
-      response = await fetch(resolvedUrl, fetchOptions);
+      const inTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
+      if (inTauri) {
+        const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http');
+        
+        // Only pass properties that tauriFetch supports and can serialize over IPC
+        const tauriOptions: any = {
+          method: fetchOptions.method,
+          headers: fetchOptions.headers,
+          connectTimeout: timeout
+        };
+        if (fetchOptions.body) tauriOptions.body = fetchOptions.body;
+        
+        response = await tauriFetch(resolvedUrl, tauriOptions);
+      } else {
+        response = await fetch(resolvedUrl, fetchOptions);
+      }
     } catch (fetchError: any) {
       const endTime = Date.now();
 
@@ -701,12 +716,19 @@ export async function executeClientRequest(
   } catch (error: any) {
     const endTime = Date.now();
 
+    let errorMessage = 'Request failed';
+    if (error) {
+      if (typeof error === 'string') errorMessage = error;
+      else if (error.message) errorMessage = error.message;
+      else errorMessage = JSON.stringify(error) !== '{}' ? JSON.stringify(error) : String(error);
+    }
+
     return {
       success: false,
       error: {
-        message: error.message || 'Request failed',
-        code: error.code || 'CLIENT_REQUEST_ERROR',
-        cause: error.stack
+        message: errorMessage,
+        code: error?.code || 'CLIENT_REQUEST_ERROR',
+        cause: error?.stack || error
       },
       timing: {
         startTime: new Date(startTime).toISOString(),

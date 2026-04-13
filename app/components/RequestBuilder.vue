@@ -3034,7 +3034,8 @@ const sendRequest = async () => {
     // Route localhost URLs through server proxy to avoid CORS issues
     // Both raw localhost (http://localhost:3000) and template variables ({{URL}}) 
     // that resolve to localhost will use the server proxy
-    const isLocalRequest = false; // Always use server proxy for localhost to avoid CORS
+    const inTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
+    const isLocalRequest = inTauri || isLocalUrl(requestUrl);
 
     let result: ProxyResponse | ProxyErrorResponse;
 

@@ -36,10 +36,8 @@
             {
               "identifier": "http:allow-fetch",
               "allow": [
-                { "url": "https://postrack.transtrack.co" },
-                { "url": "https://postrack.transtrack.co/**" },
-                { "url": "http://localhost:3000" },
-                { "url": "http://localhost:3000/**" }
+                { "url": "http://**" },
+                { "url": "https://**" }
               ]
             }
           ]
