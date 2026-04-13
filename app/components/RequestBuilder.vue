@@ -3032,11 +3032,10 @@ const sendRequest = async () => {
     }
 
     // Route localhost URLs through server proxy to avoid CORS issues
-    // Both raw localhost (http://localhost:3000) and template variables ({{URL}}) 
+    // Both raw localhost (http://localhost:3000) and template variables ({{URL}})
     // that resolve to localhost will use the server proxy
     const inTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
     const isLocalRequest = inTauri || isLocalUrl(requestUrl);
-
     let result: ProxyResponse | ProxyErrorResponse;
 
     if (isLocalRequest) {
@@ -3049,12 +3048,16 @@ const sendRequest = async () => {
         body: requestBody,
         workspaceId: props.workspaceId,
         environmentId: props.environmentId,
-        savedRequestId: props.request.id || undefined
-      });
+        savedRequestId: props.request.id || undefined,
+        mockConfig: props.isMockEnvironment ? (mockConfig.value || undefined) : undefined
+      } as any);
     } else {
       // Use server proxy for remote URLs
       const { useApiClient } = await import('~~/composables/useApiFetch');
       const api = useApiClient();
+      
+      // Only send mockConfig if environment is a mock environment
+      // This ensures the server proxy knows when to return mock responses
       result = await api.post<ProxyResponse | ProxyErrorResponse>('/api/proxy/request', {
         url: requestUrl,
         method: form.value.method,
@@ -3062,7 +3065,8 @@ const sendRequest = async () => {
         body: requestBody,
         workspaceId: props.workspaceId,
         environmentId: props.environmentId,
-        savedRequestId: props.request.id || undefined
+        savedRequestId: props.request.id || undefined,
+        mockConfig: props.isMockEnvironment ? (mockConfig.value || undefined) : undefined
       });
     }
 
@@ -5123,4 +5127,4 @@ button:active:not(:disabled) {
     display: none;
   }
 }
-</style>
+</style>e>

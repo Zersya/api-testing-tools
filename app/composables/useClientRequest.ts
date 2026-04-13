@@ -70,6 +70,7 @@ interface ClientRequestOptions {
   savedRequestId?: string;
   pathVariables?: Array<{ key: string; value: string }>;
   timeout?: number;
+  mockConfig?: any;
 }
 
 const DEFAULT_TIMEOUT = 30000;
@@ -566,7 +567,20 @@ export async function executeClientRequest(
     let response: Response;
     try {
       const inTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
-      if (inTauri) {
+      
+      if (options.mockConfig?.isEnabled) {
+        if (options.mockConfig.delay > 0) {
+          await new Promise(resolve => setTimeout(resolve, options.mockConfig.delay));
+        }
+        const bodyText = typeof options.mockConfig.responseBody === 'string'
+            ? options.mockConfig.responseBody
+            : JSON.stringify(options.mockConfig.responseBody || {});
+        response = new Response(bodyText, {
+          status: options.mockConfig.statusCode || 200,
+          statusText: 'Mock Response',
+          headers: options.mockConfig.responseHeaders || { 'Content-Type': 'application/json' },
+        });
+      } else if (inTauri) {
         const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http');
         
         // Only pass properties that tauriFetch supports and can serialize over IPC

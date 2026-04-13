@@ -526,6 +526,7 @@ const goBack = () => {
               :collection-id="currentCollectionId"
               :read-only="isReadOnly"
               :is-shared-workspace="true"
+              :is-mock-environment="isCurrentEnvironmentMock"
               @save-request="handleRequestSave"
             />
           </div>

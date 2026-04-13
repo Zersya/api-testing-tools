@@ -3435,6 +3435,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
                 :initial-script-logs="getActiveOpenTab()?.scriptLogs"
                 :initial-expanded-nodes="getActiveOpenTab()?.expandedNodes"
                 :is-shared-workspace="isSharedWorkspace"
+                :is-mock-environment="isActiveEnvironmentMock"
                 :refresh-trigger="environmentRefreshTrigger"
                 @save-request="handleSaveRequest"
                 @save-as-request="handleSaveAsRequest"
