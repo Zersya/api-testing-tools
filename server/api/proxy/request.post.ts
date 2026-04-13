@@ -384,6 +384,12 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
     // Check if environment is CLOUD MOCK and return mock response
     let isMockEnvironment = false;
     let environmentExists = false;
+    console.log('[Proxy] Checking environment:', {
+      environmentId: body.environmentId,
+      savedRequestId: body.savedRequestId,
+      workspaceId: body.workspaceId
+    });
+    
     if (body.environmentId) {
       try {
         const environment = (await db
@@ -394,6 +400,10 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
         
         if (environment) {
           environmentExists = true;
+          console.log('[Proxy] Environment found:', {
+            name: environment.name,
+            isMockEnvironment: environment.isMockEnvironment
+          });
           if (environment.isMockEnvironment) {
             isMockEnvironment = true;
           }
@@ -403,6 +413,8 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
       } catch (error) {
         console.error('[Proxy] Failed to check if environment is mock:', error);
       }
+    } else {
+      console.log('[Proxy] No environment selected, skipping mock check');
     }
 
     // If CLOUD MOCK environment, look for matching saved request with mock config
@@ -558,29 +570,15 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
           }
         }
 
-        // No mock config found for this request
-        const errorEndTime = Date.now();
-        console.log('[Proxy] No mock config found for request:', {
+        // No mock config found for this request - fall through to make real HTTP request
+        // This allows users to make real requests even in mock environments when no mock is configured
+        console.log('[Proxy] No mock config found, falling through to real HTTP request:', {
           method,
           url: resolvedUrl,
           savedRequestId: body.savedRequestId,
           workspaceId: body.workspaceId
         });
-        return {
-          success: false,
-          error: {
-            message: 'No mock configuration found for this request in CLOUD MOCK environment. Please configure mock response in the Mock tab, or switch to a non-mock environment to make real HTTP requests.',
-            code: 'MOCK_NOT_CONFIGURED'
-          },
-          timing: {
-            startTime: new Date(startTime).toISOString(),
-            endTime: new Date(errorEndTime).toISOString(),
-            durationMs: errorEndTime - startTime
-          },
-          variableWarnings: variableWarnings.length > 0 ? variableWarnings : undefined,
-          scriptLogs: scriptLogs.length > 0 ? scriptLogs : undefined,
-          scriptErrors: scriptErrors.length > 0 ? scriptErrors : undefined
-        };
+        // Continue to real HTTP request logic below
       } catch (error: any) {
         console.error('Error handling mock request:', error);
         const errorEndTime = Date.now();
