@@ -37,6 +37,23 @@
               <p v-if="remainingTime" class="mt-1 text-[11px] text-text-muted">
                 {{ remainingTime }}
               </p>
+              <!-- Link to Public Community -->
+              <NuxtLink
+                to="/feedback/public"
+                @click="close"
+                class="mt-2 inline-flex items-center gap-1.5 text-[11px] text-accent-orange hover:text-accent-orange-hover transition-colors"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                  <circle cx="9" cy="7" r="4"/>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+                <span>See what others are saying</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="ml-0.5">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </NuxtLink>
             </div>
 
             <!-- Form -->
@@ -156,6 +173,61 @@
                   </div>
                 </div>
 
+                <!-- Visibility Toggle -->
+                <div class="mt-4 p-3 bg-bg-tertiary rounded-md border border-border-default">
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                      <svg
+                        v-if="visibility === 'public'"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        class="text-green-500"
+                      >
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                      </svg>
+                      <svg
+                        v-else
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        class="text-text-muted"
+                      >
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                      </svg>
+                      <div>
+                        <p class="text-[12px] font-medium text-text-primary">
+                          {{ visibility === 'public' ? 'Public Submission' : 'Private Submission' }}
+                        </p>
+                        <p class="text-[11px] text-text-secondary">
+                          {{ visibility === 'public'
+                            ? 'Other users can see and vote on this'
+                            : 'Only you and admins can see this'
+                          }}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      @click="toggleVisibility"
+                      class="px-3 py-1.5 text-[11px] rounded transition-colors"
+                      :class="visibility === 'public'
+                        ? 'bg-green-500/10 text-green-500 hover:bg-green-500/20'
+                        : 'bg-accent-orange/10 text-accent-orange hover:bg-accent-orange/20'"
+                    >
+                      Make {{ visibility === 'public' ? 'Private' : 'Public' }}
+                    </button>
+                  </div>
+                </div>
+
                 <!-- Error Message -->
                 <div v-if="error" class="mt-4 p-2.5 bg-accent-red/10 border border-accent-red/30 rounded-md">
                   <p class="text-[12px] text-accent-red">{{ error }}</p>
@@ -217,7 +289,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean];
-  submit: [data: { responses: Record<string, unknown>; rating?: number; comment?: string }];
+  submit: [data: { responses: Record<string, unknown>; rating?: number; comment?: string; visibility: 'public' | 'private' }];
 }>();
 
 const isVisible = computed({
@@ -228,8 +300,13 @@ const isVisible = computed({
 const responses = ref<Record<string, unknown>>({});
 const overallRating = ref<number | undefined>(undefined);
 const comment = ref('');
+const visibility = ref<'public' | 'private'>('public');
 const isSubmitting = ref(false);
 const error = ref<string | null>(null);
+
+const toggleVisibility = () => {
+  visibility.value = visibility.value === 'public' ? 'private' : 'public';
+};
 
 const isValid = computed(() => {
   if (props.config?.questions?.length) {
@@ -259,10 +336,11 @@ const submit = async () => {
   error.value = null;
   
   try {
-    const submissionData: { responses: Record<string, unknown>; rating?: number; comment?: string } = {
-      responses: { ...responses.value }
+    const submissionData: { responses: Record<string, unknown>; rating?: number; comment?: string; visibility: 'public' | 'private' } = {
+      responses: { ...responses.value },
+      visibility: visibility.value
     };
-    
+
     // If using default form, add rating and comment
     if (!props.config?.questions?.length) {
       if (overallRating.value) {
@@ -272,20 +350,21 @@ const submit = async () => {
         submissionData.comment = comment.value;
       }
     }
-    
+
     // NEW: Attach error context if there are recent errors
     const errorContext = getErrorContext();
     if (errorContext.errorCount > 0) {
       submissionData.responses.errorContext = errorContext;
     }
-    
+
     emit('submit', submissionData);
     close();
-    
+
     // Reset form
     responses.value = {};
     overallRating.value = undefined;
     comment.value = '';
+    visibility.value = 'public';
   } catch (err: any) {
     error.value = err.message || 'Failed to submit feedback';
   } finally {
@@ -299,6 +378,7 @@ watch(() => props.modelValue, (newValue) => {
     responses.value = {};
     overallRating.value = undefined;
     comment.value = '';
+    visibility.value = 'public';
     error.value = null;
   }
 });

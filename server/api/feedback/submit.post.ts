@@ -5,6 +5,7 @@ interface SubmitFeedbackBody {
   responses: Record<string, unknown>;
   rating?: number;
   comment?: string;
+  visibility?: 'public' | 'private';
 }
 
 export default defineEventHandler(async (event) => {
@@ -86,9 +87,11 @@ export default defineEventHandler(async (event) => {
         rating: body.rating,
         comment: body.comment,
         status: 'open', // Default status for new submissions
+        visibility: body.visibility || 'public', // Default to public unless explicitly set to private
+        upvotes: 0,
         userAgent,
         createdAt: now,
-        
+
         // NEW: Add error correlation
         datadogSessionId: errorContext?.sessionId,
         errorContext: errorContext ? {
