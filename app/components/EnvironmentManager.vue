@@ -47,7 +47,7 @@ const emit = defineEmits<{
   delete: [environment: Environment];
   'update:variable': [variable: EnvironmentVariable, key: string, value: string, isSecret: boolean];
   'delete:variable': [variableId: string];
-  'add:variable': [environmentId: string];
+  'add:variable': [environment: Environment];
   'toggle:secret': [variable: EnvironmentVariable];
 }>();
 
@@ -55,8 +55,14 @@ const emit = defineEmits<{
 const viewMode = ref<ViewMode>('list');
 const searchQuery = ref('');
 const sortBy = ref<SortOption>('name');
-const selectedEnvironment = ref<Environment | null>(null);
 const showVariablesPanel = ref(false);
+const selectedEnvironmentId = ref<string | null>(null);
+
+// Computed selected environment that stays in sync with updated environments list
+const selectedEnvironment = computed<Environment | null>(() => {
+  if (!selectedEnvironmentId.value || !showVariablesPanel.value) return null;
+  return props.environments.find(e => e.id === selectedEnvironmentId.value) || null;
+});
 
 // Modal states (managed internally for rename/delete)
 const showRenameModal = ref(false);
@@ -111,14 +117,14 @@ const hasSearchResults = computed(() => filteredEnvironments.value.length > 0);
 
 // Actions
 const openVariablesPanel = (environment: Environment) => {
-  selectedEnvironment.value = environment;
+  selectedEnvironmentId.value = environment.id;
   showVariablesPanel.value = true;
 };
 
 const closeVariablesPanel = () => {
   showVariablesPanel.value = false;
   setTimeout(() => {
-    selectedEnvironment.value = null;
+    selectedEnvironmentId.value = null;
   }, 200);
 };
 

@@ -30,7 +30,7 @@ const emit = defineEmits<{
   close: [];
   'update:variable': [variable: EnvironmentVariable, key: string, value: string, isSecret: boolean];
   'delete:variable': [variableId: string];
-  'add:variable': [environmentId: string];
+  'add:variable': [environment: Environment];
   'toggle:secret': [variable: EnvironmentVariable];
   activate: [environment: Environment];
 }>();
@@ -154,7 +154,7 @@ watch(() => props.show, (show) => {
               <button
                 v-if="environment"
                 class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-accent-blue bg-accent-blue/10 border border-accent-blue/30 rounded-lg transition-all duration-fast hover:bg-accent-blue/20"
-                @click="environment && emit('add:variable', environment.id)"
+                @click="environment && emit('add:variable', environment)"
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -177,7 +177,7 @@ watch(() => props.show, (show) => {
               <button
                 v-if="environment"
                 class="btn btn-primary btn-sm"
-                @click="emit('add:variable', environment.id)"
+                @click="emit('add:variable', environment)"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <line x1="12" y1="5" x2="12" y2="19"></line>
