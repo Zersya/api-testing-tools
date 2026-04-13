@@ -26,6 +26,7 @@ export interface FeedbackSubmission {
   responses: Record<string, unknown>;
   rating?: number;
   comment?: string;
+  visibility?: 'public' | 'private';
 }
 
 const feedbackStatus = ref<FeedbackStatus | null>(null);

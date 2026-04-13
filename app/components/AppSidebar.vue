@@ -1355,6 +1355,31 @@ defineExpose({
       </button>
     </div>
 
+    <!-- Feedback Navigation -->
+    <div class="flex flex-col border-b border-border-default p-2 gap-1">
+      <NuxtLink
+        to="/feedback/my-submissions"
+        :class="['flex items-center gap-2 py-2 px-3 rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors text-[13px] font-medium', $route.path === '/feedback/my-submissions' ? 'bg-bg-active text-text-primary' : '']"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+        My Feedback
+      </NuxtLink>
+      <NuxtLink
+        to="/feedback/public"
+        :class="['flex items-center gap-2 py-2 px-3 rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors text-[13px] font-medium', $route.path === '/feedback/public' ? 'bg-bg-active text-text-primary' : '']"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+        Community
+      </NuxtLink>
+    </div>
+
     <!-- Workspace search (Postman-style: search requests, folders, collections) -->
     <div v-if="activeView === 'hierarchy' && currentWorkspace" class="p-2 border-b border-border-default">
       <div class="flex items-center gap-1.5 bg-bg-input border border-border-default rounded-lg overflow-hidden">
