@@ -43,6 +43,7 @@ interface ProxyRequestBody {
   environmentId?: string;
   savedRequestId?: string;
   pathVariables?: PathVariable[];
+  mockConfig?: MockConfig;
 }
 
 interface ProxyResponse {
@@ -420,95 +421,94 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
     // If CLOUD MOCK environment, look for matching saved request with mock config
     if (isMockEnvironment) {
       try {
-        let savedRequest: { id: string; url: string; mockConfig: any } | undefined;
+        let mockConfig: MockConfig | undefined = body.mockConfig;
 
-        // Strategy 1: Direct lookup by savedRequestId (most reliable - avoids URL matching ambiguity)
-        if (body.savedRequestId) {
-          console.log('[Proxy] Looking up mock config by savedRequestId:', body.savedRequestId);
-          const directResult = (await db
-            .select({
-              id: savedRequests.id,
-              url: savedRequests.url,
-              mockConfig: savedRequests.mockConfig
-            })
-            .from(savedRequests)
-            .where(eq(savedRequests.id, body.savedRequestId))
-            .limit(1))[0];
+        if (!mockConfig) {
+          let savedRequest: { id: string; url: string; mockConfig: any } | undefined;
 
-          if (directResult) {
-            savedRequest = directResult;
-            console.log('[Proxy] Found by ID, mockConfig:', savedRequest.mockConfig);
+          // Strategy 1: Direct lookup by savedRequestId (most reliable - avoids URL matching ambiguity)
+          if (body.savedRequestId) {
+            console.log('[Proxy] Looking up mock config by savedRequestId:', body.savedRequestId);
+            const directResult = (await db
+              .select({
+                id: savedRequests.id,
+                url: savedRequests.url,
+                mockConfig: savedRequests.mockConfig
+              })
+              .from(savedRequests)
+              .where(eq(savedRequests.id, body.savedRequestId))
+              .limit(1))[0];
+
+            if (directResult) {
+              savedRequest = directResult;
+              console.log('[Proxy] Found by ID, mockConfig:', savedRequest.mockConfig);
+            }
+          }
+
+          // Strategy 2: Fall back to URL-based matching if no savedRequestId or not found by ID
+          if (!savedRequest) {
+            const requestUrlPath = resolvedUrl.split('?')[0];
+
+            console.log('[Proxy] Looking for mock config by URL:', {
+              method,
+              url: resolvedUrl,
+              urlPath: requestUrlPath
+            });
+
+            const whereConditions: any[] = [eq(savedRequests.method, method)];
+            if (body.workspaceId) {
+              whereConditions.push(eq(projects.workspaceId, body.workspaceId));
+            }
+
+            const matchingRequests = await db
+              .select({
+                id: savedRequests.id,
+                url: savedRequests.url,
+                mockConfig: savedRequests.mockConfig
+              })
+              .from(savedRequests)
+              .innerJoin(folders, eq(savedRequests.folderId, folders.id))
+              .innerJoin(collections, eq(folders.collectionId, collections.id))
+              .innerJoin(projects, eq(collections.projectId, projects.id))
+              .where(and(...whereConditions));
+
+            console.log('[Proxy] Found matching requests:', matchingRequests.length);
+
+            savedRequest = matchingRequests.find(req => {
+              const savedUrl = req.url.split('?')[0];
+
+              if (savedUrl === requestUrlPath) {
+                console.log('[Proxy] Exact match found:', { savedUrl, requestUrlPath });
+                return true;
+              }
+
+              if (savedUrl.endsWith(requestUrlPath)) {
+                console.log('[Proxy] Path suffix match found:', { savedUrl, requestUrlPath });
+                return true;
+              }
+
+              const savedPathMatch = savedUrl.match(/\/[^\/]+.*$/);
+              const requestPathMatch = requestUrlPath.match(/\/[^\/]+.*$/);
+              if (savedPathMatch && requestPathMatch && savedPathMatch[0] === requestPathMatch[0]) {
+                console.log('[Proxy] Path match found:', { savedPath: savedPathMatch[0], requestPath: requestPathMatch[0] });
+                return true;
+              }
+
+              return false;
+            });
+          }
+
+          if (savedRequest?.mockConfig) {
+            mockConfig = typeof savedRequest.mockConfig === 'string' 
+              ? JSON.parse(savedRequest.mockConfig) 
+              : savedRequest.mockConfig;
           }
         }
 
-        // Strategy 2: Fall back to URL-based matching if no savedRequestId or not found by ID
-        if (!savedRequest) {
-          const requestUrlPath = resolvedUrl.split('?')[0];
+        console.log('[Proxy] Resolved mockConfig:', mockConfig);
+        console.log('[Proxy] isEnabled:', mockConfig?.isEnabled);
 
-          console.log('[Proxy] Looking for mock config by URL:', {
-            method,
-            url: resolvedUrl,
-            urlPath: requestUrlPath
-          });
-
-          const whereConditions: any[] = [eq(savedRequests.method, method)];
-          if (body.workspaceId) {
-            whereConditions.push(eq(projects.workspaceId, body.workspaceId));
-          }
-
-          const matchingRequests = await db
-            .select({
-              id: savedRequests.id,
-              url: savedRequests.url,
-              mockConfig: savedRequests.mockConfig
-            })
-            .from(savedRequests)
-            .innerJoin(folders, eq(savedRequests.folderId, folders.id))
-            .innerJoin(collections, eq(folders.collectionId, collections.id))
-            .innerJoin(projects, eq(collections.projectId, projects.id))
-            .where(and(...whereConditions));
-
-          console.log('[Proxy] Found matching requests:', matchingRequests.length);
-
-          savedRequest = matchingRequests.find(req => {
-            const savedUrl = req.url.split('?')[0];
-
-            if (savedUrl === requestUrlPath) {
-              console.log('[Proxy] Exact match found:', { savedUrl, requestUrlPath });
-              return true;
-            }
-
-            if (savedUrl.endsWith(requestUrlPath)) {
-              console.log('[Proxy] Path suffix match found:', { savedUrl, requestUrlPath });
-              return true;
-            }
-
-            const savedPathMatch = savedUrl.match(/\/[^\/]+.*$/);
-            const requestPathMatch = requestUrlPath.match(/\/[^\/]+.*$/);
-            if (savedPathMatch && requestPathMatch && savedPathMatch[0] === requestPathMatch[0]) {
-              console.log('[Proxy] Path match found:', { savedPath: savedPathMatch[0], requestPath: requestPathMatch[0] });
-              return true;
-            }
-
-            return false;
-          });
-        }
-
-        console.log('[Proxy] Selected request ID:', savedRequest?.id);
-        console.log('[Proxy] Selected request URL:', savedRequest?.url);
-        console.log('[Proxy] mockConfig field:', savedRequest?.mockConfig);
-        
-
-
-        if (savedRequest?.mockConfig) {
-          const mockConfig: MockConfig = typeof savedRequest.mockConfig === 'string' 
-            ? JSON.parse(savedRequest.mockConfig) 
-            : savedRequest.mockConfig;
-
-          console.log('[Proxy] Parsed mockConfig:', mockConfig);
-          console.log('[Proxy] isEnabled:', mockConfig?.isEnabled);
-
-          if (mockConfig?.isEnabled) {
+        if (mockConfig?.isEnabled) {
             // Apply delay if specified
             if (mockConfig.delay > 0) {
               await new Promise(resolve => setTimeout(resolve, mockConfig.delay));
@@ -568,8 +568,6 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
 
             return mockResponse;
           }
-        }
-
         // No mock config found for this request - fall through to make real HTTP request
         // This allows users to make real requests even in mock environments when no mock is configured
         console.log('[Proxy] No mock config found, falling through to real HTTP request:', {
