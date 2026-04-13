@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { SSO_PROVIDER_METADATA, type SsoProviderType } from '../types/sso';
+import { useApiClient } from '~~/composables/useApiFetch';
 
 interface SsoProviderInfo {
   id: string;
@@ -27,11 +28,13 @@ const errorMessage = ref('');
 const ssoProviders = ref<SsoProvidersResponse>({ providers: [], allowMultipleProviders: true });
 const isLoadingProviders = ref(true);
 
+// Initialize API client
+const api = useApiClient();
+
 const fetchSsoProviders = async () => {
   try {
     isLoadingProviders.value = true;
-    const { get: apiGet } = useApiClient();
-    const data = await apiGet<SsoProvidersResponse>('/api/auth/sso/providers');
+    const data = await api.get<SsoProvidersResponse>('/api/auth/sso/providers');
     ssoProviders.value = data;
   } catch (e) {
     console.error('Failed to fetch SSO providers:', e);
