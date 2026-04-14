@@ -143,8 +143,10 @@ const getFullUrl = computed(() => {
   // If CLOUD MOCK environment, transform to mock URL
   if (props.isMockEnvironment) {
     url = getMockUrl(url);
+    // Substitute {{URL}} in the mock URL
+    url = substituteVariables(url);
   }
-  
+
   const enabledParams = (props.queryParams || []).filter(p => p.enabled !== false && p.key);
   
   // Add auth query param if API key is set to query

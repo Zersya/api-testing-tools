@@ -86,7 +86,25 @@ export default defineEventHandler(async (event) => {
 
             // Match URL path (extract path from URL)
             const requestUrl = request.url;
-            const requestPath = requestUrl.split('?')[0]; // Remove query params
+            let requestPath = requestUrl.split('?')[0]; // Remove query params
+            
+            // Remove base URL / environment variable prefix to get just the path
+            // Handles: {{URL}}/api/users, https://example.com/api/users, /api/users
+            if (requestPath.startsWith('{{URL}}')) {
+                requestPath = requestPath.slice('{{URL}}'.length);
+            } else if (requestPath.includes('://')) {
+                try {
+                    const urlObj = new URL(requestPath);
+                    requestPath = urlObj.pathname;
+                } catch {
+                    // If parsing fails, keep as-is
+                }
+            }
+            
+            // Ensure path starts with /
+            if (!requestPath.startsWith('/')) {
+                requestPath = '/' + requestPath;
+            }
             
             // Convert path pattern to regex for matching
             // Support path params like :id

@@ -453,7 +453,13 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
           console.log('[Proxy] Found matching requests:', matchingRequests.length);
 
           savedRequest = matchingRequests.find(req => {
-            const savedUrl = req.url.split('?')[0];
+            let savedUrl = req.url.split('?')[0];
+            
+            // Resolve {{URL}} and other variables in saved request URL for matching
+            // This handles CLOUD MOCK where saved requests store {{URL}}/api/path
+            if (savedUrl.includes('{{')) {
+              savedUrl = substituteWithLimit(savedUrl);
+            }
 
             if (savedUrl === requestUrlPath) {
               console.log('[Proxy] Exact match found:', { savedUrl, requestUrlPath });
@@ -465,11 +471,27 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
               return true;
             }
 
-            const savedPathMatch = savedUrl.match(/\/[^\/]+.*$/);
-            const requestPathMatch = requestUrlPath.match(/\/[^\/]+.*$/);
-            if (savedPathMatch && requestPathMatch && savedPathMatch[0] === requestPathMatch[0]) {
-              console.log('[Proxy] Path match found:', { savedPath: savedPathMatch[0], requestPath: requestPathMatch[0] });
+            // Also compare by extracting just the path portion
+            // This handles cases where request uses /c/{collection}/path but saved URL is full URL
+            const savedPathMatch = savedUrl.match(/^(?:https?:\/\/[^\/]+)?(\/.*)$/);
+            const requestPathMatch = requestUrlPath.match(/^(?:https?:\/\/[^\/]+)?(\/.*)$/);
+            if (savedPathMatch && requestPathMatch && savedPathMatch[1] === requestPathMatch[1]) {
+              console.log('[Proxy] Path match found:', { savedPath: savedPathMatch[1], requestPath: requestPathMatch[1] });
               return true;
+            }
+
+            // Handle /c/{collection}/path pattern: extract path after collection prefix
+            const collectionPathMatch = requestUrlPath.match(/^\/c\/[^\/]+(\/.*)$/);
+            if (collectionPathMatch && savedPathMatch) {
+              if (savedPathMatch[1] === collectionPathMatch[1]) {
+                console.log('[Proxy] Collection path match found:', { savedPath: savedPathMatch[1], requestPath: collectionPathMatch[1] });
+                return true;
+              }
+              // Also try if saved path ends with the collection subpath
+              if (savedPathMatch[1].endsWith(collectionPathMatch[1])) {
+                console.log('[Proxy] Collection suffix match found:', { savedPath: savedPathMatch[1], requestPath: collectionPathMatch[1] });
+                return true;
+              }
             }
 
             return false;
