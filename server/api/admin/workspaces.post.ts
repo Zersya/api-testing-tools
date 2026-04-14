@@ -1,5 +1,5 @@
 import { db } from '../../db';
-import { workspaces, projects, environments } from '../../db/schema';
+import { workspaces, projects, environments, environmentVariables } from '../../db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 
 interface CreateWorkspaceBody {
@@ -80,16 +80,32 @@ export default defineEventHandler(async (event) => {
       .returning())[0];
 
     // Automatically create CLOUD MOCK environment for the default project
+    let mockEnvironmentId: string | null = null;
     try {
-      await db.insert(environments).values({
+      const mockEnv = (await db.insert(environments).values({
         projectId: defaultProject.id,
         name: 'CLOUD MOCK',
         isActive: false,
         isMockEnvironment: true
-      });
+      }).returning())[0];
+      mockEnvironmentId = mockEnv.id;
     } catch (mockEnvError) {
       console.error('Failed to create CLOUD MOCK environment:', mockEnvError);
       // Don't fail the workspace creation if mock env creation fails
+    }
+
+    // Add URL variable to CLOUD MOCK environment
+    if (mockEnvironmentId) {
+      try {
+        await db.insert(environmentVariables).values({
+          environmentId: mockEnvironmentId,
+          key: 'URL',
+          value: '{{$appUrl}}',
+          isSecret: false
+        });
+      } catch (urlVarError) {
+        console.error('Failed to create URL variable for CLOUD MOCK environment:', urlVarError);
+      }
     }
 
     return {
