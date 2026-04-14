@@ -19,17 +19,8 @@ const openFeedbackModal = () => {
 provide('openFeedbackModal', openFeedbackModal);
 
 onMounted(async () => {
-  // Check if feedback should be shown
-  const status = await fetchStatus();
-
-  // Show modal after a delay if feedback is available
-  if (status.isVisible) {
-    setTimeout(() => {
-      if (shouldShowFeedback.value) {
-        showFeedbackModal.value = true;
-      }
-    }, 30000); // Show after 30 seconds
-  }
+  // Check feedback status for the button visibility
+  await fetchStatus();
 });
 
 const handleFeedbackSubmit = async (data: { responses: Record<string, unknown>; rating?: number; comment?: string }) => {

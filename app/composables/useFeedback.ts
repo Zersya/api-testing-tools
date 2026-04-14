@@ -31,7 +31,6 @@ export interface FeedbackSubmission {
 
 const feedbackStatus = ref<FeedbackStatus | null>(null);
 const isLoading = ref(false);
-const hasSubmitted = ref(false);
 
 export function useFeedback() {
   const fetchStatus = async (): Promise<FeedbackStatus> => {
@@ -55,14 +54,6 @@ export function useFeedback() {
         body: submission
       });
       
-      if (response.success) {
-        hasSubmitted.value = true;
-        // Store in localStorage to prevent showing again in this session
-        if (process.client) {
-          localStorage.setItem('feedback_submitted', 'true');
-        }
-      }
-      
       return response;
     } catch (error: any) {
       console.error('[useFeedback] Error submitting feedback:', error);
@@ -71,16 +62,10 @@ export function useFeedback() {
   };
   
   const shouldShowFeedback = computed(() => {
-    // Check if already submitted in this browser session
-    if (process.client) {
-      const alreadySubmitted = localStorage.getItem('feedback_submitted');
-      if (alreadySubmitted) return false;
-    }
-    
     // Check server status
     if (!feedbackStatus.value) return false;
     
-    return feedbackStatus.value.isVisible && !hasSubmitted.value;
+    return feedbackStatus.value.isVisible;
   });
   
   const remainingTime = computed(() => {
@@ -104,7 +89,6 @@ export function useFeedback() {
     // State
     feedbackStatus: computed(() => feedbackStatus.value),
     isLoading: computed(() => isLoading.value),
-    hasSubmitted: computed(() => hasSubmitted.value),
     
     // Computed
     shouldShowFeedback,
@@ -112,14 +96,6 @@ export function useFeedback() {
     
     // Methods
     fetchStatus,
-    submitFeedback,
-    
-    // Reset (for testing)
-    reset: () => {
-      hasSubmitted.value = false;
-      if (process.client) {
-        localStorage.removeItem('feedback_submitted');
-      }
-    }
+    submitFeedback
   };
 }
