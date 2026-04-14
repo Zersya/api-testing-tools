@@ -112,6 +112,8 @@ interface Props {
   workspaces?: WorkspaceWithProjects[];
   selectedWorkspaceId?: string | null;
   refreshTrigger?: number;
+  isMobile?: boolean;
+  isOpen?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -121,7 +123,9 @@ const props = withDefaults(defineProps<Props>(), {
   selectedCollectionId: null,
   workspaces: () => [],
   selectedWorkspaceId: null,
-  refreshTrigger: 0
+  refreshTrigger: 0,
+  isMobile: false,
+  isOpen: false
 });
 
 const emit = defineEmits<{
@@ -156,6 +160,7 @@ const emit = defineEmits<{
   selectWorkspace: [workspaceId: string];
   importComplete: [];
   activeViewChange: [view: 'hierarchy' | 'mocks' | 'history' | 'definitions'];
+  closeSidebar: [];
 }>();
 
 const selectedWorkspaceId = ref<string | null>(null);
@@ -1306,12 +1311,36 @@ defineExpose({
 </script>
 
 <template>
-  <aside class="w-[300px] h-full bg-bg-sidebar border-r border-border-default flex flex-col flex-shrink-0">
+  <aside
+    :class="[
+      'bg-bg-sidebar border-r border-border-default flex flex-col flex-shrink-0',
+      'w-[280px] md:w-[300px] h-full',
+      isMobile ? 'fixed top-0 left-0 h-screen h-dvh shadow-2xl transition-transform duration-250' : 'relative',
+      isMobile && !isOpen ? '-translate-x-full' : 'translate-x-0'
+    ]"
+    :style="isMobile ? 'z-index: 70;' : ''"
+  >
+    <!-- Sidebar Content Container - Higher z-index than overlay -->
+    <div class="relative z-[70] flex flex-col h-full bg-bg-sidebar">
+    <!-- Mobile Sidebar Header -->
+    <div v-if="isMobile" class="flex items-center justify-between p-3 border-b border-border-default bg-bg-header">
+      <span class="text-sm font-semibold text-text-primary">Navigation</span>
+      <button
+        class="flex items-center justify-center w-9 h-9 rounded-md text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+        @click="emit('closeSidebar')"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+
     <!-- Main Navigation -->
     <div class="flex flex-col border-b border-border-default p-2 gap-1">
       <button
-        :class="['flex items-center gap-2 py-2 px-3 rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors text-[13px] font-medium', activeView === 'hierarchy' ? 'bg-bg-active text-text-primary' : '']"
-        @click="activeView = 'hierarchy'"
+        :class="['flex items-center gap-2 py-2.5 md:py-2 px-3 rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors text-[13px] font-medium touch-target', activeView === 'hierarchy' ? 'bg-bg-active text-text-primary' : '']"
+        @click="activeView = 'hierarchy'; if (isMobile) emit('closeSidebar')"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
@@ -1321,8 +1350,8 @@ defineExpose({
         Workspace
       </button>
       <button
-        :class="['flex items-center gap-2 py-2 px-3 rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors text-[13px] font-medium', activeView === 'mocks' ? 'bg-bg-active text-text-primary' : '']"
-        @click="activeView = 'mocks'"
+        :class="['flex items-center gap-2 py-2.5 md:py-2 px-3 rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors text-[13px] font-medium touch-target', activeView === 'mocks' ? 'bg-bg-active text-text-primary' : '']"
+        @click="activeView = 'mocks'; if (isMobile) emit('closeSidebar')"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
@@ -1331,8 +1360,8 @@ defineExpose({
         Mocks
       </button>
       <button
-        :class="['flex items-center gap-2 py-2 px-3 rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors text-[13px] font-medium', activeView === 'definitions' ? 'bg-bg-active text-text-primary' : '']"
-        @click="activeView = 'definitions'"
+        :class="['flex items-center gap-2 py-2.5 md:py-2 px-3 rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors text-[13px] font-medium touch-target', activeView === 'definitions' ? 'bg-bg-active text-text-primary' : '']"
+        @click="activeView = 'definitions'; if (isMobile) emit('closeSidebar')"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -1344,8 +1373,8 @@ defineExpose({
         Definitions
       </button>
       <button
-        :class="['flex items-center gap-2 py-2 px-3 rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors text-[13px] font-medium', activeView === 'history' ? 'bg-bg-active text-text-primary' : '']"
-        @click="activeView = 'history'"
+        :class="['flex items-center gap-2 py-2.5 md:py-2 px-3 rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors text-[13px] font-medium touch-target', activeView === 'history' ? 'bg-bg-active text-text-primary' : '']"
+        @click="activeView = 'history'; if (isMobile) emit('closeSidebar')"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="10"></circle>
@@ -2050,6 +2079,18 @@ defineExpose({
       class="fixed inset-0 z-40"
       @click="closeContextMenu"
     ></div>
+
+    </div><!-- End of Sidebar Content Container -->
+
+    <!-- Mobile Sidebar Overlay - Teleported to body to properly cover main content -->
+    <Teleport to="body">
+      <div
+        v-if="isMobile && isOpen"
+        class="fixed inset-0 bg-black/50"
+        style="z-index: 55;"
+        @click="emit('closeSidebar')"
+      ></div>
+    </Teleport>
   </aside>
 </template>
 
