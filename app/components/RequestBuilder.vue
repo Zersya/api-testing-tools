@@ -4715,12 +4715,149 @@ defineExpose({
           </transition>
         </div>
 
-        <!-- Mobile: Response as Tab (Fallback) -->
+        <!-- Mobile: Response Panel -->
         <div 
-          v-if="isMobile"
-          class="mobile-response-panel"
+          v-if="isMobile && hasResponse"
+          class="mobile-response-panel flex flex-col border-t border-border-default bg-bg-secondary flex-shrink-0"
+          :class="{ 'flex-1': !isResponseCollapsed, 'h-auto': isResponseCollapsed }"
         >
-          <!-- Mobile Response Content - Simplified tab-based view -->
+          <!-- Mobile Response Header -->
+          <div class="flex items-center justify-between py-2.5 px-3 border-b border-border-default bg-bg-secondary/50">
+            <div class="flex items-center gap-2">
+              <button
+                @click="hasResponse ? toggleResponseCollapse() : null"
+                class="flex items-center gap-1 text-xs font-medium transition-colors"
+                :class="hasResponse ? 'text-text-secondary' : 'text-text-muted'"
+              >
+                <svg 
+                  v-if="hasResponse"
+                  width="14" 
+                  height="14" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  stroke-width="2"
+                  class="transition-transform duration-200"
+                  :class="{ 'rotate-180': isResponseCollapsed }"
+                >
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+                <span>Response</span>
+              </button>
+              
+              <div 
+                v-if="hasResponse && !isResponseCollapsed && response"
+                class="flex items-center gap-2"
+              >
+                <span
+                  v-if="response.success"
+                  class="py-0.5 px-1.5 rounded text-[10px] font-semibold uppercase"
+                  :class="getResponseStatusColorClass(response.status)"
+                >
+                  {{ response.status }}
+                </span>
+                <span v-else class="py-0.5 px-1.5 rounded text-[10px] font-semibold uppercase bg-accent-red/15 text-accent-red">
+                  Error
+                </span>
+                <span v-if="response.timing" class="text-[10px] text-text-muted font-mono">{{ response.timing.durationMs }}ms</span>
+              </div>
+            </div>
+            
+            <div 
+              v-if="hasResponse && !isResponseCollapsed && response"
+              class="flex items-center gap-1"
+            >
+              <button 
+                @click="copyResponseBody"
+                class="p-1.5 text-text-muted hover:text-text-secondary transition-colors"
+                title="Copy response"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Mobile Response Content -->
+          <div 
+            v-if="!isResponseCollapsed && response"
+            class="flex-1 flex flex-col overflow-hidden"
+          >
+            <!-- Mobile Response Tabs -->
+            <div class="flex border-b border-border-default overflow-x-auto scrollbar-hide">
+              <button
+                v-for="tab in ['pretty', 'raw', 'headers']"
+                :key="tab"
+                @click="responseViewType = tab as ResponseViewType"
+                class="py-2 px-3 text-[11px] font-medium whitespace-nowrap transition-colors border-b-2 -mb-px"
+                :class="[
+                  responseViewType === tab 
+                    ? 'text-text-primary border-b-accent-blue' 
+                    : 'text-text-muted border-b-transparent hover:text-text-secondary'
+                ]"
+              >
+                {{ tab === 'pretty' ? 'Pretty' : tab === 'raw' ? 'Raw' : 'Headers' }}
+              </button>
+            </div>
+
+            <!-- Mobile Response Body -->
+            <div class="flex-1 overflow-auto p-3">
+              <!-- Pretty View -->
+              <div v-if="responseViewType === 'pretty'" class="h-full">
+                <div v-if="response.success" class="h-full">
+                  <pre 
+                    v-if="isJsonResponse()"
+                    class="font-mono text-xs leading-relaxed text-text-primary whitespace-pre-wrap break-words m-0"
+                  >{{ JSON.stringify(response.body, null, 2) }}</pre>
+                  <div v-else-if="isImageResponse()" class="flex items-center justify-center h-full">
+                    <img
+                      v-if="getImageData()?.src"
+                      :src="getImageData()!.src"
+                      alt="Response"
+                      class="max-w-full max-h-[200px] object-contain rounded"
+                    />
+                  </div>
+                  <pre 
+                    v-else
+                    class="font-mono text-xs leading-relaxed text-text-primary whitespace-pre-wrap break-words m-0"
+                  >{{ getResponseText() }}</pre>
+                </div>
+                <div v-else class="p-3 bg-accent-red/10 border border-accent-red/30 rounded">
+                  <p class="text-sm text-accent-red">{{ response.error.message }}</p>
+                </div>
+              </div>
+
+              <!-- Raw View -->
+              <div v-else-if="responseViewType === 'raw'" class="h-full">
+                <pre class="font-mono text-xs leading-relaxed text-text-primary whitespace-pre-wrap break-words m-0">{{ getResponseText() }}</pre>
+              </div>
+
+              <!-- Headers View -->
+              <div v-else-if="responseViewType === 'headers'" class="h-full">
+                <div class="text-[10px] text-text-muted mb-2">{{ Object.keys(response.headers || {}).length }} headers</div>
+                <div class="bg-bg-tertiary rounded border border-border-default overflow-hidden">
+                  <div
+                    v-for="[key, value] in Object.entries(response.headers || {})"
+                    :key="key"
+                    class="flex items-start py-2 px-2 border-b border-border-default last:border-b-0 text-[11px]"
+                  >
+                    <span class="font-mono text-accent-blue flex-shrink-0 w-1/3">{{ key }}</span>
+                    <span class="font-mono text-text-primary flex-1 break-all">{{ value }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Empty State -->
+          <div 
+            v-else-if="!hasResponse"
+            class="py-4 px-3 text-center"
+          >
+            <p class="text-xs text-text-muted">Click "Send" to see response</p>
+          </div>
         </div>
       </div>
     </div>
