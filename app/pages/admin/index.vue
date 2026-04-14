@@ -1106,6 +1106,28 @@ const workspaceToRename = ref<{ id: string; name: string } | null>(null);
 const CODE_EXAMPLES_STORAGE_KEY = 'showCodeExamplesPanel';
 const showCodeExamples = ref(true);
 
+// Mobile responsiveness
+const isMobile = ref(false);
+const isSidebarOpen = ref(false);
+const MOBILE_BREAKPOINT = 768;
+
+const checkMobile = () => {
+  if (typeof window !== 'undefined') {
+    isMobile.value = window.innerWidth < MOBILE_BREAKPOINT;
+    if (!isMobile.value) {
+      isSidebarOpen.value = true;
+    }
+  }
+};
+
+const toggleSidebar = () => {
+  isSidebarOpen.value = !isSidebarOpen.value;
+};
+
+const closeSidebar = () => {
+  isSidebarOpen.value = false;
+};
+
 // Load saved preference
 onMounted(() => {
   const saved = localStorage.getItem(CODE_EXAMPLES_STORAGE_KEY);
@@ -1315,7 +1337,11 @@ onMounted(async () => {
   if (typeof window !== 'undefined') {
     hideTeamWarningForever.value = localStorage.getItem('hideTeamCollectionSaveWarning') === 'true';
   }
-  
+
+  // Initialize mobile detection
+  checkMobile();
+  window.addEventListener('resize', checkMobile);
+
   await loadPersistedRequestTabs();
   window.addEventListener('beforeunload', handleWindowBeforeUnload);
   document.addEventListener('visibilitychange', handleWindowVisibilityChange);
@@ -1324,6 +1350,7 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('beforeunload', handleWindowBeforeUnload);
   document.removeEventListener('visibilitychange', handleWindowVisibilityChange);
+  window.removeEventListener('resize', checkMobile);
   persistRequestTabsDebounced.cancel();
 });
 
@@ -2982,7 +3009,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
 </script>
 
 <template>
-  <div class="flex flex-col h-screen overflow-hidden">
+  <div class="flex flex-col h-screen h-dvh overflow-hidden">
     <!-- Header -->
     <AppHeader 
       title="Mock Services"
@@ -2993,6 +3020,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
       :selected-workspace-id="selectedWorkspaceId"
       :current-user-email="currentUserEmail"
       :is-mock-sidebar-active="isMockSidebarActive"
+      :is-mobile="isMobile"
       @open-settings="openSettings"
       @export-open-a-p-i="exportOpenAPI"
       @import-open-a-p-i="openImportModal"
@@ -3004,9 +3032,10 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
       @rename-workspace="openRenameWorkspace"
       @share-workspace="openShareWorkspace"
       @delete-workspace="confirmDeleteWorkspace"
+      @toggle-sidebar="toggleSidebar"
     />
 
-    <div class="flex flex-1 overflow-hidden">
+    <div class="flex flex-1 overflow-hidden relative">
       <!-- Sidebar -->
       <AppSidebar
         ref="appSidebarRef"
@@ -3016,6 +3045,8 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
         :workspaces="workspaces || []"
         :selected-workspace-id="selectedWorkspaceId"
         :refresh-trigger="definitionsRefreshTrigger"
+        :is-mobile="isMobile"
+        :is-open="isSidebarOpen"
         @select-mock="handleSelectMock"
         @select-request="handleSelectRequest"
         @create-mock="goToCreate"
@@ -3047,10 +3078,11 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
         @select-workspace="handleWorkspaceSelect($event)"
         @import-complete="definitionsRefreshTrigger++"
         @active-view-change="sidebarActiveView = $event"
+        @close-sidebar="closeSidebar"
       />
 
       <!-- Main Content -->
-      <main class="flex flex-col flex-1 overflow-hidden bg-bg-primary">
+      <main :class="['flex flex-col flex-1 overflow-hidden bg-bg-primary', isMobile && isSidebarOpen ? 'opacity-50' : '']">
         <!-- No Workspaces Empty State -->
         <div v-if="!hasWorkspaces" class="flex flex-col items-center justify-center h-full p-10 text-center">
           <div class="mb-8">
@@ -3389,9 +3421,9 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
           />
 
           <!-- Request Builder with Code Examples Sidebar -->
-          <div v-if="selectedRequest && activeTabKey" class="flex-1 flex overflow-hidden">
+          <div v-if="selectedRequest && activeTabKey" class="flex-1 flex flex-col md:flex-row overflow-hidden">
             <!-- Main Request Builder -->
-            <div class="flex-1 overflow-auto">
+            <div class="flex-1 overflow-auto min-h-0">
               <RequestBuilder
                 ref="requestBuilderRef"
                 :request="selectedRequest"
@@ -3414,20 +3446,27 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
             </div>
             
             <!-- Code Examples Sidebar with Integrated Toggle -->
-            <div class="flex flex-row items-stretch flex-shrink-0">
+            <div class="flex flex-col md:flex-row items-stretch flex-shrink-0 border-t md:border-t-0 md:border-l border-border-default">
               <!-- Toggle Handle - Integrated into layout, not floating -->
               <button
                 @click="toggleCodeExamples"
-                class="w-8 flex flex-col items-center justify-center bg-bg-sidebar border-l border-border-default hover:bg-bg-hover transition-all duration-200 group relative"
+                class="md:w-8 w-full md:h-auto h-10 flex md:flex-col flex-row items-center justify-center bg-bg-sidebar hover:bg-bg-hover transition-all duration-200 group relative md:px-0 px-3"
                 :title="showCodeExamples ? 'Hide Code Examples (Cmd+Shift+C)' : 'Show Code Examples (Cmd+Shift+C)'"
               >
-                <!-- Vertical Label -->
+                <!-- Vertical Label (desktop) -->
                 <span 
-                  class="text-[10px] font-medium tracking-wider whitespace-nowrap transition-colors duration-200"
+                  class="hidden md:block text-[10px] font-medium tracking-wider whitespace-nowrap transition-colors duration-200"
                   :class="showCodeExamples ? 'text-text-secondary group-hover:text-text-primary' : 'text-accent-blue group-hover:text-accent-blue'"
                   style="writing-mode: vertical-rl; text-orientation: mixed; transform: rotate(180deg);"
                 >
                   {{ showCodeExamples ? 'CODE' : 'CODE' }}
+                </span>
+                
+                <!-- Horizontal Label (mobile) -->
+                <span class="md:hidden text-xs font-medium tracking-wider transition-colors duration-200"
+                  :class="showCodeExamples ? 'text-text-secondary group-hover:text-text-primary' : 'text-accent-blue group-hover:text-accent-blue'"
+                >
+                  {{ showCodeExamples ? 'Hide Code Examples' : 'Show Code Examples' }}
                 </span>
                 
                 <!-- Arrow Icon - Shows direction to open/close -->
@@ -3438,11 +3477,11 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
                   fill="none" 
                   stroke="currentColor" 
                   stroke-width="2"
-                  class="mt-2 arrow-icon"
+                  class="md:mt-2 md:ml-0 ml-2 arrow-icon transition-transform duration-200"
                   :class="[
                     showCodeExamples 
-                      ? 'text-text-muted group-hover:text-text-primary arrow-open' 
-                      : 'text-accent-blue group-hover:text-accent-blue arrow-closed'
+                      ? 'text-text-muted group-hover:text-text-primary arrow-open md:rotate-0 rotate-180' 
+                      : 'text-accent-blue group-hover:text-accent-blue arrow-closed md:rotate-180 rotate-0'
                   ]"
                 >
                   <polyline points="6 9 12 15 18 9"></polyline>
@@ -3451,7 +3490,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
                 <!-- Active indicator dot when hidden -->
                 <span 
                   v-if="!showCodeExamples"
-                  class="absolute top-2 right-1 w-1.5 h-1.5 bg-accent-blue rounded-full animate-pulse"
+                  class="absolute top-2 right-1 w-1.5 h-1.5 bg-accent-blue rounded-full animate-pulse hidden md:block"
                 ></span>
               </button>
               
@@ -3462,7 +3501,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
               >
                 <div 
                   v-if="showCodeExamples"
-                  class="code-panel border-l border-border-default bg-bg-sidebar flex flex-col flex-shrink-0 overflow-hidden"
+                  class="code-panel bg-bg-sidebar flex flex-col flex-shrink-0 overflow-hidden w-full md:w-auto"
                 >
                   <!-- Panel Header with Close Button -->
                   <div class="flex items-center justify-between px-3 py-2 border-b border-border-default bg-bg-secondary/50">

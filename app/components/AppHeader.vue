@@ -33,6 +33,7 @@ interface Props {
   selectedWorkspaceId?: string | null;
   currentUserEmail?: string | null;
   isMockSidebarActive?: boolean;
+  isMobile?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -44,7 +45,8 @@ const props = withDefaults(defineProps<Props>(), {
   workspaces: () => [],
   selectedWorkspaceId: null,
   currentUserEmail: null,
-  isMockSidebarActive: false
+  isMockSidebarActive: false,
+  isMobile: false
 });
 
 const emit = defineEmits<{
@@ -59,6 +61,7 @@ const emit = defineEmits<{
   renameWorkspace: [workspace: { id: string; name: string }];
   shareWorkspace: [workspace: { id: string; name: string }];
   deleteWorkspace: [workspace: { id: string; name: string }];
+  toggleSidebar: [];
 }>();
 
 interface UserInfo {
@@ -81,6 +84,7 @@ interface AuthState {
 const authState = ref<AuthState | null>(null);
 const isCheckingAuth = ref(true);
 const showUserMenu = ref(false);
+const showMobileActions = ref(false);
 const isLoggingOut = ref(false);
 
 const route = useRoute();
@@ -169,8 +173,13 @@ onMounted(async () => {
 
 const closeUserMenu = (e: MouseEvent) => {
   const target = e.target as HTMLElement;
+  // Only close user menu if clicking outside user-menu-container
   if (!target.closest('.user-menu-container')) {
     showUserMenu.value = false;
+  }
+  // Only close mobile actions if clicking outside mobile-actions-container
+  if (!target.closest('.mobile-actions-container')) {
+    showMobileActions.value = false;
   }
 };
 
@@ -192,18 +201,32 @@ watch(() => authState.value?.user?.email, async (newEmail) => {
 </script>
 
 <template>
-  <header class="h-12 bg-bg-header border-b border-border-default flex items-center justify-between px-4 flex-shrink-0">
+  <header class="h-12 md:h-12 bg-bg-header border-b border-border-default flex items-center justify-between px-3 md:px-4 flex-shrink-0">
     <!-- Left Section -->
-    <div class="flex items-center gap-4">
+    <div class="flex items-center gap-2 md:gap-4">
+      <!-- Mobile Menu Toggle -->
+      <button
+        v-if="isMobile"
+        class="flex items-center justify-center w-10 h-10 rounded-md text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+        @click="emit('toggleSidebar')"
+        title="Toggle Sidebar"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
+
       <!-- Logo -->
-      <div class="flex items-center gap-2.5">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <div class="flex items-center gap-2 md:gap-2.5">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="flex-shrink-0">
           <rect width="24" height="24" rx="6" fill="#FF6C37"/>
           <path d="M7 8.5C7 7.67 7.67 7 8.5 7H15.5C16.33 7 17 7.67 17 8.5V15.5C17 16.33 16.33 17 15.5 17H8.5C7.67 17 7 16.33 7 15.5V8.5Z" fill="white"/>
           <path d="M10 10H14M10 12H14M10 14H12" stroke="#FF6C37" stroke-width="1.5" stroke-linecap="round"/>
         </svg>
-        <span class="text-[15px] font-semibold text-text-primary">{{ title }}</span>
-        <span class="text-[10px] text-text-muted font-medium px-1.5 py-0.5 bg-bg-tertiary rounded border border-border-default" title="App Version">v{{ currentVersion }}</span>
+        <span class="text-[15px] font-semibold text-text-primary hidden sm:block">{{ title }}</span>
+        <span class="text-[10px] text-text-muted font-medium px-1.5 py-0.5 bg-bg-tertiary rounded border border-border-default hidden md:inline-block" title="App Version">v{{ currentVersion }}</span>
       </div>
     </div>
 
@@ -212,8 +235,8 @@ watch(() => authState.value?.user?.email, async (newEmail) => {
       <!-- Optional: Search or other center content -->
     </div>
 
-    <!-- Right Section -->
-    <div class="flex items-center gap-2">
+    <!-- Right Section - Desktop -->
+    <div class="hidden md:flex items-center gap-2">
       <!-- Workspace Switcher - Hidden when Mocks sidebar is active -->
       <WorkspaceSwitcher
         v-if="!isEnvironmentsPage && !isMockSidebarActive"
@@ -312,18 +335,206 @@ watch(() => authState.value?.user?.email, async (newEmail) => {
       <div v-if="!isCheckingAuth && authState?.user" class="relative user-menu-container">
         <button
           @click="showUserMenu = !showUserMenu"
-          class="flex items-center gap-2 py-1 px-2 bg-bg-tertiary hover:bg-bg-hover border border-border-default rounded-md cursor-pointer transition-all duration-fast"
+          class="flex items-center gap-2 py-1.5 md:py-1 px-2 bg-bg-tertiary hover:bg-bg-hover border border-border-default rounded-md cursor-pointer transition-all duration-fast touch-target"
         >
-          <div class="w-6 h-6 rounded-full bg-accent-orange flex items-center justify-center text-white text-xs font-semibold">
+          <div class="w-7 h-7 md:w-6 md:h-6 rounded-full bg-accent-orange flex items-center justify-center text-white text-xs font-semibold">
             {{ getInitials(authState.user.name || authState.user.email) }}
           </div>
-          <span class="text-xs text-text-primary max-w-[120px] truncate">{{ authState.user.name || authState.user.email }}</span>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" :class="['transition-transform duration-fast', showUserMenu ? 'rotate-180' : '']">
+          <span class="text-xs text-text-primary max-w-[120px] truncate hidden sm:block">{{ authState.user.name || authState.user.email }}</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" :class="['transition-transform duration-fast hidden sm:block', showUserMenu ? 'rotate-180' : '']">
             <polyline points="6 9 12 15 18 9"></polyline>
           </svg>
         </button>
 
         <!-- Dropdown Menu -->
+        <div
+          v-if="showUserMenu"
+          class="absolute right-0 top-full mt-1 w-56 md:w-56 w-[calc(100vw-1rem)] max-w-[280px] bg-bg-secondary border border-border-default rounded-lg shadow-lg py-1 z-50"
+        >
+          <!-- User Info -->
+          <div class="px-3 py-2 border-b border-border-default">
+            <p class="text-xs font-medium text-text-primary truncate">{{ authState.user.name || 'User' }}</p>
+            <p class="text-xs text-text-muted truncate">{{ authState.user.email }}</p>
+            <div v-if="authState.tokenExpiry" class="mt-1 flex items-center gap-1">
+              <span
+                :class="[
+                  'w-2 h-2 rounded-full',
+                  authState.isTokenExpiringSoon ? 'bg-accent-yellow' : 'bg-accent-green'
+                ]"
+              ></span>
+              <span class="text-[10px] text-text-muted">Session expires in {{ getTimeUntilExpiry() }}</span>
+            </div>
+          </div>
+
+          <!-- Menu Items -->
+          <a
+            v-if="isSuperAdmin"
+            href="/admin/sso"
+            class="flex items-center gap-2 px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors duration-fast"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+            SSO Settings
+          </a>
+
+          <button
+            @click="logout"
+            :disabled="isLoggingOut"
+            class="w-full flex items-center gap-2 px-3 py-2 text-xs text-accent-red hover:bg-accent-red/10 transition-colors duration-fast"
+          >
+            <svg v-if="isLoggingOut" class="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+            </svg>
+            <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+              <polyline points="16 17 21 12 16 7"></polyline>
+              <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+            {{ isLoggingOut ? 'Signing out...' : 'Sign Out' }}
+          </button>
+
+          <!-- Version Info -->
+          <div class="px-3 py-2 border-t border-border-default mt-1">
+            <p class="text-[10px] text-text-muted text-center">Version {{ currentVersion }}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Section - Mobile -->
+    <div class="flex md:hidden items-center gap-1">
+      <!-- Mobile Actions Menu -->
+      <div class="relative mobile-actions-container">
+        <button
+          @click="showMobileActions = !showMobileActions"
+          class="flex items-center justify-center w-10 h-10 rounded-md text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="1"></circle>
+            <circle cx="19" cy="12" r="1"></circle>
+            <circle cx="5" cy="12" r="1"></circle>
+          </svg>
+        </button>
+
+        <!-- Mobile Actions Dropdown -->
+        <div
+          v-if="showMobileActions"
+          class="absolute right-0 top-full mt-1 w-64 bg-bg-secondary border border-border-default rounded-lg shadow-lg py-2 z-50 max-h-[80vh] overflow-y-auto"
+        >
+          <!-- Workspace Selection -->
+          <div v-if="workspaces.length > 0" class="px-3 py-2 border-b border-border-default">
+            <div class="text-xs text-text-muted uppercase tracking-wide mb-2 font-medium">Workspace</div>
+            <select
+              :value="selectedWorkspaceId"
+              @change="$emit('selectWorkspace', ($event.target as HTMLSelectElement).value); showMobileActions = false"
+              class="w-full py-2.5 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue min-h-[44px]"
+            >
+              <option v-for="workspace in workspaces" :key="workspace.id" :value="workspace.id">
+                {{ workspace.name }}
+              </option>
+            </select>
+          </div>
+
+          <!-- Environment Selection -->
+          <div v-if="environments.length > 0 && !isEnvironmentsPage" class="px-3 py-2 border-b border-border-default">
+            <div class="text-xs text-text-muted uppercase tracking-wide mb-2 font-medium">Environment</div>
+            <select
+              :value="activeEnvironmentId || ''"
+              @change="$emit('activateEnvironment', ($event.target as HTMLSelectElement).value || null); showMobileActions = false"
+              class="w-full py-2.5 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue min-h-[44px]"
+            >
+              <option value="">No Environment</option>
+              <option v-for="env in environments" :key="env.id" :value="env.id">
+                {{ env.name }}
+              </option>
+            </select>
+            <button
+              @click="$emit('manageEnvironments'); showMobileActions = false"
+              class="mt-2 text-xs text-accent-blue hover:text-accent-blue/80 transition-colors py-1"
+            >
+              Manage Environments
+            </button>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="py-1">
+            <button
+              v-if="showActions && !isEnvironmentsPage"
+              class="w-full flex items-center gap-3 px-3 py-3 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors min-h-[44px]"
+              @click="emit('importOpenAPI'); showMobileActions = false"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              Import
+            </button>
+
+            <button
+              v-if="showActions && !isEnvironmentsPage"
+              class="w-full flex items-center gap-3 px-3 py-3 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors min-h-[44px]"
+              @click="emit('exportOpenAPI'); showMobileActions = false"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              Export
+            </button>
+
+            <button
+              v-if="showActions && !isEnvironmentsPage && isMockSidebarActive"
+              class="w-full flex items-center gap-3 px-3 py-3 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors min-h-[44px]"
+              @click="emit('openSettings'); showMobileActions = false"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+              Settings
+            </button>
+
+            <button
+              v-if="isSuperAdmin && !isSuperAdminPage"
+              @click="navigateTo('/admin/super-admin'); showMobileActions = false"
+              class="w-full flex items-center gap-3 px-3 py-3 text-sm text-accent-orange hover:bg-accent-orange/10 transition-colors min-h-[44px]"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+              </svg>
+              Super Admin
+            </button>
+
+            <button
+              v-if="shouldShowFeedback"
+              @click="openFeedbackModal?.(); showMobileActions = false"
+              class="w-full flex items-center gap-3 px-3 py-3 text-sm text-white bg-indigo-600 hover:bg-indigo-700 transition-colors min-h-[44px]"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+              Feedback
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- User Menu Mobile -->
+      <div v-if="!isCheckingAuth && authState?.user" class="relative user-menu-container">
+        <button
+          @click="showUserMenu = !showUserMenu"
+          class="flex items-center justify-center w-10 h-10 rounded-md bg-bg-tertiary hover:bg-bg-hover border border-border-default cursor-pointer transition-all duration-fast"
+        >
+          <div class="w-7 h-7 rounded-full bg-accent-orange flex items-center justify-center text-white text-xs font-semibold">
+            {{ getInitials(authState.user.name || authState.user.email) }}
+          </div>
+        </button>
+
+        <!-- Mobile User Dropdown -->
         <div
           v-if="showUserMenu"
           class="absolute right-0 top-full mt-1 w-56 bg-bg-secondary border border-border-default rounded-lg shadow-lg py-1 z-50"

@@ -80,8 +80,11 @@ export default {
         '6': '1.5rem',
         '8': '2rem',
         'sidebar': '280px',
+        'sidebar-mobile': '280px',
         'header': '48px',
+        'header-mobile': '56px',
         'tab-bar': '40px',
+        'bottom-nav': '64px',
       },
 
       // Custom Border Radius
@@ -115,6 +118,8 @@ export default {
         'fade-in': 'fadeIn 200ms ease',
         'slide-in': 'slideIn 200ms ease',
         'modal-enter': 'modalEnter 200ms ease',
+        'slide-in-left': 'slideInLeft 250ms ease',
+        'slide-out-left': 'slideOutLeft 250ms ease',
       },
       keyframes: {
         fadeIn: {
@@ -129,6 +134,24 @@ export default {
           '0%': { opacity: '0', transform: 'scale(0.95) translateY(-10px)' },
           '100%': { opacity: '1', transform: 'scale(1) translateY(0)' },
         },
+        slideInLeft: {
+          '0%': { transform: 'translateX(-100%)' },
+          '100%': { transform: 'translateX(0)' },
+        },
+        slideOutLeft: {
+          '0%': { transform: 'translateX(0)' },
+          '100%': { transform: 'translateX(-100%)' },
+        },
+      },
+
+      // Responsive breakpoints (mobile-first)
+      screens: {
+        'xs': '480px',
+        'sm': '640px',
+        'md': '768px',
+        'lg': '1024px',
+        'xl': '1280px',
+        '2xl': '1536px',
       },
 
       // Custom Width/Height
