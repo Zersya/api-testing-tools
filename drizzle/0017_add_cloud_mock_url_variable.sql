@@ -5,12 +5,13 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Insert URL variable into all CLOUD MOCK environments that don't already have it
+-- Note: Update the URL value to match your deployment URL (e.g., https://your-domain.com)
 INSERT INTO "environment_variables" ("id", "environment_id", "key", "value", "is_secret")
 SELECT 
   uuid_generate_v4(),
   e.id,
   'URL',
-  '{{$appUrl}}',
+  'http://localhost:3000',
   false
 FROM "environments" e
 WHERE e."is_mock_environment" = true

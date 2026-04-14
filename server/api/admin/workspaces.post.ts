@@ -1,6 +1,7 @@
 import { db } from '../../db';
 import { workspaces, projects, environments, environmentVariables } from '../../db/schema';
 import { eq, and, sql } from 'drizzle-orm';
+import { getAppUrl } from '../../utils/magic-variables';
 
 interface CreateWorkspaceBody {
   name: string;
@@ -100,7 +101,7 @@ export default defineEventHandler(async (event) => {
         await db.insert(environmentVariables).values({
           environmentId: mockEnvironmentId,
           key: 'URL',
-          value: '{{$appUrl}}',
+          value: getAppUrl(),
           isSecret: false
         });
       } catch (urlVarError) {

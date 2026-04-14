@@ -13,9 +13,9 @@ export interface MagicVariableDescriptor {
 
 /**
  * Get the application base URL from runtime config
- * This is used for the $appUrl magic variable
+ * This is used for the $appUrl magic variable and for creating URL env vars
  */
-function getAppUrl(): string {
+export function getAppUrl(): string {
   try {
     // In server context, useRuntimeConfig is available
     const { useRuntimeConfig } = require('#imports');
