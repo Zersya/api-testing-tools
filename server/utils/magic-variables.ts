@@ -11,7 +11,26 @@ export interface MagicVariableDescriptor {
   description: string;
 }
 
+/**
+ * Get the application base URL from runtime config
+ * This is used for the $appUrl magic variable
+ */
+function getAppUrl(): string {
+  try {
+    // In server context, useRuntimeConfig is available
+    const { useRuntimeConfig } = require('#imports');
+    const config = useRuntimeConfig();
+    return config.public?.appUrl || process.env.APP_URL || 'http://localhost:3000';
+  } catch {
+    // Fallback for non-Nuxt contexts
+    return process.env.APP_URL || 'http://localhost:3000';
+  }
+}
+
 const MAGIC_GENERATORS: Record<string, () => string> = {
+  // System
+  $appUrl: getAppUrl,
+
   // Common
   $guid: () => crypto.randomUUID(),
   $timestamp: () => String(Math.floor(Date.now() / 1000)),
@@ -202,6 +221,10 @@ const MAGIC_GENERATORS: Record<string, () => string> = {
 };
 
 const MAGIC_DESCRIPTIONS: Record<string, string> = {
+  // System
+  $appUrl: 'The base URL of the application (from APP_URL env var)',
+
+  // Common
   $guid: 'A uuid-v4 style guid',
   $timestamp: 'Current UNIX timestamp in seconds',
   $isoTimestamp: 'Current ISO timestamp at zero UTC',
