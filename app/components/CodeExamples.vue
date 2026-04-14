@@ -105,7 +105,6 @@ const languages: { value: Language; label: string }[] = [
 
 const getMockUrl = (originalUrl: string): string => {
   // Build mock server URL using collection ID
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const collection = props.collectionId || 'default';
 
   let path = '';
@@ -119,7 +118,7 @@ const getMockUrl = (originalUrl: string): string => {
     // e.g., "{{baseUrl}}/api/{{version}}/users" -> "/api//users"
     const withoutVars = originalUrl.replace(/\{\{[^}]+\}\}/g, '');
     path = withoutVars.trim();
-    
+
     // If empty after removing variables, use root path
     if (!path) {
       path = '/';
@@ -131,7 +130,7 @@ const getMockUrl = (originalUrl: string): string => {
     path = '/' + path;
   }
 
-  return `${origin}/c/${collection}${path}`;
+  return `{{URL}}/c/${collection}${path}`;
 };
 
 const getFullUrl = computed(() => {
