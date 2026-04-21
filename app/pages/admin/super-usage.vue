@@ -347,6 +347,13 @@ const chartData = computed(() => {
   }));
 });
 
+// Safe max events calculation to avoid division by zero
+const maxEvents = computed(() => {
+  if (chartData.value.length === 0) return 1;
+  const max = Math.max(...chartData.value.map(d => d.events));
+  return max > 0 ? max : 1;
+});
+
 // Pagination helpers
 const nextUsersPage = () => {
   if (usersOffset.value + usersLimit.value < usersTotal.value) {
@@ -639,17 +646,17 @@ const clearEventFilters = () => {
             <!-- Trends Chart -->
             <div class="bg-bg-sidebar border border-border-default rounded-lg p-4">
               <h3 class="text-[13px] font-semibold text-text-primary mb-4">Activity Trends</h3>
-              <div class="h-64 relative">
+                <div class="h-64 relative">
                 <!-- Simple Bar Chart -->
-                <div class="absolute inset-0 flex items-end gap-1 px-2 pb-8">
-                  <div 
-                    v-for="(day, index) in chartData" 
+                <div v-if="chartData.length > 0" class="absolute inset-0 flex items-end gap-1 px-2 pb-8">
+                  <div
+                    v-for="(day, index) in chartData"
                     :key="day.date"
                     class="flex-1 flex flex-col items-center gap-1 group"
                   >
-                    <div 
+                    <div
                       class="w-full bg-accent-blue/30 hover:bg-accent-blue/50 rounded-t transition-colors relative"
-                      :style="{ height: `${(day.events / Math.max(...chartData.map(d => d.events))) * 80}%` }"
+                      :style="{ height: `${(day.events / maxEvents) * 80}%` }"
                     >
                       <div class="absolute -top-6 left-1/2 -translate-x-1/2 bg-bg-secondary border border-border-default px-2 py-1 rounded text-[10px] text-text-primary opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
                         {{ formatNumber(day.events) }} events
@@ -658,6 +665,16 @@ const clearEventFilters = () => {
                     <span v-if="index % 5 === 0 || index === chartData.length - 1" class="text-[9px] text-text-muted -rotate-45 origin-top-left translate-y-2">
                       {{ day.date.slice(5) }}
                     </span>
+                  </div>
+                </div>
+                <!-- Empty State -->
+                <div v-else class="absolute inset-0 flex items-center justify-center">
+                  <div class="text-center text-text-muted">
+                    <svg class="mx-auto mb-2" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                      <path d="M3 3v18h18"/>
+                      <path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/>
+                    </svg>
+                    <p class="text-[12px]">No activity data available</p>
                   </div>
                 </div>
                 <div class="absolute bottom-0 left-0 right-0 h-px bg-border-default"></div>
