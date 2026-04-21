@@ -408,6 +408,25 @@ The application uses PostgreSQL with Drizzle ORM. Key tables include:
 - `settings` - Application settings
 - `sso_providers` - SSO provider configurations
 
+## Testing Localhost APIs
+
+Testing your local backend (e.g., `http://127.0.0.1:4000`) from the deployed app? Use the **Proxy/Direct toggle** next to the Send button:
+
+| Mode | Use When | Backend CORS Required? |
+|------|----------|----------------------|
+| **Direct** (default) | Your backend has CORS enabled | ✅ Yes |
+| **Proxy** (purple) | Your backend lacks CORS headers | ❌ No |
+
+📖 **[Full Guide: Testing Localhost APIs](docs/testing-localhost-apis.md)**
+
+### Quick CORS Setup
+
+**Flask:** `from flask_cors import CORS; CORS(app)`  
+**Express:** `app.use(cors())`  
+**FastAPI:** Use `CORSMiddleware`
+
+---
+
 ## Contributing
 
 Contributions are welcome! Please follow these guidelines:
