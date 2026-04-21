@@ -408,37 +408,22 @@ The application uses PostgreSQL with Drizzle ORM. Key tables include:
 - `settings` - Application settings
 - `sso_providers` - SSO provider configurations
 
-## Troubleshooting
+## Testing Localhost APIs
 
-### Testing Localhost APIs
+Testing your local backend (e.g., `http://127.0.0.1:4000`) from the deployed app? Use the **Proxy/Direct toggle** next to the Send button:
 
-If you're trying to test your local backend API (e.g., `http://127.0.0.1:4000`) from the deployed app and experiencing connection issues:
+| Mode | Use When | Backend CORS Required? |
+|------|----------|----------------------|
+| **Direct** (default) | Your backend has CORS enabled | ✅ Yes |
+| **Proxy** (purple) | Your backend lacks CORS headers | ❌ No |
 
-**The Issue:** The app needs to route localhost requests directly from your browser (not through the server) to reach your local machine. See the detailed guide:
+📖 **[Full Guide: Testing Localhost APIs](docs/testing-localhost-apis.md)**
 
-📖 **[Localhost Request Routing Guide](docs/troubleshooting/localhost-request-routing.md)**
+### Quick CORS Setup
 
-**Quick Solutions:**
-1. **Enable CORS on your backend** (recommended for production APIs):
-   - Flask: `from flask_cors import CORS; CORS(app)`
-   - Express: `app.use(cors())`
-   - FastAPI: Use `CORSMiddleware`
-
-2. **Use the Proxy Toggle** (no backend changes needed):
-   - Click the "Direct" button next to Send → switches to "Proxy" mode
-   - Routes requests through server, bypassing CORS entirely
-
-3. **Chrome Private Network Access**:
-   - If Chrome blocks local network access, grant permission in site settings
-   - Visit `chrome://settings/content/localNetwork` to manage permissions
-
-### Common Issues
-
-| Error | Solution |
-|-------|----------|
-| `Cannot connect to local server` | Ensure your backend is running on the correct port |
-| `CORS Policy Blocked` | Enable CORS on backend or use Proxy toggle |
-| `Error: aborted` | Grant Chrome Local Network Access permission |
+**Flask:** `from flask_cors import CORS; CORS(app)`  
+**Express:** `app.use(cors())`  
+**FastAPI:** Use `CORSMiddleware`
 
 ---
 
