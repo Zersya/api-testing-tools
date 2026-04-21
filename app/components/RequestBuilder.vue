@@ -252,7 +252,13 @@ const isResponseCollapsed = ref(false);
 const isDragging = ref(false);
 const showMobileTabs = ref(false); // For mobile fallback
 
-// Load saved panel preferences
+// Request routing preference
+// When true, all requests (including localhost) go through server proxy
+// When false (default), localhost/private network requests use direct browser fetch
+const PROXY_STORAGE_KEY = 'mock-service:useServerProxy';
+const useServerProxy = ref(false);
+
+// Load saved panel preferences and proxy setting
 onMounted(() => {
   const saved = localStorage.getItem(PANEL_STORAGE_KEY);
   if (saved) {
@@ -263,6 +269,12 @@ onMounted(() => {
     } catch {
       // Use defaults
     }
+  }
+  
+  // Load proxy preference
+  const savedProxy = localStorage.getItem(PROXY_STORAGE_KEY);
+  if (savedProxy !== null) {
+    useServerProxy.value = savedProxy === 'true';
   }
   
   checkMobile();
@@ -288,6 +300,11 @@ watch([requestPanelRatio, isResponseCollapsed], () => {
     collapsed: isResponseCollapsed.value
   }));
 }, { deep: true });
+
+// Save proxy preference whenever it changes
+watch(useServerProxy, (value) => {
+  localStorage.setItem(PROXY_STORAGE_KEY, String(value));
+});
 
 // Mobile detection
 const checkMobile = () => {
@@ -3019,10 +3036,11 @@ const sendRequest = async () => {
       }
     }
 
-    // Route localhost URLs through server proxy to avoid CORS issues
-    // Both raw localhost (http://localhost:3000) and template variables ({{URL}}) 
-    // that resolve to localhost will use the server proxy
-    const isLocalRequest = false; // Always use server proxy for localhost to avoid CORS
+    // Check if resolved URL is localhost/private network
+    // For localhost URLs, use client-side direct request (like Postman)
+    // This requires the local API to have CORS enabled, or user must use CORS extension
+    // If user has enabled "Use Server Proxy" setting, all requests go through proxy
+    const isLocalRequest = isResolvedLocalhost && !useServerProxy.value;
 
     let result: ProxyResponse | ProxyErrorResponse;
 
@@ -3039,7 +3057,7 @@ const sendRequest = async () => {
         savedRequestId: props.request.id || undefined
       });
     } else {
-      // Use server proxy for remote URLs
+      // Use server proxy for remote URLs OR when "Use Server Proxy" setting is enabled
       result = await $fetch<ProxyResponse | ProxyErrorResponse>('/api/proxy/request', {
         method: 'POST',
         body: {
@@ -3091,11 +3109,25 @@ const sendRequest = async () => {
       workspaceId: props.workspaceId,
     });
   } catch (error: any) {
+    // Provide helpful error messages for common connection issues
+    let errorMessage = error.message || 'Request failed';
+    let errorCode = error.code || 'UNKNOWN_ERROR';
+    
+    // Check if this is a local server connection issue
+    // Reuse isLocalUrl() for consistent detection across all localhost/private IP variants
+    const resolvedUrl = resolveEnvVars(requestUrl);
+    const isLocalTarget = isLocalUrl(resolvedUrl);
+    
+    if (isLocalTarget && (error.statusCode === 502 || errorMessage.includes('ECONNREFUSED') || errorMessage.includes('fetch failed'))) {
+      errorMessage = `Cannot connect to local server at ${resolvedUrl}.\n\nPlease check:\n1. Your backend server is running on the correct port\n2. There are no firewall restrictions\n3. The URL is correct (${resolvedUrl})\n\nNote: This app makes direct browser requests to your local API. If CORS is blocking the request, enable CORS on your backend or use a CORS browser extension.`;
+      errorCode = 'CONNECTION_REFUSED';
+    }
+    
     response.value = {
       success: false,
       error: {
-        message: error.message || 'Request failed',
-        code: error.code || 'UNKNOWN_ERROR'
+        message: errorMessage,
+        code: errorCode
       },
       timing: {
         startTime: new Date().toISOString(),
@@ -3242,6 +3274,24 @@ defineExpose({
               <polygon points="5 3 19 12 5 21 5 3"></polygon>
             </svg>
             {{ isLoading ? 'Sending...' : (inheritFromParent && collectionAuthLoading) ? 'Loading Auth...' : 'Send' }}
+          </button>
+          <button
+            @click="useServerProxy = !useServerProxy"
+            :class="[
+              'shrink-0 py-2.5 px-3 font-medium rounded-md border cursor-pointer transition-all duration-fast flex items-center gap-1.5 text-xs',
+              useServerProxy
+                ? 'bg-accent-purple/15 text-accent-purple border-accent-purple/30 hover:bg-accent-purple/25'
+                : 'bg-bg-input text-text-muted border-border-default hover:text-text-secondary'
+            ]"
+            :title="useServerProxy ? 'Server Proxy ON: All requests route through server' : 'Server Proxy OFF: Local requests use direct browser fetch'"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+              <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+              <line x1="6" y1="6" x2="6.01" y2="6"></line>
+              <line x1="6" y1="18" x2="6.01" y2="18"></line>
+            </svg>
+            {{ useServerProxy ? 'Proxy' : 'Direct' }}
           </button>
         </div>
       </div>
