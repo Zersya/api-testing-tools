@@ -620,7 +620,29 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
       }
     }
 
-    const response = await fetch(targetUrl.toString(), fetchOptions);
+    let response: Response;
+    try {
+      response = await fetch(targetUrl.toString(), fetchOptions);
+    } catch (fetchError: any) {
+      // Provide specific guidance for localhost/127.0.0.1 connection issues
+      const isLocalTarget = targetUrl.hostname === 'localhost' || 
+                           targetUrl.hostname === '127.0.0.1' ||
+                           targetUrl.hostname.startsWith('127.');
+      
+      // Common connection error codes for local targets
+      const connectionErrors = ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'UND_ERR_SOCKET'];
+      const isConnectionError = connectionErrors.includes(fetchError.code) || 
+                               fetchError.message?.toLowerCase().includes('fetch failed');
+      
+      if (isLocalTarget && isConnectionError) {
+        throw createError({
+          statusCode: 502,
+          statusMessage: `Cannot connect to local server at ${targetUrl.origin}. Please ensure your backend server is running and accessible.`
+        });
+      }
+      
+      throw fetchError;
+    }
     const endTime = Date.now();
 
     const responseHeaders: Record<string, string> = {};

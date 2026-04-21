@@ -80,30 +80,33 @@ const DEFAULT_TIMEOUT = 30000;
  */
 export function isLocalUrl(url: string): boolean {
   // Check for template variables at the start of the URL
-  // These will be resolved later - if they start with a template variable,
-  // we need to check what the template variable value typically resolves to
+  // These will be resolved later - only tentatively treat as local for variable names
+  // that strongly suggest localhost (e.g., URL, LOCAL_URL, BASE_URL)
   const templateVarPattern = /^(\{\{|%7B%7B)([^{}%]+)(\}\}|%7D%7D)/;
   const templateMatch = url.match(templateVarPattern);
 
   if (templateMatch) {
-    // URL starts with a template variable like {{URL}}/api
-    // We need to check if the base variable could be localhost
-    // For now, assume URLs with template vars that look like base URLs might be local
-    // The actual resolution will happen in executeClientRequest after fetching env vars
-    // But we can do a quick check: if the URL after the template var looks like a path,
-    // it's likely a base URL that should be checked after substitution
-
-    // Extract the path part after the template variable
-    const afterTemplate = url.substring(templateMatch[0].length);
-
-    // If what follows looks like a path (starts with /), this is likely a base URL template
-    // In this case, we should let it go through client-side request handling
-    // because the template variable value itself will be checked after substitution
-    if (afterTemplate.startsWith('/') || afterTemplate === '' || afterTemplate.startsWith('?')) {
-      // This looks like {{URL}}/path or {{URL}}?query - likely needs client-side handling
+    const varName = templateMatch[2].trim().toUpperCase();
+    
+    // Only tentatively treat as local for variable names that exactly suggest localhost
+    // Use exact matches to prevent false positives like {{API_URL}} containing "URL"
+    const localHintNames = ['URL', 'LOCAL_URL', 'BASE_URL', 'LOCAL_API_URL', 'DEV_URL', 'LOCALHOST'];
+    const hasLocalHint = localHintNames.includes(varName);
+    
+    if (hasLocalHint) {
+      // Extract the path part after the template variable
+      const afterTemplate = url.substring(templateMatch[0].length);
+      
+      // If what follows looks like a path, tentatively treat as local
       // The actual localhost check will happen after variable substitution
-      return true; // Tentatively treat as local to trigger client-side handling
+      if (afterTemplate.startsWith('/') || afterTemplate === '' || afterTemplate.startsWith('?')) {
+        return true;
+      }
     }
+    
+    // For other template variables, return false - let the resolved URL be checked later
+    // This is safer: incorrect false uses server proxy (works), incorrect true causes CORS failures
+    return false;
   }
 
   try {
@@ -113,8 +116,8 @@ export function isLocalUrl(url: string): boolean {
     // Localhost variants
     if (hostname === 'localhost') return true;
     if (hostname === '127.0.0.1') return true;
-    if (hostname === '::1') return true;
-    if (hostname === '[::1]') return true;
+    // IPv6 localhost - hostname may include brackets
+    if (hostname === '::1' || hostname === '[::1]') return true;
 
     // Local domains
     if (hostname.endsWith('.local') || hostname.endsWith('.localhost')) return true;
@@ -136,12 +139,15 @@ export function isLocalUrl(url: string): boolean {
     if (hostname.startsWith('127.')) return true;
 
     // IPv6 private ranges
+    // Strip brackets for IPv6 addresses (e.g., [fc00::1] -> fc00::1)
+    const ipv6Host = hostname.replace(/^\[|\]$/g, '');
+    
     // fc00::/7 (Unique Local Addresses)
-    if (hostname.startsWith('fc') || hostname.startsWith('fd')) return true;
+    if (ipv6Host.startsWith('fc') || ipv6Host.startsWith('fd')) return true;
 
     // fe80::/10 (Link-local addresses)
-    if (hostname.startsWith('fe8') || hostname.startsWith('fe9') ||
-        hostname.startsWith('fea') || hostname.startsWith('feb')) return true;
+    if (ipv6Host.startsWith('fe8') || ipv6Host.startsWith('fe9') ||
+        ipv6Host.startsWith('fea') || ipv6Host.startsWith('feb')) return true;
 
     return false;
   } catch {
@@ -208,7 +214,9 @@ function generateCorsGuidance(url: string): string {
 
 Your local API at ${url} is blocking cross-origin requests from ${origin}.
 
-To fix this, add CORS headers to your API:
+To fix this, you have 3 options:
+
+**Option 1: Enable CORS on your local API (Recommended)**
 
 Express.js:
   app.use((req, res, next) => {
@@ -236,8 +244,11 @@ Spring Boot:
   @RestController
   public class MyController { }
 
-For development, you can also use a CORS browser extension like:
-  - Allow CORS: Access-Control-Allow-Origin (Chrome/Firefox)`;
+**Option 2: Use a CORS Browser Extension**
+Install "Allow CORS: Access-Control-Allow-Origin" extension for Chrome/Firefox
+
+**Option 3: Use the Server Proxy (Settings)**
+Enable "Use Server Proxy" in request settings to route through the server instead of direct browser requests.`;
 }
 
 /**
@@ -569,9 +580,12 @@ export async function executeClientRequest(
       const endTime = Date.now();
 
       // Detect CORS errors
+      // CORS errors appear as TypeError or "Failed to fetch" in modern browsers
+      // This happens when the browser blocks the request due to missing CORS headers from the server
       if (fetchError.message?.includes('Failed to fetch') ||
           fetchError.name === 'TypeError') {
-        // This is likely a CORS error
+        // This is likely a CORS error - the browser blocked the request
+        // because the target server didn't send proper CORS headers
         return {
           success: false,
           error: {
