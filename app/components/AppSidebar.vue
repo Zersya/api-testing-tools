@@ -133,6 +133,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   selectMock: [mock: Mock];
   selectRequest: [request: HttpRequest];
+  hoverRequest: [requestId: string];
   createMock: [];
   createResource: [];
   createCollection: [];
@@ -1651,6 +1652,7 @@ defineExpose({
                         :drop-target="dropTarget"
                         @toggle-folder="toggleFolder"
                         @select-request="emit('selectRequest', $event)"
+                        @hover-request="emit('hoverRequest', $event)"
                         @context-menu="handleContextMenu"
                         @create-request="emit('createRequest', $event)"
                         @drag-start="handleDragStart"
@@ -1673,6 +1675,7 @@ defineExpose({
                         @dragleave="handleDragLeave"
                         @drop="handleDrop($event, 'request', item.data.id, 'before')"
                         @click="emit('selectRequest', item.data)"
+                        @mouseenter="emit('hoverRequest', item.data.id)"
                         @contextmenu.prevent="handleContextMenu($event, 'request', item.data)"
                       >
                         <span

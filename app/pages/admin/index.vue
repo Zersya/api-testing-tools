@@ -114,7 +114,7 @@ const REQUEST_TABS_SETTINGS_KEY = 'requestTabsSession';
 
 const { data: mocks, refresh: refreshMocks, error } = await useFetch<Mock[]>('/api/admin/mocks');
 const { data: collections, refresh: refreshCollections } = await useFetch<Collection[]>('/api/admin/collections');
-const { data: workspaces, refresh: refreshWorkspaces } = await useFetch<any[]>('/api/admin/tree');
+const { data: workspaces, refresh: refreshWorkspaces } = await useFetch<any[]>('/api/admin/tree-light');
 const { data: definitions, refresh: refreshDefinitions } = await useFetch<any[]>('/api/definitions');
 
 // Fetch current user info for permission checks
@@ -123,6 +123,9 @@ const currentUserEmail = computed(() => authData.value?.user?.email || null);
 
 const selectedWorkspaceId = ref<string | null>(null);
 const selectedProjectId = ref<string | null>(null);
+
+// Prefetch cache for full request details (populated on hover)
+const prefetchedRequests = ref<Map<string, HttpRequest>>(new Map());
 
 type AdminPanel = 'requests' | 'environments';
 const activeAdminPanel = ref<AdminPanel>('requests');
@@ -157,6 +160,7 @@ watch(workspaces, () => {
   if (workspaces.value) {
     initSelectedWorkspace();
   }
+  prefetchedRequests.value.clear();
 }, { immediate: true });
 
 // Watch for workspace changes and save to localStorage
@@ -1890,13 +1894,28 @@ const goToEdit = (id: string) => {
     navigateTo(`/admin/${id}`);
 };
 
+// Prefetch request details on hover (background fetch)
+const handleHoverRequest = async (requestId: string) => {
+  if (prefetchedRequests.value.has(requestId)) return;
+  
+  try {
+    const fullRequest = await $fetch<HttpRequest>(`/api/admin/requests/${requestId}`);
+    prefetchedRequests.value.set(requestId, fullRequest);
+  } catch (e) {
+    console.warn('[Prefetch] Failed to load request details:', requestId);
+  }
+};
+
 // Request handlers
 const handleSelectRequest = (request: HttpRequest) => {
   activeAdminPanel.value = 'requests';
   selectedMock.value = null;
 
   syncWorkspaceSelectionForRequest(request);
-  const normalizedRequest = normalizeRequestForTab(request);
+  
+  // Use prefetched data if available, otherwise use tree data
+  const requestData = prefetchedRequests.value.get(request.id) || request;
+  const normalizedRequest = normalizeRequestForTab(requestData);
   
   // Check if this request is in a shared workspace
   isSharedWorkspace.value = checkIfRequestIsInSharedWorkspace(normalizedRequest);
@@ -3253,6 +3272,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
         :is-duplicating-request="isDuplicatingRequest"
         @select-mock="handleSelectMock"
         @select-request="handleSelectRequest"
+        @hover-request="handleHoverRequest"
         @create-mock="goToCreate"
         @create-resource="showResourceModal = true"
         @create-collection="openCreateCollection"

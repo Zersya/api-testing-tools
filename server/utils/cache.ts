@@ -71,6 +71,7 @@ export const cache = new InMemoryCache();
 // Cache key generators
 export const CacheKeys = {
   workspaceTree: (userId: string) => `tree:${userId}`,
+  workspaceTreeLight: (userId: string) => `tree-light:${userId}`,
   workspacePermissions: (userId: string, workspaceId: string) => `perm:${userId}:${workspaceId}`,
   accessibleWorkspaces: (userId: string) => `accessible:${userId}`,
 };

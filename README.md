@@ -325,7 +325,8 @@ scripts/                # Utility scripts (version bump, etc.)
 - `GET /api/auth/sso/:provider/callback` - SSO callback handler
 
 ### Admin Operations
-- `GET /api/admin/tree` - Get workspace tree structure
+- `GET /api/admin/tree` - Get full workspace tree structure (all request details)
+- `GET /api/admin/tree-light` - Get lightweight workspace tree (only navigation data, ~90% smaller)
 - `GET /api/admin/workspaces` - List all workspaces
 - `POST /api/admin/workspaces` - Create new workspace
 - `GET /api/admin/requests/:id` - Get request details
