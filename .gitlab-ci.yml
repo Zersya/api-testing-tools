@@ -10,9 +10,9 @@ default:
 
 variables:
   CONTAINER_REGISTRY: ${CI_REGISTRY_IMAGE}/application
-  KEY: $key
-  SONAR_TOKEN: $sonar_access_token
-  REPOPO_TOKEN: $repopo_token
+
+before_script:
+  - echo "$TRIGGER_AWX_JOB" > "$(pwd)/trigger_awx_job_$CI_PROJECT_NAME.sh"
 
 build-check:
   stage: build
@@ -32,14 +32,11 @@ build-check:
 
 build:
   stage: build
+  variables:
+    TARGET_HOST: "gitlab-runner"
   script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-    - echo "$ENV_RELEASE" > "$(pwd)/.env"
-    - docker build --push -t $CONTAINER_REGISTRY:${CI_COMMIT_TAG} -t $CONTAINER_REGISTRY:latest -f Dockerfile .
-  after_script:
-    - docker image rm $CONTAINER_REGISTRY:${CI_COMMIT_TAG}
-    - docker image rm $CONTAINER_REGISTRY:latest
-    - docker builder prune -af || true
+    - bash trigger_awx_job_$CI_PROJECT_NAME.sh "build" "env_prod"
+    - rm -f trigger_awx_job_$CI_PROJECT_NAME.sh
   except:
     - branches
   artifacts:
@@ -94,27 +91,20 @@ report-sonar-to-merge-id:
   needs:
     - job: sonarqube-check
 
-# publish:
-#   stage: publish
-#   dependencies:
-#     - build
-#   script:
-#     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-#     - docker pull $CONTAINER_REGISTRY:${CI_COMMIT_TAG}
-#     - docker pull $CONTAINER_REGISTRY:latest
-#     - docker push $CONTAINER_REGISTRY:${CI_COMMIT_TAG}
-#     - docker push $CONTAINER_REGISTRY:latest
-#   after_script:
-#     - docker image rm $CONTAINER_REGISTRY:${CI_COMMIT_TAG}
-#     - docker image rm $CONTAINER_REGISTRY:latest
-#     - docker builder prune -af || true
-#   except:
-#     - branches
-#   artifacts:
-#     paths:
-#       - .env
-#     expire_in: 1 days
-#     when: always
+publish:
+  stage: publish
+  variables:
+    TARGET_HOST: "gitlab-runner"
+  script:
+    - bash trigger_awx_job_$CI_PROJECT_NAME.sh "publish"
+    - rm -f trigger_awx_job_$CI_PROJECT_NAME.sh
+  except:
+    - branches
+  artifacts:
+    paths:
+      - .env
+    expire_in: 1 days
+    when: always
 
 # staging:
 #   stage: release
@@ -202,18 +192,13 @@ report-sonar-to-merge-id:
 
 production:
   stage: release
+  dependencies:
+    - publish
   variables:
-    # GIT_STRATEGY: none
-    ENVI: production
+    TARGET_HOST: "prod-app-cluster-2"
   script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-    - echo "$ENV_RELEASE" > "$(pwd)/.env"
-    - echo "$NOTIFIER" > "$(pwd)/notifier.sh"
-    - echo "$DOCKER_COMPOSE_NGINX" | base64 --decode > "$(pwd)/docker-compose.yml"
-    # - docker build -t $CONTAINER_REGISTRY:${CI_COMMIT_TAG} -t $CONTAINER_REGISTRY:latest -f Dockerfile .
-    - docker compose up -d --force-recreate 
-    - docker image prune -f
-    - bash notifier.sh
+    - bash trigger_awx_job_$CI_PROJECT_NAME.sh "production" "env_prod"
+    - rm -f trigger_awx_job_$CI_PROJECT_NAME.sh
   tags:
     - production-gcp
   only:
