@@ -646,23 +646,23 @@ const clearEventFilters = () => {
             <!-- Trends Chart -->
             <div class="bg-bg-sidebar border border-border-default rounded-lg p-4">
               <h3 class="text-[13px] font-semibold text-text-primary mb-4">Activity Trends</h3>
-                <div class="h-64 relative">
+              <div class="h-64 relative">
                 <!-- Simple Bar Chart -->
-                <div v-if="chartData.length > 0" class="absolute inset-0 flex items-end gap-1 px-2 pb-8">
+                <div v-if="chartData.length > 0" class="absolute inset-x-0 bottom-8 top-0 flex items-end gap-1 px-2">
                   <div
                     v-for="(day, index) in chartData"
                     :key="day.date"
-                    class="flex-1 flex flex-col items-center gap-1 group"
+                    class="flex-1 flex flex-col items-center gap-1 group min-w-0"
                   >
                     <div
-                      class="w-full bg-accent-blue/30 hover:bg-accent-blue/50 rounded-t transition-colors relative"
-                      :style="{ height: `${(day.events / maxEvents) * 80}%` }"
+                      class="w-full bg-accent-blue hover:bg-accent-blue-hover rounded-t transition-colors relative min-h-[2px]"
+                      :style="{ height: `${(day.events / maxEvents) * 100}%` }"
                     >
-                      <div class="absolute -top-6 left-1/2 -translate-x-1/2 bg-bg-secondary border border-border-default px-2 py-1 rounded text-[10px] text-text-primary opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                      <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-bg-secondary border border-border-default px-2 py-1 rounded text-[10px] text-text-primary opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
                         {{ formatNumber(day.events) }} events
                       </div>
                     </div>
-                    <span v-if="index % 5 === 0 || index === chartData.length - 1" class="text-[9px] text-text-muted -rotate-45 origin-top-left translate-y-2">
+                    <span v-if="index % 5 === 0 || index === chartData.length - 1" class="text-[9px] text-text-muted -rotate-45 origin-top-left translate-y-2 shrink-0">
                       {{ day.date.slice(5) }}
                     </span>
                   </div>
