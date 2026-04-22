@@ -47,6 +47,7 @@ const props = withDefaults(defineProps<FolderTreeItemProps>(), {
 const emit = defineEmits<{
   toggleFolder: [folderId: string];
   selectRequest: [request: HttpRequest];
+  hoverRequest: [requestId: string];
   contextMenu: [event: MouseEvent, type: string, data: any];
   createRequest: [folderId?: string];
   dragStart: [type: 'folder' | 'request', id: string];
@@ -253,6 +254,7 @@ const isDescendant = (ancestorId: string, descendantId: string): boolean => {
               @dragstart="handleDragStart($event, 'request', request.id)"
               @dragend="handleDragEnd"
               @click="emit('selectRequest', { ...request, folderId: props.folder.id })"
+              @mouseenter="emit('hoverRequest', request.id)"
               @contextmenu.prevent="emit('contextMenu', $event, 'request', request)"
               @dragover="handleDragOver($event, 'request', request.id, index === 0 ? 'before' : 'after')"
               @dragleave="handleDragLeave"
