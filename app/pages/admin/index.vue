@@ -2998,6 +2998,76 @@ const deleteRequest = async () => {
     }
 };
 
+// Duplicate request handler
+const isDuplicatingRequest = ref(false);
+
+const handleDuplicateRequest = async (request: any) => {
+    if (!request || !request.id) return;
+
+    isDuplicatingRequest.value = true;
+
+    try {
+        // First, get the full request details
+        const originalRequest = await $fetch<any>(`/api/admin/requests/${request.id}`);
+
+        if (!originalRequest) {
+            alert('Request not found');
+            return;
+        }
+
+        // Determine the target folder/collection
+        let targetFolderId = originalRequest.folderId;
+        let targetCollectionId = originalRequest.collectionId;
+
+        // If the request is in a folder, place the duplicate in the same folder
+        // If not, place it at the collection root
+        if (targetFolderId) {
+            // Create in folder
+            await $fetch(`/api/admin/folders/${targetFolderId}/requests`, {
+                method: 'POST',
+                body: {
+                    name: `Copy of ${originalRequest.name}`,
+                    method: originalRequest.method,
+                    url: originalRequest.url,
+                    headers: originalRequest.headers,
+                    body: originalRequest.body,
+                    auth: originalRequest.auth,
+                    preScript: originalRequest.preScript,
+                    postScript: originalRequest.postScript,
+                    pathVariables: originalRequest.pathVariables,
+                    paramNotes: originalRequest.paramNotes
+                }
+            });
+        } else if (targetCollectionId) {
+            // Create at collection root
+            await $fetch(`/api/admin/collections/${targetCollectionId}/requests`, {
+                method: 'POST',
+                body: {
+                    name: `Copy of ${originalRequest.name}`,
+                    method: originalRequest.method,
+                    url: originalRequest.url,
+                    headers: originalRequest.headers,
+                    body: originalRequest.body,
+                    auth: originalRequest.auth,
+                    preScript: originalRequest.preScript,
+                    postScript: originalRequest.postScript,
+                    pathVariables: originalRequest.pathVariables,
+                    paramNotes: originalRequest.paramNotes
+                }
+            });
+        } else {
+            alert('Cannot duplicate request: not in a folder or collection');
+            return;
+        }
+
+        await refreshWorkspaces();
+    } catch (e: any) {
+        alert('Error duplicating request: ' + (e.data?.message || e.message));
+    } finally {
+        isDuplicatingRequest.value = false;
+    }
+};
+
 // Rename state
 const showRenameModal = ref(false);
 const renameType = ref<'project' | 'collection' | 'folder'>('project');
@@ -3180,6 +3250,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
         :refresh-trigger="definitionsRefreshTrigger"
         :is-mobile="isMobile"
         :is-open="isSidebarOpen"
+        :is-duplicating-request="isDuplicatingRequest"
         @select-mock="handleSelectMock"
         @select-request="handleSelectRequest"
         @create-mock="goToCreate"
@@ -3201,6 +3272,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
         @delete-folder="confirmDeleteFolder"
         @rename-folder="openRenameFolder"
         @delete-request="confirmDeleteRequest"
+        @duplicate-request="handleDuplicateRequest"
         @restore-request="handleRestoreRequest"
         @compare="handleCompareResponses"
         @view-definition-docs="handleViewDefinitionDocs"

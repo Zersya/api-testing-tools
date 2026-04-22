@@ -114,6 +114,7 @@ interface Props {
   refreshTrigger?: number;
   isMobile?: boolean;
   isOpen?: boolean;
+  isDuplicatingRequest?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -125,7 +126,8 @@ const props = withDefaults(defineProps<Props>(), {
   selectedWorkspaceId: null,
   refreshTrigger: 0,
   isMobile: false,
-  isOpen: false
+  isOpen: false,
+  isDuplicatingRequest: false
 });
 
 const emit = defineEmits<{
@@ -150,6 +152,7 @@ const emit = defineEmits<{
   deleteFolder: [folderId: string];
   renameFolder: [folder: any];
   deleteRequest: [requestId: string];
+  duplicateRequest: [request: HttpRequest];
   restoreRequest: [request: any];
   compare: [left: any, right: any];
   viewDefinitionDocs: [definition: any];
@@ -166,6 +169,7 @@ const emit = defineEmits<{
 const selectedWorkspaceId = ref<string | null>(null);
 const activeView = ref<'hierarchy' | 'mocks' | 'history' | 'definitions'>('hierarchy');
 const contextMenu = ref<{ x: number; y: number; type: string; data: any } | null>(null);
+const contextMenuLoading = ref<string | null>(null);
 
 const expandedCollections = useExpandedState('mock-service-expanded-collections');
 const expandedGroups = useExpandedState('mock-service-expanded-groups');
@@ -1009,11 +1013,16 @@ const handleContextAction = (action: string) => {
     case 'request':
       if (action === 'delete-request') {
         emit('deleteRequest', data);
+        closeContextMenu();
+      } else if (action === 'duplicate-request') {
+        contextMenuLoading.value = 'duplicate';
+        emit('duplicateRequest', data);
+        // Don't close context menu - let parent handle loading state
       }
       break;
+    default:
+      closeContextMenu();
   }
-
-  closeContextMenu();
 };
 
 /**
@@ -1280,6 +1289,14 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('click', closeContextMenu);
+});
+
+// Watch for loading state changes to close context menu when done
+watch(() => props.isDuplicatingRequest, (isDuplicating) => {
+  if (!isDuplicating && contextMenuLoading.value === 'duplicate') {
+    contextMenuLoading.value = null;
+    closeContextMenu();
+  }
 });
 
 watch(selectedWorkspaceId, (newId) => {
@@ -2023,6 +2040,25 @@ defineExpose({
             </button>
           </template>
           <template v-if="contextMenu.type === 'request'">
+            <button
+              class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              :disabled="contextMenuLoading === 'duplicate'"
+              @click.stop="handleContextAction('duplicate-request')"
+            >
+              <svg v-if="contextMenuLoading === 'duplicate'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2 animate-spin">
+                <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+              </svg>
+              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
+                <rect x="6" y="4" width="12" height="8" rx="2"/>
+                <path d="M9 8v.01"/>
+                <path d="M15 8v.01"/>
+                <path d="M12 2v2"/>
+                <path d="M8 12v8"/>
+                <path d="M16 12v8"/>
+                <rect x="4" y="12" width="16" height="8" rx="2"/>
+              </svg>
+              {{ contextMenuLoading === 'duplicate' ? 'Duplicating...' : 'Duplicate Request' }}
+            </button>
             <button
               class="flex items-center w-full px-3 py-2 text-xs text-accent-red hover:bg-bg-hover transition-colors"
               @click.stop="handleContextAction('delete-request')"
