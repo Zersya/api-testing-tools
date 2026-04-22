@@ -56,13 +56,29 @@ const emit = defineEmits<{
   activateEnvironment: [id: string | null];
   manageEnvironments: [];
   createEnvironment: [];
+  renameEnvironment: [environment: { id: string; name: string }, newName: string];
+  updateEnvironment: [environment: any, name: string, variables: any[], secretValues: Record<string, string>];
   selectWorkspace: [workspaceId: string];
   createWorkspace: [];
   renameWorkspace: [workspace: { id: string; name: string }];
   shareWorkspace: [workspace: { id: string; name: string }];
   deleteWorkspace: [workspace: { id: string; name: string }];
   toggleSidebar: [];
+  saved: [];
 }>();
+
+const handleSavedEvent = () => {
+  emit('saved');
+  if (environmentSwitcherRef.value) {
+    environmentSwitcherRef.value.closeEditModal();
+  }
+};
+
+const resetEnvironmentSwitcherSaving = () => {
+  if (environmentSwitcherRef.value) {
+    environmentSwitcherRef.value.resetSaving();
+  }
+};
 
 interface UserInfo {
   sub: string;
@@ -86,6 +102,7 @@ const isCheckingAuth = ref(true);
 const showUserMenu = ref(false);
 const showMobileActions = ref(false);
 const isLoggingOut = ref(false);
+const environmentSwitcherRef = ref<any>(null);
 
 const route = useRoute();
 const isEnvironmentsPage = computed(() => route.path === '/admin/environments');
@@ -198,6 +215,10 @@ watch(() => authState.value?.user?.email, async (newEmail) => {
     isSuperAdmin.value = false;
   }
 });
+
+defineExpose({
+  resetEnvironmentSwitcherSaving
+});
 </script>
 
 <template>
@@ -254,12 +275,16 @@ watch(() => authState.value?.user?.email, async (newEmail) => {
 
       <!-- Environment Switcher - Hidden when Mocks sidebar is active -->
       <EnvironmentSwitcher
+        ref="environmentSwitcherRef"
         v-if="!isEnvironmentsPage && !isMockSidebarActive"
         :environments="environments"
         :active-environment-id="activeEnvironmentId"
         @update:active-environment-id="emit('activateEnvironment', $event)"
         @manage="emit('manageEnvironments')"
         @create="emit('createEnvironment')"
+        @rename="emit('renameEnvironment', $event[0], $event[1])"
+        @update:environment="emit('updateEnvironment', $event[0], $event[1], $event[2], $event[3])"
+        @saved="handleSavedEvent"
       />
 
       <!-- Import Button - Hidden when Mocks sidebar is active -->

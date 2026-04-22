@@ -96,6 +96,7 @@ interface SharedWorkspace {
 }
 
 const workspace = ref<SharedWorkspace | null>(null);
+const isLoading = ref(true);
 const error = ref<any>(null);
 
 // Environment state - track selected environment per project
@@ -108,6 +109,7 @@ onMounted(async () => {
   }
   
   try {
+    isLoading.value = true;
     const response = await $fetch<SharedWorkspace>(`/api/shared-workspace/${token.value}`, {
       credentials: 'include'
     });
@@ -129,6 +131,8 @@ onMounted(async () => {
       const returnUrl = encodeURIComponent(window.location.pathname);
       navigateTo(`/login?redirect=${returnUrl}`);
     }
+  } finally {
+    isLoading.value = false;
   }
 });
 
@@ -405,8 +409,21 @@ const goBack = () => {
       </div>
     </header>
 
+    <!-- Loading State -->
+    <div v-if="isLoading" class="flex-1 flex flex-col items-center justify-center p-8">
+      <div class="flex flex-col items-center justify-center">
+        <svg class="animate-spin mb-4 text-accent-blue" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+        </svg>
+        <h2 class="text-lg font-semibold text-text-primary mb-2">Loading workspace</h2>
+        <p class="text-sm text-text-muted text-center max-w-md">
+          Please wait while we fetch the shared workspace data...
+        </p>
+      </div>
+    </div>
+
     <!-- Error State -->
-    <div v-if="error" class="flex-1 flex flex-col items-center justify-center p-8">
+    <div v-else-if="error" class="flex-1 flex flex-col items-center justify-center p-8">
       <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="text-accent-red opacity-50 mb-4">
         <circle cx="12" cy="12" r="10"></circle>
         <line x1="12" y1="8" x2="12" y2="12"></line>
@@ -422,7 +439,7 @@ const goBack = () => {
     </div>
 
     <!-- Main Content -->
-    <div v-else class="flex flex-1 overflow-hidden">
+    <div v-else-if="!isLoading && !error" class="flex flex-1 overflow-hidden">
       <!-- Sidebar -->
       <aside class="w-[300px] bg-bg-sidebar border-r border-border-default flex flex-col flex-shrink-0">
         <div class="flex-1 overflow-y-auto p-2">

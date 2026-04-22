@@ -18,6 +18,10 @@ import EnvironmentManager from '~/components/EnvironmentManager.vue';
 import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
 import { useExampleData } from '~/composables/useExampleData';
 
+const emit = defineEmits<{
+  saved: [];
+}>();
+
 const { normalizeExampleData } = useExampleData();
 
 interface Collection {
@@ -486,6 +490,9 @@ const selectedRequest = ref<HttpRequest | null>(null);
 // RequestBuilder ref for accessing current request state (used by CodeExamples)
 const requestBuilderRef = ref<any>(null);
 
+// AppHeader ref for accessing EnvironmentSwitcher
+const appHeaderRef = ref<any>(null);
+
 // Computed property to get the project ID of the currently selected request
 const currentRequestProjectId = computed(() => {
   if (!selectedRequest.value) return null;
@@ -736,6 +743,128 @@ const renameEnvironmentFromSettings = async () => {
     alert('Error renaming environment: ' + (e.data?.message || e.message));
   } finally {
     isEnvironmentSettingsLoading.value = false;
+  }
+};
+
+// Handler for quick edit from dropdown (update name and variables)
+const updateEnvironmentFromDropdown = async (environment: any, name: string, variables: any[], secretValues: Record<string, string> = {}) => {
+  if (!name.trim()) return;
+
+  let partialUpdate = false;
+  const errors: string[] = [];
+  
+  // Fetch actual secret values for masked variables
+  const resolvedSecretValues: Record<string, string> = { ...secretValues };
+  for (const variable of variables) {
+    if (variable.isSecret && variable.id && !variable.id.startsWith('var_')) {
+      if (!resolvedSecretValues[variable.id] || resolvedSecretValues[variable.id] === '') {
+        try {
+          const actualValue = await $fetch<{ value: string }>(`/api/admin/variables/${variable.id}/value`);
+          resolvedSecretValues[variable.id] = actualValue.value;
+        } catch (e) {
+          console.error('Failed to fetch secret value for', variable.key, e);
+        }
+      }
+    }
+  }
+
+  try {
+    isEnvironmentSettingsLoading.value = true;
+    
+    // Update environment name
+    try {
+      await $fetch(`/api/admin/environments/${environment.id}`, {
+        method: 'PUT',
+        body: {
+          name: name.trim()
+        }
+      });
+    } catch (e: any) {
+      errors.push('Failed to update environment name: ' + (e.data?.message || e.message));
+      partialUpdate = true;
+    }
+
+    // Get current variables for this environment
+    const currentEnv = safeEnvironments.value.find(e => e.id === environment.id);
+    const currentVarIds = new Set(currentEnv?.variables?.map(v => v.id) || []);
+    const newVarIds = new Set(variables.filter(v => !v.id.startsWith('var_')).map(v => v.id));
+
+    // Delete variables that are no longer in the list (only existing ones)
+    if (currentEnv?.variables && !partialUpdate) {
+      for (const existingVar of currentEnv.variables) {
+        if (!newVarIds.has(existingVar.id)) {
+          try {
+            await $fetch(`/api/admin/variables/${existingVar.id}`, {
+              method: 'DELETE'
+            });
+          } catch (e: any) {
+            errors.push('Failed to delete variable: ' + (e.data?.message || e.message));
+            partialUpdate = true;
+          }
+        }
+      }
+    }
+
+    // Update or create variables
+    for (const variable of variables) {
+      if (!variable.key.trim()) continue;
+      
+      try {
+        if (variable.id.startsWith('var_')) {
+          // New variable - create it
+          await $fetch(`/api/admin/environments/${environment.id}/variables`, {
+            method: 'POST',
+            body: {
+              key: variable.key.trim(),
+              value: variable.value || '',
+              isSecret: variable.isSecret || false
+            }
+          });
+        } else if (currentVarIds.has(variable.id)) {
+          // Existing variable - update it
+          // For secret variables, use the fetched secret value
+          let valueToSave = variable.value;
+          if (variable.isSecret && resolvedSecretValues[variable.id]) {
+            valueToSave = resolvedSecretValues[variable.id];
+          }
+          
+          // If value is still masked and we couldn't fetch the secret, preserve existing value
+          if (variable.isSecret && valueToSave === '••••••••' && !resolvedSecretValues[variable.id]) {
+            // Only update key and isSecret, preserve existing value on server
+            await $fetch(`/api/admin/variables/${variable.id}`, {
+              method: 'PUT',
+              body: {
+                key: variable.key.trim(),
+                isSecret: variable.isSecret
+              }
+            });
+          } else {
+            await $fetch(`/api/admin/variables/${variable.id}`, {
+              method: 'PUT',
+              body: {
+                key: variable.key.trim(),
+                value: valueToSave,
+                isSecret: variable.isSecret || false
+              }
+            });
+          }
+        }
+      } catch (e: any) {
+        errors.push(`Failed to save variable "${variable.key}": ` + (e.data?.message || e.message));
+        partialUpdate = true;
+      }
+    }
+
+    await refreshEnvironmentSources();
+    
+    if (partialUpdate) {
+      alert('Partial update completed with errors:\n\n' + errors.join('\n'));
+    }
+  } catch (e: any) {
+    alert('Error updating environment: ' + (e.data?.message || e.message));
+  } finally {
+    isEnvironmentSettingsLoading.value = false;
+    appHeaderRef.value?.resetEnvironmentSwitcherSaving();
   }
 };
 
@@ -3012,6 +3141,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
   <div class="flex flex-col h-screen h-dvh overflow-hidden">
     <!-- Header -->
     <AppHeader 
+      ref="appHeaderRef"
       title="Mock Services"
       :environments="safeEnvironments"
       :active-environment-id="activeEnvironment?.id || null"
@@ -3027,6 +3157,9 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
       @activate-environment="activateEnvironment"
       @manage-environments="openEnvironmentSettings('manage')"
       @create-environment="openEnvironmentSettings('create')"
+      @rename-environment="(env, name) => { environmentToRename.value = env; environmentRenameForm.value.name = name; showEnvironmentRenameModal.value = true; }"
+      @update-environment="updateEnvironmentFromDropdown"
+      @saved="appHeaderRef?.environmentSwitcherRef?.resetSaving?.()"
       @select-workspace="handleWorkspaceSelect"
       @create-workspace="openCreateWorkspace"
       @rename-workspace="openRenameWorkspace"
