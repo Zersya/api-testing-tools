@@ -12,6 +12,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
   close: [];
+  saved: [];
 }>();
 
 const sizeClasses = {
