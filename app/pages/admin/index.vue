@@ -2985,6 +2985,7 @@ const deleteFolder = async () => {
 // Request deletion state
 const showDeleteRequestConfirm = ref(false);
 const requestToDelete = ref<any>(null);
+const isDeletingRequest = ref(false);
 
 const confirmDeleteRequest = (request: any) => {
     requestToDelete.value = request;
@@ -2992,8 +2993,9 @@ const confirmDeleteRequest = (request: any) => {
 };
 
 const deleteRequest = async () => {
-    if (!requestToDelete.value) return;
+    if (!requestToDelete.value || isDeletingRequest.value) return;
     const requestId = requestToDelete.value.id;
+    isDeletingRequest.value = true;
     
     try {
         await $fetch(`/api/admin/requests/${requestId}`, { method: 'DELETE' });
@@ -3012,7 +3014,9 @@ const deleteRequest = async () => {
         }
         
         await refreshWorkspaces();
+        isDeletingRequest.value = false;
     } catch (e: any) {
+        isDeletingRequest.value = false;
         alert('Error deleting request: ' + e.message);
     }
 };
@@ -4175,8 +4179,17 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
         <code class="inline-block mt-2 py-1.5 px-2.5 bg-bg-tertiary rounded text-accent-orange font-mono">{{ requestToDelete?.method }} {{ requestToDelete?.name }}</code>
       </p>
       <template #footer>
-        <button class="btn btn-secondary" @click="showDeleteRequestConfirm = false">Cancel</button>
-        <button class="btn btn-danger" @click="deleteRequest">Delete Request</button>
+        <button class="btn btn-secondary" :disabled="isDeletingRequest" @click="showDeleteRequestConfirm = false">Cancel</button>
+        <button class="btn btn-danger" :disabled="isDeletingRequest" @click="deleteRequest">
+          <span v-if="isDeletingRequest" class="flex items-center gap-2">
+            <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none" />
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            Deleting...
+          </span>
+          <span v-else>Delete Request</span>
+        </button>
       </template>
     </Modal>
 
