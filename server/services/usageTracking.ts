@@ -3,8 +3,8 @@ import { usageEvents, type UsageEventType, type ResourceType, type NewUsageEvent
 import { incrementCounter, trackUserStress } from '../utils/datadog-metrics';
 
 export interface UsageEventInput {
-  userId: string;
-  userEmail: string;
+  userId?: string;
+  userEmail?: string;
   workspaceId: string;
   eventType: UsageEventType;
   resourceType: ResourceType;
@@ -19,8 +19,8 @@ export interface UsageEventInput {
 }
 
 export interface RequestExecutionInput {
-  userId: string;
-  userEmail: string;
+  userId?: string;
+  userEmail?: string;
   workspaceId: string;
   method: string;
   url: string;
@@ -49,9 +49,13 @@ function getEventType(action: 'create' | 'update' | 'delete', resourceType: Reso
 export async function trackUsageEvent(event: UsageEventInput): Promise<void> {
   Promise.resolve().then(async () => {
     try {
+      // Use placeholder values if user info is not provided
+      const userId = event.userId || 'system';
+      const userEmail = event.userEmail || 'proxy@system';
+
       const newEvent: NewUsageEvent = {
-        userId: event.userId,
-        userEmail: event.userEmail,
+        userId,
+        userEmail,
         workspaceId: event.workspaceId,
         eventType: event.eventType,
         resourceType: event.resourceType,
@@ -70,7 +74,7 @@ export async function trackUsageEvent(event: UsageEventInput): Promise<void> {
       // NEW: Send to Datadog
       incrementCounter(`postrack.${event.eventType}`, 1, {
         tags: {
-          user_id: event.userId,
+          user_id: userId,
           workspace_id: event.workspaceId,
           resource_type: event.resourceType,
           success: (event.success ?? true).toString(),
@@ -88,8 +92,8 @@ export async function trackUsageEventsBatch(events: UsageEventInput[]): Promise<
   Promise.resolve().then(async () => {
     try {
       const newEvents: NewUsageEvent[] = events.map(event => ({
-        userId: event.userId,
-        userEmail: event.userEmail,
+        userId: event.userId || 'system',
+        userEmail: event.userEmail || 'proxy@system',
         workspaceId: event.workspaceId,
         eventType: event.eventType,
         resourceType: event.resourceType,
