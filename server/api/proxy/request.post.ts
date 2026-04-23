@@ -17,7 +17,8 @@ import { eq, inArray, sql, and } from 'drizzle-orm';
 import { executePreScript, executePostScript, type ScriptLogEntry } from '../../services/script-runner';
 import { getMagicVariableValue } from '../../utils/magic-variables';
 import { trackServerError, setSpanTags, finishSpanWithError } from '../../utils/error-tracking';
-import { trackRequestExecution, trackSlowRequest } from '../../utils/datadog-metrics';
+import { trackRequestExecution as trackDatadogMetrics, trackSlowRequest } from '../../utils/datadog-metrics';
+import { trackUsageEvent } from '../../services/usageTracking';
 import tracer from 'dd-trace';
 
 interface EnvironmentVariable {
@@ -781,8 +782,8 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
       }
     }
 
-    // Track successful request metrics
-    trackRequestExecution(
+    // Track successful request metrics to Datadog
+    trackDatadogMetrics(
       body.method, 
       response.status, 
       endTime - startTime, 
@@ -792,6 +793,19 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
         environment_id: body.environmentId || 'none',
       }
     );
+    
+    // Track successful request to usage database
+    trackUsageEvent({
+      workspaceId: body.workspaceId || 'none',
+      eventType: 'request_execute',
+      resourceType: 'request',
+      method: body.method,
+      url: body.url,
+      statusCode: response.status,
+      responseTimeMs: endTime - startTime,
+      success: true,
+      resourceId: body.savedRequestId,
+    });
     
     // Track slow requests
     trackSlowRequest(endTime - startTime);
@@ -824,8 +838,8 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
       },
     });
     
-    // Track failed request metrics
-    trackRequestExecution(
+    // Track failed request metrics to Datadog
+    trackDatadogMetrics(
       body?.method || 'UNKNOWN',
       0,
       duration,
@@ -835,6 +849,19 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
         error_type: error.code || 'UNKNOWN',
       }
     );
+    
+    // Track failed request to usage database
+    trackUsageEvent({
+      workspaceId: body?.workspaceId || 'none',
+      eventType: 'request_execute',
+      resourceType: 'request',
+      method: body?.method,
+      url: body?.url,
+      statusCode: 0,
+      responseTimeMs: duration,
+      success: false,
+      resourceId: body?.savedRequestId,
+    });
 
     if (error.statusCode) {
       // Finish span with error before throwing
