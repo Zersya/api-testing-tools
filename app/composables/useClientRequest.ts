@@ -69,6 +69,7 @@ interface ClientRequestOptions {
   savedRequestId?: string;
   pathVariables?: Array<{ key: string; value: string }>;
   timeout?: number;
+  signal?: AbortSignal;
 }
 
 const DEFAULT_TIMEOUT = 30000;
@@ -552,10 +553,12 @@ export async function executeClientRequest(
     }
 
     // Prepare fetch options
+    const timeoutSignal = AbortSignal.timeout(timeout);
     const fetchOptions: RequestInit = {
       method,
       headers: resolvedHeaders,
-      signal: AbortSignal.timeout(timeout)
+      // Combine provided signal with timeout signal
+      signal: options.signal ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal
     };
 
     // Add body for non-GET/HEAD/OPTIONS methods

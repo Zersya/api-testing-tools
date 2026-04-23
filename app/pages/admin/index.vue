@@ -1377,6 +1377,12 @@ const getActiveOpenTab = () => {
   return openTabs.value.find(tab => tab.key === activeTabKey.value) || null;
 };
 
+const formatResponseTime = (ms: number | null): string => {
+  if (!ms) return '-';
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(2)}s`;
+};
+
 const syncSelectedRequestWithActiveTab = () => {
   const activeTab = getActiveOpenTab();
   selectedRequest.value = activeTab?.request || null;
@@ -3685,7 +3691,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
               </h3>
               <div class="flex items-center gap-3">
                 <span v-if="tryItResponse && !tryItLoading" class="text-xs text-text-muted font-mono">
-                  {{ tryItTime }}ms
+                  {{ formatResponseTime(tryItTime) }}
                 </span>
                 <button 
                   class="btn btn-primary" 
@@ -3720,7 +3726,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
                   >
                     {{ tryItError ? 'Error' : 'Success' }}
                   </span>
-                  <span class="text-xs text-text-muted">Response received in {{ tryItTime }}ms</span>
+                  <span class="text-xs text-text-muted">Response received in {{ formatResponseTime(tryItTime) }}</span>
                 </div>
                 <div class="bg-bg-tertiary rounded-md p-3.5 max-h-[200px] overflow-auto">
                   <pre class="font-mono text-xs leading-normal text-text-primary m-0 whitespace-pre-wrap break-words">{{ tryItError || JSON.stringify(tryItResponse, null, 2) }}</pre>

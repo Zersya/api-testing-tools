@@ -240,6 +240,7 @@ const form = ref({
 
 const activeTab = ref<TabType>('params');
 const isLoading = ref(false);
+const abortController = ref<AbortController | null>(null);
 const response = ref<ProxyResponse | ProxyErrorResponse | null>(null);
 const variableWarnings = ref<string[]>([]);
 const environmentVariables = ref<Variable[]>([]);
@@ -2084,6 +2085,12 @@ const getTotalResponseSize = () => {
   return bodyText.length + headersSize;
 };
 
+const formatResponseTime = (ms: number | null): string => {
+  if (!ms) return '-';
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(2)}s`;
+};
+
 const parseResponseCookies = () => {
   if (!response.value || !('success' in response.value) || !response.value.headers) {
     return [];
@@ -2739,7 +2746,11 @@ watch([responseViewType, activeTab], () => {
 const handleKeydown = (e: KeyboardEvent) => {
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
     e.preventDefault();
-    sendRequest();
+    if (isLoading.value) {
+      cancelRequest();
+    } else {
+      sendRequest();
+    }
   } else if ((e.metaKey || e.ctrlKey) && e.key === 's') {
     e.preventDefault();
     openSaveDialog();
@@ -2993,6 +3004,9 @@ const sendRequest = async () => {
   expandedNodes.value.clear();
   expandedNodesVersion++;
 
+  // Create abort controller for this request
+  abortController.value = new AbortController();
+
   try {
     const requestBody = buildBody();
     let requestHeaders = buildHeadersRecord();
@@ -3054,7 +3068,8 @@ const sendRequest = async () => {
         body: requestBody,
         workspaceId: props.workspaceId,
         environmentId: props.environmentId,
-        savedRequestId: props.request.id || undefined
+        savedRequestId: props.request.id || undefined,
+        signal: abortController.value?.signal
       });
     } else {
       // Use server proxy for remote URLs OR when "Use Server Proxy" setting is enabled
@@ -3068,7 +3083,8 @@ const sendRequest = async () => {
           workspaceId: props.workspaceId,
           environmentId: props.environmentId,
           savedRequestId: props.request.id || undefined
-        }
+        },
+        signal: abortController.value?.signal
       });
     }
 
@@ -3109,6 +3125,12 @@ const sendRequest = async () => {
       workspaceId: props.workspaceId,
     });
   } catch (error: any) {
+    // Check if request was aborted (cancelled by user)
+    if (error.name === 'AbortError' || error.code === 'ERR_CANCELED') {
+      // User cancelled the request - don't show error, just return
+      return;
+    }
+
     // Provide helpful error messages for common connection issues
     let errorMessage = error.message || 'Request failed';
     let errorCode = error.code || 'UNKNOWN_ERROR';
@@ -3146,6 +3168,15 @@ const sendRequest = async () => {
       workspaceId: props.workspaceId,
     });
   } finally {
+    isLoading.value = false;
+    abortController.value = null;
+  }
+};
+
+const cancelRequest = () => {
+  if (abortController.value) {
+    abortController.value.abort();
+    abortController.value = null;
     isLoading.value = false;
   }
 };
@@ -3262,18 +3293,27 @@ defineExpose({
             @keyup.enter="sendRequest"
           />
           <button
-            class="shrink-0 py-2.5 px-8 bg-accent-blue text-white font-semibold rounded-md border-none cursor-pointer transition-all duration-fast hover:bg-[#1976D2] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-            @click="sendRequest"
-            :disabled="isLoading || !form.url || (inheritFromParent && collectionAuthLoading)"
-            :title="(inheritFromParent && collectionAuthLoading) ? 'Loading collection authentication...' : ''"
+            :class="[
+              'shrink-0 py-2.5 px-8 font-semibold rounded-md border-none cursor-pointer transition-all duration-fast flex items-center gap-2',
+              isLoading
+                ? 'bg-accent-red text-white hover:bg-accent-red/80'
+                : 'bg-accent-blue text-white hover:bg-[#1976D2]',
+              (!form.url || (inheritFromParent && collectionAuthLoading)) && !isLoading ? 'opacity-50 cursor-not-allowed' : ''
+            ]"
+            @click="isLoading ? cancelRequest() : sendRequest()"
+            :disabled="!isLoading && (!form.url || (inheritFromParent && collectionAuthLoading))"
+            :title="(inheritFromParent && collectionAuthLoading) ? 'Loading collection authentication...' : (isLoading ? 'Cancel request (⌘+Enter)' : '')"
           >
-            <svg v-if="isLoading || (inheritFromParent && collectionAuthLoading)" class="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg v-if="isLoading" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            </svg>
+            <svg v-else-if="inheritFromParent && collectionAuthLoading" class="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
             </svg>
             <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polygon points="5 3 19 12 5 21 5 3"></polygon>
             </svg>
-            {{ isLoading ? 'Sending...' : (inheritFromParent && collectionAuthLoading) ? 'Loading Auth...' : 'Send' }}
+            {{ isLoading ? 'Cancel' : (inheritFromParent && collectionAuthLoading) ? 'Loading Auth...' : 'Send' }}
           </button>
           <button
             @click="useServerProxy = !useServerProxy"
@@ -4343,7 +4383,7 @@ defineExpose({
                   <span v-else class="py-1 px-2.5 rounded text-[11px] font-semibold uppercase bg-accent-red/15 text-accent-red">
                     Error
                   </span>
-                  <span v-if="response.timing" class="text-xs text-text-muted font-mono">{{ response.timing.durationMs }}ms</span>
+                  <span v-if="response.timing" class="text-xs text-text-muted font-mono">{{ formatResponseTime(response.timing.durationMs) }}</span>
                   <span class="text-xs text-text-muted">{{ getTotalResponseSize() }} bytes</span>
                 </div>
               </transition>
@@ -4809,7 +4849,7 @@ defineExpose({
                 <span v-else class="py-0.5 px-1.5 rounded text-[10px] font-semibold uppercase bg-accent-red/15 text-accent-red">
                   Error
                 </span>
-                <span v-if="response.timing" class="text-[10px] text-text-muted font-mono">{{ response.timing.durationMs }}ms</span>
+                <span v-if="response.timing" class="text-[10px] text-text-muted font-mono">{{ formatResponseTime(response.timing.durationMs) }}</span>
               </div>
             </div>
             
