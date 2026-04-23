@@ -250,6 +250,66 @@ const handleFocus = () => {
   cursorPosition.value = saveSelection() || 0;
 };
 
+const handlePaste = (event: ClipboardEvent) => {
+  event.preventDefault();
+  
+  const clipboardData = event.clipboardData;
+  if (!clipboardData) return;
+  
+  let pasteText = '';
+  
+  const hasImage = Array.from(clipboardData.items).some(item => {
+    return item.type.startsWith('image/');
+  });
+  
+  if (hasImage) {
+    return;
+  }
+  
+  const textPlain = clipboardData.getData('text/plain');
+  const textHtml = clipboardData.getData('text/html');
+  
+  if (textHtml) {
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = textHtml;
+    pasteText = tempDiv.textContent || tempDiv.innerText || textPlain;
+  } else {
+    pasteText = textPlain;
+  }
+  
+  pasteText = pasteText.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+  
+  if (!pasteText) return;
+  
+  const selection = window.getSelection();
+  if (!selection || !selection.rangeCount) {
+    insertTextAtCursor(pasteText);
+    return;
+  }
+  
+  const range = selection.getRangeAt(0);
+  range.deleteContents();
+  range.insertNode(document.createTextNode(pasteText));
+  range.collapse(false);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  
+  handleInput();
+};
+
+const insertTextAtCursor = (text: string) => {
+  if (!editorRef.value) return;
+  
+  const currentContent = getEditorText();
+  const cursorPos = saveSelection() || currentContent.length;
+  
+  const beforeCursor = currentContent.slice(0, cursorPos);
+  const afterCursor = currentContent.slice(cursorPos);
+  
+  const newContent = beforeCursor + text + afterCursor;
+  emit('update:modelValue', newContent);
+};
+
 const selectVariable = (variable: Variable) => {
   const beforeCursor = props.modelValue.slice(0, cursorPosition.value);
   const afterCursor = props.modelValue.slice(cursorPosition.value);
@@ -311,6 +371,7 @@ onMounted(() => {
       @click="handleClick"
       @focus="handleFocus"
       @blur="closeAutocomplete"
+      @paste="handlePaste"
       @compositionstart="isComposing = true"
       @compositionend="isComposing = false"
       spellcheck="false"
