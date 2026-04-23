@@ -111,6 +111,7 @@ interface RequestDraftSnapshot {
 }
 
 const REQUEST_TABS_SETTINGS_KEY = 'requestTabsSession';
+const WORKSPACE_TABS_STORAGE_KEY = 'workspaceTabs';
 
 const { data: mocks, refresh: refreshMocks, error } = await useFetch<Mock[]>('/api/admin/mocks');
 const { data: collections, refresh: refreshCollections } = await useFetch<Collection[]>('/api/admin/collections');
@@ -172,6 +173,17 @@ watch(selectedWorkspaceId, (newId) => {
 
 // Handle workspace selection from sidebar
 const handleWorkspaceSelect = (workspaceId: string) => {
+  // Save current workspace tabs before switching
+  if (selectedWorkspaceId.value && openTabs.value.length > 0) {
+    saveWorkspaceTabs(selectedWorkspaceId.value);
+  }
+
+  // Close current tabs (they belong to the previous workspace)
+  if (openTabs.value.length > 0) {
+    const allTabKeys = openTabs.value.map(tab => tab.key);
+    handleCloseTabs(allTabKeys);
+  }
+
   const ws = workspaces.value?.find((w: any) => w.id === workspaceId);
   if (ws && ws.projects?.length > 0) {
     selectedWorkspaceId.value = workspaceId;
@@ -179,6 +191,17 @@ const handleWorkspaceSelect = (workspaceId: string) => {
   } else {
     selectedWorkspaceId.value = workspaceId;
     selectedProjectId.value = null;
+  }
+
+  // Load tabs for the new workspace
+  const workspaceTabs = loadWorkspaceTabs(workspaceId);
+  if (workspaceTabs && workspaceTabs.tabs && workspaceTabs.tabs.length > 0) {
+    hydrateOpenTabs(workspaceTabs);
+    const activeTab = getActiveOpenTab();
+    if (activeTab) {
+      syncWorkspaceSelectionForRequest(activeTab.request);
+    }
+    syncSelectedRequestWithActiveTab();
   }
 };
 
@@ -1423,15 +1446,35 @@ const loadPersistedRequestTabs = async () => {
   isHydratingRequestTabs.value = true;
 
   try {
-    const data = await $fetch<{ session?: PersistedTabSession }>('/api/admin/settings', {
-      query: { key: REQUEST_TABS_SETTINGS_KEY }
-    });
+    // First, try to load workspace-specific tabs from localStorage
+    const currentWorkspaceId = selectedWorkspaceId.value;
+    let sessionLoaded = false;
+    
+    if (currentWorkspaceId) {
+      const workspaceTabs = loadWorkspaceTabs(currentWorkspaceId);
+      if (workspaceTabs && workspaceTabs.tabs && workspaceTabs.tabs.length > 0) {
+        hydrateOpenTabs(workspaceTabs);
+        sessionLoaded = true;
+        
+        const activeTab = getActiveOpenTab();
+        if (activeTab) {
+          syncWorkspaceSelectionForRequest(activeTab.request);
+        }
+      }
+    }
 
-    hydrateOpenTabs(data.session);
+    // If no workspace-specific tabs found, fall back to server-based global tabs
+    if (!sessionLoaded) {
+      const data = await $fetch<{ session?: PersistedTabSession }>('/api/admin/settings', {
+        query: { key: REQUEST_TABS_SETTINGS_KEY }
+      });
 
-    const activeTab = getActiveOpenTab();
-    if (activeTab) {
-      syncWorkspaceSelectionForRequest(activeTab.request);
+      hydrateOpenTabs(data.session);
+
+      const activeTab = getActiveOpenTab();
+      if (activeTab) {
+        syncWorkspaceSelectionForRequest(activeTab.request);
+      }
     }
 
     lastPersistedTabsSignature.value = JSON.stringify(serializeOpenTabs());
@@ -1454,6 +1497,37 @@ const handleWindowVisibilityChange = () => {
 const handleWindowBeforeUnload = () => {
   persistRequestTabsDebounced.cancel();
   void persistRequestTabsNow(true);
+  
+  // Also save workspace-specific tabs to localStorage
+  if (selectedWorkspaceId.value && openTabs.value.length > 0) {
+    saveWorkspaceTabs(selectedWorkspaceId.value);
+  }
+};
+
+// Workspace-specific tab persistence functions
+const saveWorkspaceTabs = (workspaceId: string) => {
+  if (typeof window === 'undefined' || openTabs.value.length === 0) return;
+  
+  try {
+    const session = serializeOpenTabs();
+    const storageKey = `${WORKSPACE_TABS_STORAGE_KEY}_${workspaceId}`;
+    localStorage.setItem(storageKey, JSON.stringify(session));
+  } catch (error) {
+    console.error('Failed to save workspace tabs:', error);
+  }
+};
+
+const loadWorkspaceTabs = (workspaceId: string): PersistedTabSession | null => {
+  if (typeof window === 'undefined') return null;
+  
+  try {
+    const storageKey = `${WORKSPACE_TABS_STORAGE_KEY}_${workspaceId}`;
+    const stored = localStorage.getItem(storageKey);
+    return stored ? JSON.parse(stored) : null;
+  } catch (error) {
+    console.error('Failed to load workspace tabs:', error);
+    return null;
+  }
 };
 
 watch([openTabs, activeTabKey], () => {
