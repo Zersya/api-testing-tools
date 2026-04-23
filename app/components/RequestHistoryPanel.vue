@@ -222,7 +222,7 @@ const formatTimestamp = (date: Date): string => {
 
 const formatResponseTime = (ms: number | null): string => {
   if (!ms) return '-';
-  if (ms < 100) return `${ms}ms`;
+  if (ms < 1000) return `${ms}ms`;
   return `${(ms / 1000).toFixed(2)}s`;
 };
 
