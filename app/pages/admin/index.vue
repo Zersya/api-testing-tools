@@ -2789,6 +2789,26 @@ const openEditCollection = async (collection: Collection) => {
     showCollectionModal.value = true;
 };
 
+const handleOpenCollectionSettings = async (collectionId: string) => {
+    // First try to find in existing collections
+    let collection = collections.value?.find(c => c.id === collectionId);
+    
+    // If not found, fetch from API
+    if (!collection) {
+        try {
+            const fetchedCollection = await $fetch(`/api/admin/collections/${collectionId}`);
+            collection = fetchedCollection;
+        } catch (error) {
+            console.error('Failed to fetch collection:', error);
+            return;
+        }
+    }
+    
+    if (collection) {
+        openEditCollection(collection);
+    }
+};
+
 const saveCollection = async () => {
     try {
         if (collectionModalMode.value === 'create') {
@@ -3671,6 +3691,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
                 @save-as-request="handleSaveAsRequest"
                 @unsaved-changes="updateTabUnsavedStatus"
                 @state-change="handleBuilderStateChange"
+                @open-collection-settings="handleOpenCollectionSettings"
               />
             </div>
             
