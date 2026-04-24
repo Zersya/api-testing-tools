@@ -345,6 +345,16 @@ watch(() => props.modelValue, (newValue) => {
   }
 });
 
+watch(() => props.variables, () => {
+  if (editorRef.value) {
+    const savedPos = saveSelection();
+    editorRef.value.innerHTML = highlightedContent.value;
+    if (savedPos !== null) {
+      restoreSelection(savedPos);
+    }
+  }
+}, { deep: true });
+
 onMounted(() => {
   if (editorRef.value && !editorRef.value.innerHTML) {
     editorRef.value.innerHTML = highlightedContent.value;
