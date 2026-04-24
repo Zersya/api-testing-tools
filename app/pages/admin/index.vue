@@ -594,8 +594,31 @@ const safeEnvironments = computed(() => {
   return Array.isArray(environments.value) ? environments.value : [];
 });
 
+const getEnvStorageKey = (projectId: string) => `mock-service-active-env-${projectId}`;
+const selectedEnvironmentId = ref<string | null>(null);
+
+watch(
+  [safeEnvironments, currentRequestProjectId, currentProjectId],
+  () => {
+    const projectId = currentRequestProjectId.value || currentProjectId.value;
+    if (!projectId || safeEnvironments.value.length === 0) return;
+
+    const saved = typeof window !== 'undefined'
+      ? localStorage.getItem(getEnvStorageKey(projectId))
+      : null;
+    const validSaved = safeEnvironments.value.find(e => e.id === saved);
+    if (validSaved) {
+      selectedEnvironmentId.value = validSaved.id;
+    } else {
+      const serverActive = safeEnvironments.value.find(e => e.isActive);
+      selectedEnvironmentId.value = (serverActive ?? safeEnvironments.value[0])?.id ?? null;
+    }
+  },
+  { immediate: true }
+);
+
 const activeEnvironment = computed(() => {
-  return safeEnvironments.value.find(env => env.isActive) || null;
+  return safeEnvironments.value.find(env => env.id === selectedEnvironmentId.value) || null;
 });
 
 // Get active environment variables as a key-value map
@@ -642,17 +665,13 @@ const activeCollectionId = computed(() => {
   return '';
 });
 
-const activateEnvironment = async (environmentId: string | null) => {
-  if (!environmentId) {
-    return;
+const activateEnvironment = (environmentId: string | null) => {
+  if (!environmentId) return;
+  const projectId = currentRequestProjectId.value || currentProjectId.value;
+  if (projectId && typeof window !== 'undefined') {
+    localStorage.setItem(getEnvStorageKey(projectId), environmentId);
   }
-  
-  try {
-    await $fetch(`/api/admin/environments/${environmentId}/activate`, { method: 'PUT' });
-    await refreshEnvironments();
-  } catch (e: any) {
-    alert('Error activating environment: ' + e.message);
-  }
+  selectedEnvironmentId.value = environmentId;
 };
 
 const environmentSettingsEnvironments = ref<Environment[]>([]);

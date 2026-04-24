@@ -76,23 +76,13 @@ export function useEnvironments() {
     }
   }
 
-  async function setActiveEnvironment(environmentId: string, projectId: string) {
-    try {
-      await $fetch(`/api/admin/environments/${environmentId}/activate`, {
-        method: 'PUT',
-        body: { projectId }
-      });
-
-      activeEnvironmentId.value = environmentId;
-      saveEnvironmentId(environmentId);
-
-      environments.value = environments.value.map(e => ({
-        ...e,
-        isActive: e.id === environmentId
-      }));
-    } catch (error) {
-      console.error('Failed to set active environment:', error);
-    }
+  function setActiveEnvironment(environmentId: string, _projectId?: string) {
+    activeEnvironmentId.value = environmentId;
+    saveEnvironmentId(environmentId);
+    environments.value = environments.value.map(e => ({
+      ...e,
+      isActive: e.id === environmentId
+    }));
   }
 
   function getSavedEnvironmentId(): string | null {
