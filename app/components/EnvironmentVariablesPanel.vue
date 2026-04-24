@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { ref, watch, withDefaults } from 'vue';
 
 interface EnvironmentVariable {
   id: string;
@@ -23,9 +23,12 @@ interface Props {
   show: boolean;
   environment: Environment | null;
   secretValues: Record<string, string>;
+  readOnly?: boolean;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  readOnly: false
+});
 const emit = defineEmits<{
   close: [];
   'update:variable': [variable: EnvironmentVariable, key: string, value: string, isSecret: boolean];
@@ -142,7 +145,7 @@ watch(() => props.show, (show) => {
             </span>
             <div class="flex items-center gap-2">
               <button
-                v-if="environment && !environment.isActive && !environment.isMockEnvironment"
+                v-if="!readOnly && environment && !environment.isActive && !environment.isMockEnvironment"
                 class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-accent-green bg-accent-green/10 border border-accent-green/30 rounded-lg transition-all duration-fast hover:bg-accent-green/20"
                 @click="environment && emit('activate', environment)"
               >
@@ -152,7 +155,7 @@ watch(() => props.show, (show) => {
                 Activate
               </button>
               <button
-                v-if="environment"
+                v-if="!readOnly && environment"
                 class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-accent-blue bg-accent-blue/10 border border-accent-blue/30 rounded-lg transition-all duration-fast hover:bg-accent-blue/20"
                 @click="environment && emit('add:variable', environment)"
               >
@@ -175,7 +178,7 @@ watch(() => props.show, (show) => {
               </div>
               <p class="text-sm text-text-secondary mb-3">No variables defined</p>
               <button
-                v-if="environment"
+                v-if="!readOnly && environment"
                 class="btn btn-primary btn-sm"
                 @click="emit('add:variable', environment)"
               >
@@ -197,6 +200,7 @@ watch(() => props.show, (show) => {
                   <div class="flex-1 space-y-2">
                     <input
                       v-model="variable.key"
+                      :readonly="readOnly"
                       @blur="emit('update:variable', variable, variable.key, getVariableValue(variable), variable.isSecret)"
                       @keyup.enter="($event.target as HTMLInputElement).blur()"
                       class="w-full py-1.5 px-2 bg-bg-primary border border-border-default rounded-md text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(59,130,246,0.2)]"
@@ -206,6 +210,7 @@ watch(() => props.show, (show) => {
                       <input
                         :key="`input-${variable.id}-${variable.isSecret ? 'secret' : 'text'}`"
                         :value="getVariableValue(variable)"
+                        :readonly="readOnly"
                         @blur="emit('update:variable', variable, variable.key, ($event.target as HTMLInputElement).value, variable.isSecret)"
                         @keyup.enter="($event.target as HTMLInputElement).blur()"
                         :type="variable.isSecret ? 'password' : 'text'"
@@ -213,6 +218,7 @@ watch(() => props.show, (show) => {
                         placeholder="Variable value"
                       />
                       <button
+                        v-if="!readOnly"
                         @click="emit('toggle:secret', variable)"
                         :class="[
                           'flex items-center justify-center w-8 h-8 border-none rounded cursor-pointer transition-all duration-fast shrink-0',
@@ -228,6 +234,7 @@ watch(() => props.show, (show) => {
                     </div>
                   </div>
                   <button
+                    v-if="!readOnly"
                     @click="emit('delete:variable', variable.id)"
                     class="flex items-center justify-center w-8 h-8 bg-transparent border-none rounded text-text-muted cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-red opacity-0 group-hover:opacity-100 shrink-0"
                     title="Delete variable"

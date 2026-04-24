@@ -92,6 +92,7 @@ interface WorkspaceWithProjects {
   projects: ProjectWithCollections[];
   projectCount: number;
   isOwner: boolean;
+  permission?: 'owner' | 'edit' | 'view' | null;
 }
 
 interface MockGroup {
@@ -198,6 +199,14 @@ const currentWorkspace = computed(() => {
 
 const currentProject = computed(() => {
   return currentWorkspace.value?.projects?.[0];
+});
+
+const canEdit = computed(() => {
+  const ws = currentWorkspace.value;
+  if (!ws) return true;
+  const perm = ws.permission;
+  if (perm) return perm === 'owner' || perm === 'edit';
+  return ws.isOwner;
 });
 
 // Search filter helpers for hierarchy (collections, folders, requests)
@@ -952,6 +961,8 @@ const getSortedCollectionItems = (collection: CollectionWithFolders): SortedColl
 const handleContextMenu = (event: MouseEvent, type: string, data: any) => {
   event.preventDefault();
   event.stopPropagation();
+  // For viewers, only allow folder context menu (for "Copy Prompt")
+  if (!canEdit.value && type !== 'folder') return;
   contextMenu.value = { x: event.clientX, y: event.clientY, type, data };
 };
 
@@ -1431,6 +1442,7 @@ defineExpose({
     <div v-if="activeView === 'hierarchy' && currentWorkspace" class="p-2 border-b border-border-default">
       <div class="flex items-center gap-1.5 bg-bg-input border border-border-default rounded-lg overflow-hidden">
         <button
+          v-if="canEdit"
           type="button"
           class="flex items-center justify-center w-8 h-8 shrink-0 text-text-muted hover:bg-bg-hover hover:text-text-primary transition-colors"
           @click="emit('createProject', currentWorkspace.id)"
@@ -1441,7 +1453,7 @@ defineExpose({
             <line x1="5" y1="12" x2="19" y2="12"></line>
           </svg>
         </button>
-        <span class="w-px h-5 bg-border-default shrink-0" aria-hidden="true"></span>
+        <span v-if="canEdit" class="w-px h-5 bg-border-default shrink-0" aria-hidden="true"></span>
         <label class="flex-1 flex items-center gap-2 min-w-0">
           <svg class="w-4 h-4 text-text-muted shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="11" cy="11" r="8"></circle>
@@ -1503,6 +1515,7 @@ defineExpose({
         </div>
       </div>
       <button
+        v-if="canEdit"
         class="flex items-center justify-center w-6 h-6 bg-transparent border-none rounded text-text-secondary cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-orange"
         @click="emit('createProject', currentWorkspace.id)"
         title="New Project"
@@ -1523,7 +1536,7 @@ defineExpose({
             <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
           </svg>
           <p class="text-[13px] m-0">No projects yet</p>
-          <button class="btn btn-sm btn-secondary" @click="emit('createProject', currentWorkspace.id)">Create First Project</button>
+          <button v-if="canEdit" class="btn btn-sm btn-secondary" @click="emit('createProject', currentWorkspace.id)">Create First Project</button>
         </div>
 
         <!-- Empty State: search returned no results -->
@@ -1569,6 +1582,7 @@ defineExpose({
 
             <!-- Add collection button -->
             <button
+              v-if="canEdit"
               class="flex items-center justify-center w-[22px] h-[22px] bg-transparent border-none rounded text-text-secondary cursor-pointer opacity-0 group-hover:opacity-100 transition-all duration-fast hover:bg-bg-hover hover:text-accent-green"
               @click.stop="emit('createCollection', project.id)"
               title="Add Collection"
@@ -1626,6 +1640,7 @@ defineExpose({
 
                   <!-- Add folder button -->
                   <button
+                    v-if="canEdit"
                     class="flex items-center justify-center w-[18px] h-[18px] bg-transparent border-none rounded text-text-secondary cursor-pointer opacity-0 group-hover/groupitem:opacity-100 transition-all duration-fast hover:bg-bg-hover hover:text-accent-green"
                     @click.stop="emit('createFolder', collection.id)"
                     title="Add Folder"
@@ -1650,6 +1665,7 @@ defineExpose({
                         :dragging-folder-id="draggingFolderId"
                         :dragging-request-id="draggingRequestId"
                         :drop-target="dropTarget"
+                        :permission="currentWorkspace?.permission || (currentWorkspace?.isOwner ? 'owner' : 'view')"
                         @toggle-folder="toggleFolder"
                         @select-request="emit('selectRequest', $event)"
                         @hover-request="emit('hoverRequest', $event)"
@@ -1668,7 +1684,7 @@ defineExpose({
                           'flex items-center gap-2 py-1.5 px-3 mx-2 my-px rounded cursor-pointer border-l-2 border-l-transparent transition-all duration-fast hover:bg-bg-hover',
                           dropTarget?.type === 'request' && dropTarget?.id === item.data.id ? 'bg-accent-blue/10 border-l-accent-blue' : ''
                         ]"
-                        :draggable="true"
+                        :draggable="canEdit"
                         @dragstart="handleDragStart('request', item.data.id)"
                         @dragend="handleDragEnd"
                         @dragover="handleDragOver($event, 'request', item.data.id, 'before')"
@@ -1749,7 +1765,7 @@ defineExpose({
             </span>
             
             <!-- Collection Actions (only for non-root) -->
-            <div v-if="collection.name !== 'root'" class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-fast" @click.stop>
+            <div v-if="collection.name !== 'root' && canEdit" class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-fast" @click.stop>
               <button 
                 class="flex items-center justify-center w-[22px] h-[22px] bg-transparent border-none rounded text-text-secondary cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-text-primary" 
                 @click="emit('editCollection', collection)" 
@@ -1773,6 +1789,7 @@ defineExpose({
 
             <!-- Add mock to collection button -->
             <button 
+              v-if="canEdit"
               class="flex items-center justify-center w-[22px] h-[22px] bg-transparent border-none rounded text-text-secondary cursor-pointer opacity-0 group-hover:opacity-100 transition-all duration-fast hover:bg-bg-hover hover:text-accent-green" 
               @click.stop="emit('createMock', collection.id)" 
               title="Add Mock to Collection"
@@ -1822,6 +1839,7 @@ defineExpose({
 
                   <!-- Delete Group -->
                    <button 
+                    v-if="canEdit"
                     class="flex items-center justify-center w-[18px] h-[18px] bg-transparent border-none rounded text-text-secondary cursor-pointer opacity-0 group-hover/groupitem:opacity-100 transition-all duration-fast hover:bg-accent-red/15 hover:text-accent-red"
                     @click.stop="emit('deleteGroup', collection.id, group.name, group.items)"
                     title="Delete Folder"
@@ -1901,6 +1919,7 @@ defineExpose({
         <div class="py-1">
           <template v-if="contextMenu.type === 'project'">
             <button
+              v-if="canEdit"
               class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
               @click.stop="handleContextAction('create-collection')"
             >
@@ -1912,6 +1931,7 @@ defineExpose({
               New Collection
             </button>
             <button
+              v-if="canEdit"
               class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
               @click.stop="handleContextAction('rename-project')"
             >
@@ -1921,6 +1941,7 @@ defineExpose({
               Rename
             </button>
             <button
+              v-if="canEdit"
               class="flex items-center w-full px-3 py-2 text-xs text-accent-red hover:bg-bg-hover transition-colors"
               @click.stop="handleContextAction('delete-project')"
             >
@@ -1933,6 +1954,7 @@ defineExpose({
           </template>
           <template v-if="contextMenu.type === 'collection'">
             <button
+              v-if="canEdit"
               class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
               @click.stop="handleContextAction('create-folder')"
             >
@@ -1944,6 +1966,7 @@ defineExpose({
               New Folder
             </button>
             <button
+              v-if="canEdit"
               class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
               @click.stop="handleContextAction('create-request')"
             >
@@ -1954,6 +1977,7 @@ defineExpose({
               New Request
             </button>
             <button
+              v-if="canEdit"
               class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
               @click.stop="handleContextAction('import-curl')"
             >
@@ -1963,8 +1987,9 @@ defineExpose({
               </svg>
               Import from cURL
             </button>
-            <div class="border-t border-border-default my-1"></div>
+            <div v-if="canEdit" class="border-t border-border-default my-1"></div>
             <button
+              v-if="canEdit"
               class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
               @click.stop="handleContextAction('edit-collection')"
             >
@@ -1973,8 +1998,9 @@ defineExpose({
               </svg>
               Edit Collection
             </button>
-            <div class="border-t border-border-default my-1"></div>
+            <div v-if="canEdit" class="border-t border-border-default my-1"></div>
             <button
+              v-if="canEdit"
               class="flex items-center w-full px-3 py-2 text-xs text-accent-red hover:bg-bg-hover transition-colors"
               @click.stop="handleContextAction('delete-collection')"
             >
@@ -1987,6 +2013,7 @@ defineExpose({
           </template>
           <template v-if="contextMenu.type === 'folder'">
             <button
+              v-if="canEdit"
               class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
               @click.stop="handleContextAction('create-request')"
             >
@@ -1997,6 +2024,7 @@ defineExpose({
               New Request
             </button>
             <button
+              v-if="canEdit"
               class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
               @click.stop="handleContextAction('import-curl')"
             >
@@ -2021,8 +2049,9 @@ defineExpose({
               </svg>
               Copy Prompt for Agent FE
             </button>
-            <div class="border-t border-border-default my-1"></div>
+            <div v-if="canEdit" class="border-t border-border-default my-1"></div>
             <button
+              v-if="canEdit"
               class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
               @click.stop="handleContextAction('rename-folder')"
             >
@@ -2032,6 +2061,7 @@ defineExpose({
               Rename
             </button>
             <button
+              v-if="canEdit"
               class="flex items-center w-full px-3 py-2 text-xs text-accent-red hover:bg-bg-hover transition-colors"
               @click.stop="handleContextAction('delete-folder')"
             >
@@ -2044,6 +2074,7 @@ defineExpose({
           </template>
           <template v-if="contextMenu.type === 'request'">
             <button
+              v-if="canEdit"
               class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               :disabled="contextMenuLoading === 'duplicate'"
               @click.stop="handleContextAction('duplicate-request')"
@@ -2063,6 +2094,7 @@ defineExpose({
               {{ contextMenuLoading === 'duplicate' ? 'Duplicating...' : 'Duplicate Request' }}
             </button>
             <button
+              v-if="canEdit"
               class="flex items-center w-full px-3 py-2 text-xs text-accent-red hover:bg-bg-hover transition-colors"
               @click.stop="handleContextAction('delete-request')"
             >
@@ -2075,6 +2107,7 @@ defineExpose({
           </template>
           <template v-if="contextMenu.type === 'workspace'">
             <button
+              v-if="canEdit"
               class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
               @click.stop="handleContextAction('rename-workspace')"
             >
@@ -2097,6 +2130,7 @@ defineExpose({
               Share
             </button>
             <button
+              v-if="canEdit"
               class="flex items-center w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
               @click.stop="handleContextAction('create-project')"
             >

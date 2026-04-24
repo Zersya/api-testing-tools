@@ -1684,6 +1684,7 @@ const fetchCollectionAuth = async () => {
 }
 
 const openCollectionSettings = () => {
+  if (props.readOnly) return
   if (props.collectionId) {
     emit('openCollectionSettings', props.collectionId)
   }
@@ -3276,6 +3277,7 @@ defineExpose({
       <div class="p-4 border-b border-border-default bg-bg-secondary">
         <div class="flex gap-2 bg-bg-input border border-border-default rounded-lg p-1 min-w-0">
           <select 
+            v-if="!readOnly"
             v-model="form.method" 
             :class="[
               'py-2.5 px-3 bg-transparent border-none border-r border-border-default font-semibold text-sm cursor-pointer min-w-[100px] shrink-0 focus:outline-none',
@@ -3284,8 +3286,14 @@ defineExpose({
           >
             <option v-for="m in HTTP_METHODS" :key="m" :value="m">{{ m }}</option>
           </select>
+          <span
+            v-else
+            class="py-2.5 px-3 border-r border-border-default font-semibold text-sm min-w-[100px] shrink-0 text-center"
+            :class="methodColors[form.method] || 'text-text-primary'"
+          >{{ form.method }}</span>
           <VariableInput
             v-model="form.url"
+            :disabled="readOnly"
             :variables="environmentVariables"
             :path-variables="pathVariables.filter(v => v.enabled).map(v => v.key)"
             placeholder="https://api.example.com/endpoint"
@@ -3316,6 +3324,7 @@ defineExpose({
             {{ isLoading ? 'Cancel' : (inheritFromParent && collectionAuthLoading) ? 'Loading Auth...' : 'Send' }}
           </button>
           <button
+            v-if="!readOnly"
             @click="useServerProxy = !useServerProxy"
             :class="[
               'shrink-0 py-2.5 px-3 font-medium rounded-md border cursor-pointer transition-all duration-fast flex items-center gap-1.5 text-xs',
@@ -3375,6 +3384,7 @@ defineExpose({
           <div class="p-2 border-b border-border-default bg-bg-secondary flex items-center justify-between">
             <span class="text-xs text-text-muted">{{ queryParams.filter(p => p.enabled).length }} params</span>
             <button 
+              v-if="!readOnly"
               @click="isBulkEditMode ? parseBulkQuery() : generateBulkQuery()"
               class="text-xs text-accent-blue hover:text-accent-blue/80"
             >
@@ -3382,7 +3392,7 @@ defineExpose({
             </button>
           </div>
 
-          <div v-if="isBulkEditMode" class="flex-1 overflow-auto p-4">
+          <div v-if="isBulkEditMode && !readOnly" class="flex-1 overflow-auto p-4">
             <textarea
               v-model="bulkQueryString"
               class="w-full h-full min-h-[200px] p-3 bg-bg-input border border-border-default rounded-lg text-text-primary font-mono text-sm resize-none focus:outline-none focus:border-accent-blue"
@@ -3427,6 +3437,7 @@ defineExpose({
                   class="flex-1 min-w-0 min-h-[34px] py-1.5 px-2 bg-bg-input border border-border-default rounded-md text-text-primary text-[13px] font-mono leading-5 focus:outline-none focus:ring-0 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <button 
+                  v-if="!readOnly"
                   @click="removeQueryParam(param.id)"
                   class="p-1.5 text-text-muted hover:text-accent-red opacity-0 group-hover:opacity-100 transition-all duration-fast focus:opacity-100 focus:outline-none"
                   title="Remove param"
@@ -3439,6 +3450,7 @@ defineExpose({
               </div>
               
               <button
+                v-if="!readOnly"
                 @click="addQueryParam"
                 class="w-full mt-2 py-2 text-xs text-accent-blue hover:text-accent-blue/80 border border-dashed border-border-default rounded hover:border-accent-blue transition-colors duration-fast flex items-center justify-center gap-2"
               >
@@ -3492,6 +3504,7 @@ defineExpose({
                   class="flex-1 min-w-0 min-h-[34px] py-1.5 px-2 bg-bg-input border border-border-default rounded-md text-text-primary text-[13px] font-mono leading-5 focus:outline-none focus:ring-0 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                   <button
+                    v-if="!readOnly"
                     @click="removePathVariable(variable.id)"
                     class="p-1.5 text-text-muted hover:text-accent-red opacity-0 group-hover:opacity-100 transition-all duration-fast focus:opacity-100 focus:outline-none"
                     title="Remove path variable"
@@ -3511,6 +3524,7 @@ defineExpose({
           <div class="p-2 border-b border-border-default bg-bg-secondary flex items-center justify-between">
             <span class="text-xs text-text-muted">{{ headers.filter(h => h.enabled).length }} headers</span>
             <button
+              v-if="!readOnly"
               @click="addPresetHeaders"
               class="text-xs text-accent-blue hover:text-accent-blue/80"
             >
@@ -3555,6 +3569,7 @@ defineExpose({
                   class="flex-1 min-w-0 min-h-[34px] py-1.5 px-2 bg-bg-input border border-border-default rounded-md text-text-primary text-[13px] font-mono leading-5 focus:outline-none focus:ring-0 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <button
+                  v-if="!readOnly"
                   @click="removeHeader(header.id)"
                   class="p-1.5 text-text-muted hover:text-accent-red opacity-0 group-hover:opacity-100 transition-all duration-fast focus:opacity-100 focus:outline-none"
                   title="Remove header"
@@ -3567,6 +3582,7 @@ defineExpose({
               </div>
 
               <button
+                v-if="!readOnly"
                 @click="addHeader"
                 class="w-full mt-2 py-2 text-xs text-accent-blue hover:text-accent-blue/80 border border-dashed border-border-default rounded hover:border-accent-blue transition-colors duration-fast flex items-center justify-center gap-2"
               >
@@ -3587,6 +3603,7 @@ defineExpose({
         <div v-else-if="activeTab === 'body'" class="flex-1 flex flex-col overflow-hidden">
           <div class="p-2 border-b border-border-default bg-bg-secondary">
             <select 
+              v-if="!readOnly"
               v-model="bodyFormat"
               class="py-1.5 px-3 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue cursor-pointer"
             >
@@ -3597,6 +3614,10 @@ defineExpose({
               <option value="raw">Raw</option>
               <option value="binary">Binary</option>
             </select>
+            <span
+              v-else
+              class="py-1.5 px-3 inline-block bg-bg-tertiary border border-border-default rounded text-text-primary text-xs font-mono"
+            >Body: {{ bodyFormat }}</span>
           </div>
 
           <div class="flex-1 overflow-auto p-4">
@@ -3618,6 +3639,7 @@ defineExpose({
                 />
                 <div class="absolute top-2 right-2 flex items-center gap-1.5">
                   <button
+                    v-if="!readOnly"
                     @click="formatJsonBody"
                     class="px-2 py-0.5 bg-bg-tertiary hover:bg-bg-hover text-text-secondary hover:text-text-primary text-[10px] font-medium rounded border border-border-default transition-colors"
                     title="Format JSON (Cmd+Shift+F)"
@@ -3698,6 +3720,7 @@ defineExpose({
                   class="flex-1 min-w-0 min-h-[34px] py-1.5 px-2 bg-bg-input border border-border-default rounded-md text-text-primary text-[13px] font-mono leading-5 focus:outline-none focus:ring-0 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <button
+                  v-if="!readOnly"
                   @click="removeFormDataParam(param.id)"
                   class="p-1.5 text-text-muted hover:text-accent-red opacity-0 group-hover:opacity-100 transition-all duration-fast focus:opacity-100 focus:outline-none"
                   title="Remove param"
@@ -3709,6 +3732,7 @@ defineExpose({
                 </button>
               </div>
               <button
+                v-if="!readOnly"
                 @click="addFormDataParam"
                 class="w-full py-2 text-xs text-accent-blue hover:text-accent-blue/80 border border-dashed border-border-default rounded hover:border-accent-blue transition-colors duration-fast flex items-center justify-center gap-2"
               >
@@ -3756,6 +3780,7 @@ defineExpose({
                   class="flex-1 min-w-0 min-h-[34px] py-1.5 px-2 bg-bg-input border border-border-default rounded-md text-text-primary text-[13px] font-mono leading-5 focus:outline-none focus:ring-0 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <button
+                  v-if="!readOnly"
                   @click="removeFormDataParam(param.id)"
                   class="p-1.5 text-text-muted hover:text-accent-red opacity-0 group-hover:opacity-100 transition-all duration-fast focus:opacity-100 focus:outline-none"
                   title="Remove param"
@@ -3767,6 +3792,7 @@ defineExpose({
                 </button>
               </div>
               <button
+                v-if="!readOnly"
                 @click="addFormDataParam"
                 class="w-full py-2 text-xs text-accent-blue hover:text-accent-blue/80 border border-dashed border-border-default rounded hover:border-accent-blue transition-colors duration-fast flex items-center justify-center gap-2"
               >
@@ -3782,11 +3808,13 @@ defineExpose({
               <div class="flex items-center gap-2">
                 <span class="text-xs text-text-muted">Content-Type:</span>
                 <select
+                  v-if="!readOnly"
                   v-model="rawContentType"
                   class="flex-1 py-1.5 px-3 bg-bg-input border border-border-default rounded text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue"
                 >
                   <option v-for="ct in RAW_CONTENT_TYPES" :key="ct" :value="ct">{{ ct }}</option>
                 </select>
+                <span v-else class="flex-1 py-1.5 px-3 bg-bg-tertiary border border-border-default rounded text-text-primary text-xs font-mono">{{ rawContentType }}</span>
               </div>
               <VariableTextarea
                 v-model="rawBody"
@@ -3800,6 +3828,7 @@ defineExpose({
             <div v-else-if="bodyFormat === 'binary'" class="space-y-3">
               <div class="p-8 border-2 border-dashed border-border-default rounded-lg text-center">
                 <input
+                  v-if="!readOnly"
                   type="file"
                   @change="handleBinaryFileSelect($event)"
                   class="w-full"
@@ -3814,7 +3843,25 @@ defineExpose({
 
         <div v-else-if="activeTab === 'auth'" class="flex-1 flex flex-col overflow-hidden">
           <div class="flex-1 overflow-auto p-4">
-            <div class="space-y-4">
+            <div v-if="readOnly" class="space-y-4">
+              <p class="text-xs text-text-muted">
+                Authentication cannot be changed while you have view-only access to this workspace.
+              </p>
+              <div class="rounded-lg border border-border-default bg-bg-tertiary p-4 space-y-2">
+                <p class="text-[10px] font-semibold text-text-muted uppercase tracking-wide">Effective auth</p>
+                <p class="text-sm text-text-primary font-medium">
+                  <template v-if="inheritFromParent && collectionAuth">
+                    Inherited from {{ collectionName }} · {{ collectionAuth.type }}
+                  </template>
+                  <template v-else-if="inheritFromParent && collectionName">
+                    Inherited from {{ collectionName }} · not configured on collection
+                  </template>
+                  <template v-else-if="authType === 'none' || !authType">No authentication</template>
+                  <template v-else>{{ authType }}</template>
+                </p>
+              </div>
+            </div>
+            <div v-else class="space-y-4">
               <div class="space-y-2">
                 <label class="text-xs font-medium text-text-secondary">Auth Type</label>
                 <select
@@ -3867,6 +3914,7 @@ defineExpose({
                       Collection "{{ collectionName }}" has no auth configured.
                     </div>
                     <button
+                      type="button"
                       @click="openCollectionSettings"
                       class="text-accent-blue hover:text-accent-blue/80 font-medium text-xs inline-flex items-center gap-1"
                     >

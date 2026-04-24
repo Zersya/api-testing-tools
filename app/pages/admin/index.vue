@@ -209,6 +209,57 @@ const currentWorkspace = computed(() => {
   return workspaces.value?.find((w: any) => w.id === selectedWorkspaceId.value);
 });
 
+/** False when the user is a workspace member with view-only access */
+const canEditWorkspace = computed(() => {
+  const ws = currentWorkspace.value as { permission?: 'owner' | 'edit' | 'view' | null; isOwner?: boolean } | undefined;
+  if (!ws) return true;
+  const perm = ws.permission;
+  if (perm) return perm === 'owner' || perm === 'edit';
+  return Boolean(ws.isOwner);
+});
+
+/** Edit permission for any workspace by id (used when action targets a specific workspace/project/collection) */
+const canEditWorkspaceById = (workspaceId: string | null | undefined): boolean => {
+  if (!workspaceId || !workspaces.value) return true;
+  const ws = workspaces.value.find((w: any) => w.id === workspaceId) as
+    | { permission?: 'owner' | 'edit' | 'view' | null; isOwner?: boolean }
+    | undefined;
+  if (!ws) return true;
+  const perm = ws.permission;
+  if (perm) return perm === 'owner' || perm === 'edit';
+  return Boolean(ws.isOwner);
+};
+
+const workspaceIdForProjectId = (projectId: string | null | undefined): string | null => {
+  if (!projectId || !workspaces.value) return null;
+  for (const w of workspaces.value as any[]) {
+    if (w.projects?.some((p: any) => p.id === projectId)) return w.id;
+  }
+  return null;
+};
+
+const workspaceIdForCollectionId = (collectionId: string | null | undefined): string | null => {
+  if (!collectionId || !workspaces.value) return null;
+  for (const w of workspaces.value as any[]) {
+    for (const p of w.projects || []) {
+      if (p.collections?.some((c: any) => c.id === collectionId)) return w.id;
+    }
+  }
+  return null;
+};
+
+/** Matches WorkspaceSwitcher: only owner or super admin may rename/delete a workspace */
+const SUPER_ADMIN_WORKSPACE_EMAIL = 'admin@mock.com';
+const canRenameWorkspaceById = (workspaceId: string | null | undefined): boolean => {
+  if (!workspaceId || !workspaces.value) return false;
+  const ws = workspaces.value.find((w: any) => w.id === workspaceId);
+  if (!ws) return false;
+  if (ws.isOwner) return true;
+  if (currentUserEmail.value === SUPER_ADMIN_WORKSPACE_EMAIL) return true;
+  return false;
+};
+const canDeleteWorkspaceById = canRenameWorkspaceById;
+
 const currentWorkspaceId = computed(() => selectedWorkspaceId.value);
 
 const currentProjectId = computed(() => selectedProjectId.value);
@@ -666,6 +717,7 @@ const refreshEnvironmentSources = async () => {
 };
 
 const openEnvironmentSettings = async (mode: 'manage' | 'create' = 'manage') => {
+  if (mode === 'create' && !canEditWorkspace.value) return;
   activeAdminPanel.value = 'environments';
   await refreshEnvironmentSettings();
 
@@ -706,27 +758,35 @@ watch(currentProjectId, async (newProjectId) => {
 });
 
 const openEnvironmentCreateModal = () => {
+  if (!canEditWorkspace.value) return;
   environmentCreateForm.value = { name: '' };
   showEnvironmentCreateModal.value = true;
 };
 
 const openEnvironmentRenameModal = (environment: Environment) => {
+  const wsId = workspaceIdForProjectId(environment.projectId);
+  if (wsId && !canEditWorkspaceById(wsId)) return;
   environmentToRename.value = environment;
   environmentRenameForm.value = { name: environment.name };
   showEnvironmentRenameModal.value = true;
 };
 
 const openEnvironmentDeleteModal = (environment: Environment) => {
+  const wsId = workspaceIdForProjectId(environment.projectId);
+  if (wsId && !canEditWorkspaceById(wsId)) return;
   environmentToDelete.value = environment;
   showEnvironmentDeleteConfirm.value = true;
 };
 
 const openEnvironmentDuplicateModal = (environment: Environment) => {
+  const wsId = workspaceIdForProjectId(environment.projectId);
+  if (wsId && !canEditWorkspaceById(wsId)) return;
   environmentToDuplicate.value = environment;
   showEnvironmentDuplicateConfirm.value = true;
 };
 
 const createEnvironmentFromSettings = async () => {
+  if (!canEditWorkspace.value) return;
   if (!environmentCreateForm.value.name.trim() || !currentProjectId.value) {
     return;
   }
@@ -753,6 +813,8 @@ const renameEnvironmentFromSettings = async () => {
   if (!environmentToRename.value || !environmentRenameForm.value.name.trim()) {
     return;
   }
+  const wsId = workspaceIdForProjectId(environmentToRename.value.projectId);
+  if (wsId && !canEditWorkspaceById(wsId)) return;
 
   try {
     isEnvironmentSettingsLoading.value = true;
@@ -776,6 +838,8 @@ const renameEnvironmentFromSettings = async () => {
 // Handler for quick edit from dropdown (update name and variables)
 const updateEnvironmentFromDropdown = async (environment: any, name: string, variables: any[], secretValues: Record<string, string> = {}) => {
   if (!name.trim()) return;
+  const wsId = workspaceIdForProjectId(environment?.projectId);
+  if (wsId && !canEditWorkspaceById(wsId)) return;
 
   let partialUpdate = false;
   const errors: string[] = [];
@@ -899,6 +963,8 @@ const deleteEnvironmentFromSettings = async () => {
   if (!environmentToDelete.value) {
     return;
   }
+  const wsId = workspaceIdForProjectId(environmentToDelete.value.projectId);
+  if (wsId && !canEditWorkspaceById(wsId)) return;
 
   try {
     isEnvironmentSettingsLoading.value = true;
@@ -919,6 +985,8 @@ const duplicateEnvironmentFromSettings = async () => {
   if (!environmentToDuplicate.value) {
     return;
   }
+  const wsId = workspaceIdForProjectId(environmentToDuplicate.value.projectId);
+  if (wsId && !canEditWorkspaceById(wsId)) return;
 
   try {
     isEnvironmentSettingsLoading.value = true;
@@ -939,6 +1007,8 @@ const activateEnvironmentFromSettings = async (environment: Environment) => {
   if (environment.isActive) {
     return;
   }
+  const wsId = workspaceIdForProjectId(environment.projectId);
+  if (wsId && !canEditWorkspaceById(wsId)) return;
 
   try {
     await $fetch(`/api/admin/environments/${environment.id}/activate`, {
@@ -951,6 +1021,7 @@ const activateEnvironmentFromSettings = async (environment: Environment) => {
 };
 
 const addVariableFromSettings = async (environment: Environment) => {
+  if (!canEditWorkspace.value) return;
   try {
     await $fetch(`/api/admin/environments/${environment.id}/variables`, {
       method: 'POST',
@@ -968,6 +1039,7 @@ const addVariableFromSettings = async (environment: Environment) => {
 };
 
 const updateVariableFromSettings = async (variable: EnvironmentVariable, key: string, value: string, isSecret: boolean) => {
+  if (!canEditWorkspace.value) return;
   // Validate inputs
   if (!variable?.id) {
     console.error('Invalid variable:', variable);
@@ -996,6 +1068,7 @@ const updateVariableFromSettings = async (variable: EnvironmentVariable, key: st
 };
 
 const toggleSecretFromSettings = (variable: EnvironmentVariable) => {
+  if (!canEditWorkspace.value) return;
   const newIsSecret = !variable.isSecret;
 
   if (newIsSecret) {
@@ -1041,6 +1114,7 @@ const toggleSecretFromSettings = (variable: EnvironmentVariable) => {
 };
 
 const deleteVariableFromSettings = async (variableId: string) => {
+  if (!canEditWorkspace.value) return;
   try {
     await $fetch(`/api/admin/variables/${variableId}`, {
       method: 'DELETE'
@@ -1105,6 +1179,18 @@ const findCollectionByFolderId = (folderId: string): { collectionId: string; fol
         if (foundCollectionId) return { collectionId: foundCollectionId, folderId };
       }
     }
+  }
+  return null;
+};
+
+const workspaceIdForRequestContext = (request: {
+  collectionId?: string | null;
+  folderId?: string | null;
+}): string | null => {
+  if (request.collectionId) return workspaceIdForCollectionId(request.collectionId);
+  if (request.folderId) {
+    const hit = findCollectionByFolderId(request.folderId);
+    return hit ? workspaceIdForCollectionId(hit.collectionId) : null;
   }
   return null;
 };
@@ -1832,6 +1918,7 @@ const handleSelectMock = (mock: any) => {
 };
 
 const createResource = async () => {
+    if (!canEditWorkspace.value) return;
     if (!resourceForm.value.name) return;
     try {
         await $fetch('/api/admin/resource', {
@@ -1857,6 +1944,7 @@ const confirmDeleteMock = (mock: any) => {
 };
 
 const deleteMock = async () => {
+    if (!canEditWorkspace.value) return;
     if (!mockToDelete.value) return;
     await $fetch(`/api/admin/mocks?id=${mockToDelete.value.id}`, { method: 'DELETE' });
     if (selectedMock.value?.id === mockToDelete.value.id) {
@@ -1938,6 +2026,7 @@ const exportOpenAPI = async () => {
 };
 
 const openImportModal = () => {
+  if (!canEditWorkspace.value) return;
   showImportModal.value = true;
 };
 
@@ -1947,6 +2036,7 @@ const copyPath = (mock: Mock) => {
 };
 
 const duplicateMock = async (mock: any) => {
+    if (!canEditWorkspace.value) return;
     try {
         await $fetch('/api/admin/mocks', {
             method: 'POST',
@@ -1964,8 +2054,11 @@ const duplicateMock = async (mock: any) => {
 
 const goToCreate = (collectionId?: string) => {
     if (collectionId) {
+        const wsId = workspaceIdForCollectionId(collectionId);
+        if (wsId && !canEditWorkspaceById(wsId)) return;
         navigateTo(`/admin/create?collection=${collectionId}`);
     } else {
+        if (!canEditWorkspace.value) return;
         navigateTo('/admin/create');
     }
 };
@@ -2078,6 +2171,7 @@ const handleCloseTabs = (tabKeys: string[]) => {
 };
 
 const handleNewTab = () => {
+  if (!canEditWorkspace.value) return;
   activeAdminPanel.value = 'requests';
   const newRequest: HttpRequest = {
     id: '',
@@ -2185,6 +2279,12 @@ const handleBuilderStateChange = (state: {
 };
 
 const handleSaveRequest = async (request: any) => {
+  const saveWsId = workspaceIdForRequestContext(request);
+  if (saveWsId) {
+    if (!canEditWorkspaceById(saveWsId)) return;
+  } else if (!canEditWorkspace.value) {
+    return;
+  }
   // Check if this is a shared workspace and warning not disabled
   const isShared = checkIfRequestIsInSharedWorkspace(request);
   
@@ -2204,6 +2304,12 @@ const handleSaveRequest = async (request: any) => {
 
 // Execute the actual save after warning confirmation or if no warning needed
 const executeSave = async (request: any) => {
+  const saveWsId = workspaceIdForRequestContext(request);
+  if (saveWsId) {
+    if (!canEditWorkspaceById(saveWsId)) return;
+  } else if (!canEditWorkspace.value) {
+    return;
+  }
   requestToSave.value = request;
   
   console.log('[Frontend Save] Request mockConfig:', request.mockConfig);
@@ -2539,6 +2645,16 @@ const handleSaveAs = async (data: any) => {
 };
 
 const openCreateRequest = (folderId?: string | null, collectionId?: string) => {
+  if (folderId) {
+    const hit = findCollectionByFolderId(folderId);
+    const wsId = hit ? workspaceIdForCollectionId(hit.collectionId) : null;
+    if (wsId && !canEditWorkspaceById(wsId)) return;
+  } else if (collectionId) {
+    const wsId = workspaceIdForCollectionId(collectionId);
+    if (wsId && !canEditWorkspaceById(wsId)) return;
+  } else if (!canEditWorkspace.value) {
+    return;
+  }
   // Create a new empty request tab with folder/collection association
   activeAdminPanel.value = 'requests';
   
@@ -2577,6 +2693,9 @@ const openCreateRequest = (folderId?: string | null, collectionId?: string) => {
 // For importing from cURL - shows the modal
 const openImportCurl = (folderId?: string | null, collectionId?: string) => {
   if (folderId) {
+    const hit = findCollectionByFolderId(folderId);
+    const wsId = hit ? workspaceIdForCollectionId(hit.collectionId) : null;
+    if (wsId && !canEditWorkspaceById(wsId)) return;
     // Importing to a folder
     const folder = findFolderInWorkspaces(folderId);
     requestFolderId.value = folderId;
@@ -2585,6 +2704,8 @@ const openImportCurl = (folderId?: string | null, collectionId?: string) => {
     requestCollectionName.value = '';
     showRequestModal.value = true;
   } else if (collectionId) {
+    const wsId = workspaceIdForCollectionId(collectionId);
+    if (wsId && !canEditWorkspaceById(wsId)) return;
     // Importing to collection root
     const collection = findCollectionInWorkspaces(collectionId);
     requestFolderId.value = null;
@@ -2614,6 +2735,8 @@ const handleCurlImported = async (result: any) => {
 
 const openCreateFolder = (collectionId?: string) => {
   if (collectionId) {
+    const wsId = workspaceIdForCollectionId(collectionId);
+    if (wsId && !canEditWorkspaceById(wsId)) return;
     const collection = findCollectionInWorkspaces(collectionId);
     folderCollectionId.value = collectionId;
     folderCollectionName.value = collection?.name || 'Unknown Collection';
@@ -2636,6 +2759,7 @@ const handleFolderCreated = async () => {
 
 const openCreateProject = (workspaceId?: string) => {
   const wsId = workspaceId || currentWorkspaceId.value || workspaces.value?.[0]?.id;
+  if (wsId && !canEditWorkspaceById(wsId)) return;
   if (wsId) {
     projectWorkspaceId.value = wsId;
     showProjectModal.value = true;
@@ -2649,11 +2773,14 @@ const openCreateWorkspace = () => {
 };
 
 const openRenameWorkspace = (workspace: { id: string; name: string }) => {
+  if (!canRenameWorkspaceById(workspace.id)) return;
   workspaceToRename.value = workspace;
   showRenameWorkspaceModal.value = true;
 };
 
 const handleRestoreRequest = (request: any) => {
+  const wsId = workspaceIdForRequestContext(request);
+  if (wsId && !canEditWorkspaceById(wsId)) return;
   activeAdminPanel.value = 'requests';
   selectedMock.value = null;
   
@@ -2694,6 +2821,7 @@ const handleViewDefinitionDocs = (definition: any) => {
 };
 
 const handleGenerateDefinitionMocks = (definition: any) => {
+  if (!canEditWorkspace.value) return;
   selectedDefinition.value = definition;
   if (definition.parsedInfo) {
     selectedEndpoints.value = definition.parsedInfo.endpoints.map((ep: any) => `${ep.method}:${ep.path}`);
@@ -2703,7 +2831,8 @@ const handleGenerateDefinitionMocks = (definition: any) => {
   showGenerateModal.value = true;
 };
 
-const handleReimportDefinition = (definition: any) => {
+const handleReimportDefinition = (_definition: any) => {
+  if (!canEditWorkspace.value) return;
   showImportModal.value = true;
 };
 
@@ -2802,6 +2931,7 @@ const generateMockDataFromSchema = (schema: any): any => {
 
 const generateMocks = async () => {
   if (!selectedDefinition.value) return;
+  if (!canEditWorkspace.value) return;
 
   isGenerating.value = true;
   try {
@@ -2825,10 +2955,13 @@ const generateMocks = async () => {
 
 // Collection Management
 const openCreateCollection = (projectId?: string) => {
+    const pid = projectId || currentProjectId.value || '';
+    const wsId = workspaceIdForProjectId(pid);
+    if (wsId && !canEditWorkspaceById(wsId)) return;
     collectionModalMode.value = 'create';
     collectionForm.value = {
         id: '',
-        projectId: projectId || currentProjectId.value || '',
+        projectId: pid,
         name: '',
         description: '',
         color: '#6366f1'
@@ -2837,6 +2970,8 @@ const openCreateCollection = (projectId?: string) => {
 };
 
 const openEditCollection = async (collection: Collection) => {
+    const wsId = workspaceIdForCollectionId(collection.id);
+    if (wsId && !canEditWorkspaceById(wsId)) return;
     collectionModalMode.value = 'edit';
     
     // Fetch fresh auth config from API to ensure we have latest data
@@ -2870,6 +3005,8 @@ const openEditCollection = async (collection: Collection) => {
 };
 
 const handleOpenCollectionSettings = async (collectionId: string) => {
+    const wsId = workspaceIdForCollectionId(collectionId);
+    if (wsId && !canEditWorkspaceById(wsId)) return;
     // First try to find in existing collections
     let collection = collections.value?.find(c => c.id === collectionId);
     
@@ -2892,6 +3029,8 @@ const handleOpenCollectionSettings = async (collectionId: string) => {
 const saveCollection = async () => {
     try {
         if (collectionModalMode.value === 'create') {
+            const wsIdCreate = workspaceIdForProjectId(collectionForm.value.projectId);
+            if (wsIdCreate && !canEditWorkspaceById(wsIdCreate)) return;
             if (!collectionForm.value.projectId) {
                 alert('Please select a project');
                 return;
@@ -2904,6 +3043,8 @@ const saveCollection = async () => {
                 }
             });
         } else {
+            const wsIdEdit = workspaceIdForCollectionId(collectionForm.value.id);
+            if (wsIdEdit && !canEditWorkspaceById(wsIdEdit)) return;
             // Update collection basic info using the proper database endpoint
             await $fetch(`/api/admin/collections/${collectionForm.value.id}`, {
                 method: 'PUT',
@@ -2970,6 +3111,8 @@ const confirmDeleteCollection = (collection: Collection) => {
 
 const deleteCollection = async () => {
     if (!collectionToDelete.value) return;
+    const wsId = workspaceIdForCollectionId(collectionToDelete.value.id);
+    if (wsId && !canEditWorkspaceById(wsId)) return;
     try {
         await $fetch(`/api/admin/collections/${collectionToDelete.value.id}`, { method: 'DELETE' });
         showDeleteCollectionConfirm.value = false;
@@ -2991,6 +3134,8 @@ const confirmDeleteProject = (project: any) => {
 
 const deleteProject = async () => {
     if (!projectToDelete.value) return;
+    const wsId = workspaceIdForProjectId(projectToDelete.value.id);
+    if (wsId && !canEditWorkspaceById(wsId)) return;
     try {
         await $fetch(`/api/admin/projects/${projectToDelete.value.id}`, { method: 'DELETE' });
         showDeleteProjectConfirm.value = false;
@@ -3016,6 +3161,7 @@ const confirmDeleteWorkspace = (workspace: { id: string; name: string }) => {
 
 const deleteWorkspace = async () => {
     if (!workspaceToDelete.value) return;
+    if (!canDeleteWorkspaceById(workspaceToDelete.value.id)) return;
     try {
         await $fetch(`/api/admin/workspaces/${workspaceToDelete.value.id}`, { method: 'DELETE' });
         showDeleteWorkspaceConfirm.value = false;
@@ -3045,7 +3191,9 @@ const confirmDeleteGroup = (collectionId: string, name: string, mocks: Mock[]) =
 
 const deleteGroup = async () => {
     if (!groupToDelete.value) return;
-    
+    const wsId = workspaceIdForCollectionId(groupToDelete.value.collectionId);
+    if (wsId && !canEditWorkspaceById(wsId)) return;
+
     try {
         await Promise.all(groupToDelete.value.mocks.map(mock => 
             $fetch(`/api/admin/mocks?id=${mock.id}`, { method: 'DELETE' })
@@ -3071,7 +3219,10 @@ const confirmDeleteFolder = (folder: any) => {
 
 const deleteFolder = async () => {
     if (!folderToDelete.value) return;
-    
+    const hit = findCollectionByFolderId(folderToDelete.value.id);
+    const wsId = hit ? workspaceIdForCollectionId(hit.collectionId) : null;
+    if (wsId && !canEditWorkspaceById(wsId)) return;
+
     try {
         await $fetch(`/api/admin/folders/${folderToDelete.value.id}`, { method: 'DELETE' });
         showDeleteFolderConfirm.value = false;
@@ -3094,6 +3245,8 @@ const confirmDeleteRequest = (request: any) => {
 
 const deleteRequest = async () => {
     if (!requestToDelete.value || isDeletingRequest.value) return;
+    const wsId = workspaceIdForRequestContext(requestToDelete.value);
+    if (wsId && !canEditWorkspaceById(wsId)) return;
     const requestId = requestToDelete.value.id;
     isDeletingRequest.value = true;
     
@@ -3126,6 +3279,8 @@ const isDuplicatingRequest = ref(false);
 
 const handleDuplicateRequest = async (request: any) => {
     if (!request || !request.id) return;
+    const wsId = workspaceIdForRequestContext(request);
+    if (wsId && !canEditWorkspaceById(wsId)) return;
 
     isDuplicatingRequest.value = true;
 
@@ -3198,6 +3353,8 @@ const itemToRename = ref<any>(null);
 const renameValue = ref('');
 
 const openRenameProject = (project: any) => {
+    const wsId = workspaceIdForProjectId(project.id);
+    if (wsId && !canEditWorkspaceById(wsId)) return;
     renameType.value = 'project';
     itemToRename.value = project;
     renameValue.value = project.name;
@@ -3205,6 +3362,8 @@ const openRenameProject = (project: any) => {
 };
 
 const openRenameCollection = (collection: any) => {
+    const wsId = workspaceIdForCollectionId(collection.id);
+    if (wsId && !canEditWorkspaceById(wsId)) return;
     renameType.value = 'collection';
     itemToRename.value = collection;
     renameValue.value = collection.name;
@@ -3212,6 +3371,9 @@ const openRenameCollection = (collection: any) => {
 };
 
 const openRenameFolder = (folder: any) => {
+    const hit = findCollectionByFolderId(folder.id);
+    const wsId = hit ? workspaceIdForCollectionId(hit.collectionId) : null;
+    if (wsId && !canEditWorkspaceById(wsId)) return;
     renameType.value = 'folder';
     itemToRename.value = folder;
     renameValue.value = folder.name;
@@ -3222,7 +3384,18 @@ const renameItem = async () => {
     if (!itemToRename.value || !renameValue.value.trim()) return;
     
     const newName = renameValue.value.trim();
-    
+    if (renameType.value === 'project') {
+      const wsId = workspaceIdForProjectId(itemToRename.value.id);
+      if (wsId && !canEditWorkspaceById(wsId)) return;
+    } else if (renameType.value === 'collection') {
+      const wsId = workspaceIdForCollectionId(itemToRename.value.id);
+      if (wsId && !canEditWorkspaceById(wsId)) return;
+    } else if (renameType.value === 'folder') {
+      const hit = findCollectionByFolderId(itemToRename.value.id);
+      const wsId = hit ? workspaceIdForCollectionId(hit.collectionId) : null;
+      if (wsId && !canEditWorkspaceById(wsId)) return;
+    }
+
     try {
         if (renameType.value === 'project') {
             await $fetch(`/api/admin/projects/${itemToRename.value.id}`, {
@@ -3251,6 +3424,8 @@ const renameItem = async () => {
 };
 
 const handleReorderFolders = async (collectionId: string, updates: { id: string; parentFolderId: string | null; order: number }[]) => {
+    const wsId = workspaceIdForCollectionId(collectionId);
+    if (wsId && !canEditWorkspaceById(wsId)) return;
     try {
         await $fetch('/api/admin/folders/reorder', {
             method: 'POST',
@@ -3268,6 +3443,11 @@ const handleReorderRequests = async (
   updates: { id: string; folderId?: string | null; collectionId?: string | null; order: number }[],
   collectionId?: string | null
 ) => {
+    const wsFromCollection = collectionId ? workspaceIdForCollectionId(collectionId) : null;
+    const hit = folderId ? findCollectionByFolderId(folderId) : null;
+    const wsFromFolder = hit ? workspaceIdForCollectionId(hit.collectionId) : null;
+    const wsId = wsFromCollection || wsFromFolder;
+    if (wsId && !canEditWorkspaceById(wsId)) return;
     try {
         const body: any = { updates };
         if (folderId) {
@@ -3309,11 +3489,13 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
         }
     },
     onSaveRequest: () => {
+        if (!canEditWorkspace.value) return;
         if (selectedRequest.value && activeTabKey.value) {
             handleSaveRequest(selectedRequest.value);
         }
     },
     onNewTab: () => {
+        if (!canEditWorkspace.value) return;
         handleNewTab();
     },
     onCloseTab: () => {
@@ -3342,6 +3524,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
       :workspaces="workspaces || []"
       :selected-workspace-id="selectedWorkspaceId"
       :current-user-email="currentUserEmail"
+      :can-edit-workspace="canEditWorkspace"
       :is-mock-sidebar-active="isMockSidebarActive"
       :is-mobile="isMobile"
       @open-settings="openSettings"
@@ -3483,6 +3666,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
             :project-id="currentProjectId"
             :is-loading="isEnvironmentSettingsLoading"
             :secret-values="environmentSettingsSecretValues"
+            :read-only="!canEditWorkspace"
             @create="openEnvironmentCreateModal"
             @activate="activateEnvironmentFromSettings"
             @rename="(env, name) => { environmentToRename.value = env; environmentRenameForm.value.name = name; showEnvironmentRenameModal.value = true; }"
@@ -3505,14 +3689,14 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
           <h2 class="text-xl font-semibold text-text-primary mb-2">Select an endpoint</h2>
           <p class="text-text-secondary mb-6 max-w-[340px]">Choose an endpoint from the sidebar to view details, test it, and generate code snippets</p>
           <div class="flex gap-2">
-            <button class="btn btn-primary" @click="goToCreate()">
+            <button v-if="canEditWorkspace" class="btn btn-primary" @click="goToCreate()">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="12" y1="5" x2="12" y2="19"></line>
                 <line x1="5" y1="12" x2="19" y2="12"></line>
               </svg>
               Create New Mock
             </button>
-            <button class="btn btn-secondary" @click="handleNewTab()">
+            <button v-if="canEditWorkspace" class="btn btn-secondary" @click="handleNewTab()">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                 <polyline points="14 2 14 8 20 8"></polyline>
@@ -3545,6 +3729,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
                 </svg>
               </button>
               <button 
+                v-if="canEditWorkspace"
                 class="flex items-center justify-center w-[34px] h-[34px] bg-transparent border-none rounded-md text-text-secondary cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-text-primary" 
                 @click="duplicateMock(selectedMock)" 
                 title="Duplicate Mock"
@@ -3555,6 +3740,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
                 </svg>
               </button>
               <button 
+                v-if="canEditWorkspace"
                 class="flex items-center justify-center w-[34px] h-[34px] bg-transparent border-none rounded-md text-text-secondary cursor-pointer transition-all duration-fast hover:bg-accent-red/15 hover:text-accent-red" 
                 @click="confirmDeleteMock(selectedMock)" 
                 title="Delete Mock"
@@ -3566,13 +3752,15 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
                   <line x1="14" y1="11" x2="14" y2="17"></line>
                 </svg>
               </button>
-              <div class="w-px h-6 bg-border-default mx-2"></div>
-              <button class="btn btn-primary" @click="goToEdit(selectedMock.id)">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
-                </svg>
-                Edit
-              </button>
+              <template v-if="canEditWorkspace">
+                <div class="w-px h-6 bg-border-default mx-2"></div>
+                <button class="btn btn-primary" @click="goToEdit(selectedMock.id)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                  </svg>
+                  Edit
+                </button>
+              </template>
             </div>
           </div>
 
@@ -3596,6 +3784,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
                   <div class="flex items-center justify-between mb-1.5">
                     <div class="text-[10px] font-semibold text-text-muted uppercase tracking-wide">Security</div>
                     <button 
+                      v-if="canEditWorkspace"
                       class="flex items-center justify-center w-5 h-5 p-0 border-none bg-transparent text-text-muted rounded cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-text-primary" 
                       @click="openSettings" 
                       title="Configure Security Settings"
@@ -3608,6 +3797,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
                   </div>
                   <div class="flex items-center gap-2 text-[13px]">
                     <button 
+                      v-if="canEditWorkspace"
                       @click="toggleSecure(selectedMock)" 
                       :class="[
                         'relative w-9 h-5 border-none rounded-[10px] cursor-pointer transition-colors duration-normal',
@@ -3742,6 +3932,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
           <RequestTabs
             :open-tabs="openTabs"
             :active-tab-key="activeTabKey"
+            :allow-new-tab="canEditWorkspace"
             @select-tab="handleSelectTab"
             @close-tab="handleCloseTab"
             @close-tabs="handleCloseTabs"
@@ -3765,6 +3956,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
                 :initial-active-tab="getActiveOpenTab()?.activeBuilderTab"
                 :initial-script-logs="getActiveOpenTab()?.scriptLogs"
                 :initial-expanded-nodes="getActiveOpenTab()?.expandedNodes"
+                :read-only="!canEditWorkspace"
                 :is-shared-workspace="isSharedWorkspace"
                 :refresh-trigger="environmentRefreshTrigger"
                 @save-request="handleSaveRequest"

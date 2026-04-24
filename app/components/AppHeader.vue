@@ -3,12 +3,14 @@ import EnvironmentSwitcher from './EnvironmentSwitcher.vue';
 import WorkspaceSwitcher from './WorkspaceSwitcher.vue';
 import { computed, onMounted, onUnmounted, ref, inject } from 'vue';
 import { useFeedback } from '../composables/useFeedback';
+import { usePermissionBadge } from '../composables/usePermissionBadge';
 
 interface Workspace {
   id: string;
   name: string;
   projectCount: number;
   isOwner: boolean;
+  permission?: 'owner' | 'edit' | 'view' | null;
 }
 
 interface Props {
@@ -34,6 +36,8 @@ interface Props {
   currentUserEmail?: string | null;
   isMockSidebarActive?: boolean;
   isMobile?: boolean;
+  /** When false, hide import and environment management actions (view-only workspace member) */
+  canEditWorkspace?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -46,7 +50,8 @@ const props = withDefaults(defineProps<Props>(), {
   selectedWorkspaceId: null,
   currentUserEmail: null,
   isMockSidebarActive: false,
-  isMobile: false
+  isMobile: false,
+  canEditWorkspace: true
 });
 
 const emit = defineEmits<{
@@ -107,6 +112,19 @@ const environmentSwitcherRef = ref<any>(null);
 const route = useRoute();
 const isEnvironmentsPage = computed(() => route.path === '/admin/environments');
 const isSuperAdminPage = computed(() => route.path === '/admin/super-admin');
+
+const { getPermissionBadge, getEffectiveWorkspaceRole } = usePermissionBadge();
+
+const selectedWorkspaceForHeader = computed(() => {
+  if (!props.selectedWorkspaceId || !props.workspaces?.length) return null;
+  return props.workspaces.find(w => w.id === props.selectedWorkspaceId) || null;
+});
+
+const selectedWorkspaceRoleBadge = computed(() => {
+  const ws = selectedWorkspaceForHeader.value;
+  if (!ws) return null;
+  return getPermissionBadge(getEffectiveWorkspaceRole(ws));
+});
 
 // Version display
 const { currentVersion } = useVersion();
@@ -279,6 +297,7 @@ defineExpose({
         v-if="!isEnvironmentsPage && !isMockSidebarActive"
         :environments="environments"
         :active-environment-id="activeEnvironmentId"
+        :can-edit-environments="canEditWorkspace"
         @update:active-environment-id="emit('activateEnvironment', $event)"
         @manage="emit('manageEnvironments')"
         @create="emit('createEnvironment')"
@@ -289,7 +308,7 @@ defineExpose({
 
       <!-- Import Button - Hidden when Mocks sidebar is active -->
       <button
-        v-if="showActions && !isEnvironmentsPage && !isMockSidebarActive"
+        v-if="showActions && !isEnvironmentsPage && !isMockSidebarActive && canEditWorkspace"
         class="inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 bg-bg-tertiary text-text-secondary border border-border-default rounded-md cursor-pointer text-[13px] font-medium transition-all duration-fast hover:bg-bg-hover hover:text-text-primary hover:border-accent-orange"
         @click="emit('importOpenAPI')"
         title="Import OpenAPI"
@@ -457,9 +476,21 @@ defineExpose({
               class="w-full py-2.5 px-3 bg-bg-input border border-border-default rounded-md text-text-primary text-sm focus:outline-none focus:border-accent-blue min-h-[44px]"
             >
               <option v-for="workspace in workspaces" :key="workspace.id" :value="workspace.id">
-                {{ workspace.name }}
+                {{ workspace.name }} — {{ getPermissionBadge(getEffectiveWorkspaceRole(workspace)).text }}
               </option>
             </select>
+            <p
+              v-if="selectedWorkspaceRoleBadge"
+              class="mt-2 text-xs text-text-secondary flex items-center gap-2"
+            >
+              <span class="text-text-muted">Your role</span>
+              <span
+                class="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                :class="selectedWorkspaceRoleBadge.className"
+              >
+                {{ selectedWorkspaceRoleBadge.text }}
+              </span>
+            </p>
           </div>
 
           <!-- Environment Selection -->
@@ -476,6 +507,7 @@ defineExpose({
               </option>
             </select>
             <button
+              v-if="canEditWorkspace"
               @click="$emit('manageEnvironments'); showMobileActions = false"
               class="mt-2 text-xs text-accent-blue hover:text-accent-blue/80 transition-colors py-1"
             >
@@ -486,7 +518,7 @@ defineExpose({
           <!-- Action Buttons -->
           <div class="py-1">
             <button
-              v-if="showActions && !isEnvironmentsPage"
+              v-if="showActions && !isEnvironmentsPage && canEditWorkspace"
               class="w-full flex items-center gap-3 px-3 py-3 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors min-h-[44px]"
               @click="emit('importOpenAPI'); showMobileActions = false"
             >
