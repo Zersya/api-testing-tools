@@ -213,15 +213,13 @@ function generateCorsGuidance(url: string): string {
 
   return `CORS Policy Blocked
 
-Your local API at ${url} is blocking cross-origin requests from ${origin}.
+Your API at ${url} is blocking cross-origin requests from ${origin}.
 
-To fix this, you have 3 options:
-
-**Option 1: Enable CORS on your local API (Recommended)**
+To fix this, enable CORS on your API to allow requests from ${origin}:
 
 Express.js:
   app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Origin', '${origin}');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     next();
@@ -229,27 +227,23 @@ Express.js:
 
 Flask:
   from flask_cors import CORS
-  CORS(app)
+  CORS(app, origins=["${origin}"])
 
 Django:
   # Add 'corsheaders' to INSTALLED_APPS
   # Add 'corsheaders.middleware.CorsMiddleware' to MIDDLEWARE
-  CORS_ALLOW_ALL_ORIGINS = True
+  CORS_ALLOWED_ORIGINS = ["${origin}"]
 
 Go:
-  handler := cors.Default().Handler(router)
-  http.ListenAndServe(":3000", handler)
+  c := cors.New(cors.Options{AllowedOrigins: []string{"${origin}"}})
+  handler := c.Handler(router)
 
 Spring Boot:
-  @CrossOrigin(origins = "*")
+  @CrossOrigin(origins = "${origin}")
   @RestController
   public class MyController { }
 
-**Option 2: Use a CORS Browser Extension**
-Install "Allow CORS: Access-Control-Allow-Origin" extension for Chrome/Firefox
-
-**Option 3: Use the Server Proxy (Settings)**
-Enable "Use Server Proxy" in request settings to route through the server instead of direct browser requests.`;
+Alternatively, install the "Allow CORS: Access-Control-Allow-Origin" browser extension for Chrome/Firefox to bypass CORS checks during development.`;
 }
 
 /**
