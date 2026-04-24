@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { usePermissionBadge } from '../composables/usePermissionBadge';
 
 interface Workspace {
   id: string;
   name: string;
   projectCount: number;
   isOwner: boolean;
+  permission?: 'owner' | 'edit' | 'view' | null;
 }
+
+const { getPermissionBadge, getEffectiveWorkspaceRole } = usePermissionBadge();
 
 interface Props {
   workspaces: Workspace[];
@@ -39,6 +43,15 @@ const SUPER_ADMIN_EMAIL = 'admin@mock.com';
 const selectedWorkspace = computed(() => {
   return props.workspaces.find(w => w.id === props.selectedWorkspaceId) || null;
 });
+
+const selectedRoleBadge = computed(() => {
+  const ws = selectedWorkspace.value;
+  if (!ws) return null;
+  return getPermissionBadge(getEffectiveWorkspaceRole(ws));
+});
+
+const workspaceRoleBadge = (workspace: Workspace) =>
+  getPermissionBadge(getEffectiveWorkspaceRole(workspace));
 
 /**
  * Check if user can delete a workspace
@@ -108,8 +121,16 @@ onUnmounted(() => {
         <line x1="12" y1="22.08" x2="12" y2="12"></line>
       </svg>
 
-      <span v-if="selectedWorkspace" class="flex items-center gap-1.5">
-        {{ selectedWorkspace.name }}
+      <span v-if="selectedWorkspace" class="flex items-center gap-1.5 min-w-0 max-w-[14rem]">
+        <span class="truncate">{{ selectedWorkspace.name }}</span>
+        <span
+          v-if="selectedRoleBadge"
+          class="text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0"
+          :class="selectedRoleBadge.className"
+          :title="`Your role in this workspace: ${selectedRoleBadge.text}`"
+        >
+          {{ selectedRoleBadge.text }}
+        </span>
       </span>
       <span v-else class="flex items-center gap-1.5 text-text-muted">
         Select Workspace
@@ -141,7 +162,7 @@ onUnmounted(() => {
     >
       <div
         v-if="isOpen"
-        class="absolute right-0 top-full mt-1 w-64 bg-bg-secondary border border-border-default rounded-lg shadow-xl z-50 overflow-hidden"
+        class="absolute right-0 top-full mt-1 w-[17rem] max-w-[calc(100vw-1rem)] bg-bg-secondary border border-border-default rounded-lg shadow-xl z-50 overflow-hidden"
       >
         <div class="py-1">
           <div v-if="workspaces.length === 0" class="px-3 py-3 text-center">
@@ -186,8 +207,15 @@ onUnmounted(() => {
               >
                 <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
               </svg>
-              <span class="flex-1 text-xs font-medium truncate">{{ workspace.name }}</span>
-              <span class="text-[10px] text-text-muted">
+              <span class="flex-1 text-xs font-medium truncate min-w-0">{{ workspace.name }}</span>
+              <span
+                class="text-[9px] font-semibold px-1 py-0.5 rounded shrink-0 leading-tight"
+                :class="workspaceRoleBadge(workspace).className"
+                :title="`Your role: ${workspaceRoleBadge(workspace).text}`"
+              >
+                {{ workspaceRoleBadge(workspace).text }}
+              </span>
+              <span class="text-[10px] text-text-muted shrink-0 whitespace-nowrap">
                 {{ workspace.projectCount }} projects
               </span>
               <svg
@@ -212,6 +240,7 @@ onUnmounted(() => {
               class="flex items-center gap-1 px-3 py-1.5 bg-bg-tertiary/50 border-t border-border-default/50"
             >
               <button
+                v-if="workspace.isOwner || currentUserEmail === SUPER_ADMIN_EMAIL"
                 @click.stop="emit('rename', workspace); isOpen = false"
                 class="flex items-center gap-1 px-2 py-1 text-[10px] text-text-secondary hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
                 title="Rename"

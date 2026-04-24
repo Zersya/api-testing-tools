@@ -31,11 +31,14 @@ interface Props {
   projectId: string | null;
   isLoading?: boolean;
   secretValues?: Record<string, string>;
+  /** View-only: hide create/rename/delete and lock variable editing */
+  readOnly?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   isLoading: false,
-  secretValues: () => ({})
+  secretValues: () => ({}),
+  readOnly: false
 });
 
 const emit = defineEmits<{
@@ -225,6 +228,7 @@ const clearSearch = () => {
         
         <!-- Create Button -->
         <button
+          v-if="!readOnly"
           class="btn btn-primary btn-sm"
           @click="emit('create')"
           :disabled="!projectId"
@@ -262,7 +266,7 @@ const clearSearch = () => {
       </div>
       <h3 class="text-lg font-semibold text-text-primary mb-2">No environments yet</h3>
       <p class="text-text-secondary mb-4 max-w-sm">Create your first environment for development, staging, or production variables.</p>
-      <button class="btn btn-primary" @click="emit('create')" :disabled="!projectId">
+      <button v-if="!readOnly" class="btn btn-primary" @click="emit('create')" :disabled="!projectId">
         Create Environment
       </button>
     </div>
@@ -290,6 +294,7 @@ const clearSearch = () => {
           :key="environment.id"
           :environment="environment"
           :is-selected="selectedEnvironment?.id === environment.id"
+          :read-only="readOnly"
           @click="openVariablesPanel"
           @activate="handleActivate"
           @rename="handleRenameClick"
@@ -328,23 +333,23 @@ const clearSearch = () => {
                 <span v-else-if="environment.isActive" class="py-0.5 px-2 bg-accent-green/15 text-accent-green text-[10px] font-semibold uppercase rounded-full">Active</span>
               </div>
               <div class="flex items-center gap-1">
-                <button v-if="!environment.isActive && !environment.isMockEnvironment" class="flex items-center justify-center w-8 h-8 bg-transparent border-none rounded text-text-muted cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-green" @click="handleActivate(environment)" title="Activate">
+                <button v-if="!readOnly && !environment.isActive && !environment.isMockEnvironment" class="flex items-center justify-center w-8 h-8 bg-transparent border-none rounded text-text-muted cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-green" @click="handleActivate(environment)" title="Activate">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <polygon points="5 3 19 12 5 21 5 3"></polygon>
                   </svg>
                 </button>
-                <button v-if="!environment.isMockEnvironment" class="flex items-center justify-center w-8 h-8 bg-transparent border-none rounded text-text-muted cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-text-primary" @click="handleRenameClick(environment)" title="Rename">
+                <button v-if="!readOnly && !environment.isMockEnvironment" class="flex items-center justify-center w-8 h-8 bg-transparent border-none rounded text-text-muted cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-text-primary" @click="handleRenameClick(environment)" title="Rename">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
                   </svg>
                 </button>
-                <button v-if="!environment.isMockEnvironment" class="flex items-center justify-center w-8 h-8 bg-transparent border-none rounded text-text-muted cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-text-primary" @click="handleDuplicate(environment)" title="Duplicate">
+                <button v-if="!readOnly && !environment.isMockEnvironment" class="flex items-center justify-center w-8 h-8 bg-transparent border-none rounded text-text-muted cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-text-primary" @click="handleDuplicate(environment)" title="Duplicate">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="9" y="9" width="13" height="13" rx="2"></rect>
                     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                   </svg>
                 </button>
-                <button v-if="!environment.isMockEnvironment" class="flex items-center justify-center w-8 h-8 bg-transparent border-none rounded text-text-muted cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-red" @click="handleDeleteClick(environment)" title="Delete">
+                <button v-if="!readOnly && !environment.isMockEnvironment" class="flex items-center justify-center w-8 h-8 bg-transparent border-none rounded text-text-muted cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-red" @click="handleDeleteClick(environment)" title="Delete">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="3 6 5 6 21 6"></polyline>
                     <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -358,7 +363,7 @@ const clearSearch = () => {
           <div class="p-4 flex flex-col flex-1 min-h-0">
             <div class="flex items-center justify-between mb-3 shrink-0">
               <span class="text-xs font-medium text-text-secondary uppercase tracking-wide">{{ environment.variables.length }} Variable{{ environment.variables.length !== 1 ? 's' : '' }}</span>
-              <button class="flex items-center gap-1 text-xs font-medium text-accent-blue border-none bg-transparent cursor-pointer transition-all duration-fast hover:text-accent-blue/80" @click="openVariablesPanel(environment)">
+              <button v-if="!readOnly" class="flex items-center gap-1 text-xs font-medium text-accent-blue border-none bg-transparent cursor-pointer transition-all duration-fast hover:text-accent-blue/80" @click="openVariablesPanel(environment)">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <line x1="12" y1="5" x2="12" y2="19"></line>
                   <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -375,6 +380,7 @@ const clearSearch = () => {
               <div v-for="variable in environment.variables" :key="variable.id" class="flex items-center gap-2 group">
                 <input
                   v-model="variable.key"
+                  :readonly="readOnly"
                   @blur="emit('update:variable', variable, variable.key, variable.value, variable.isSecret)"
                   @keyup.enter="($event.target as HTMLInputElement).blur()"
                   class="flex-1 py-1.5 px-2 bg-bg-input border border-border-default rounded-md text-text-primary text-xs font-mono focus:outline-none focus:border-accent-blue focus:shadow-[0_0_0_2px_rgba(59,130,246,0.2)]"
@@ -384,6 +390,7 @@ const clearSearch = () => {
                   <input
                     :key="`input-${variable.id}-${variable.isSecret ? 'secret' : 'text'}`"
                     v-model="variable.value"
+                    :readonly="readOnly"
                     @blur="emit('update:variable', variable, variable.key, variable.value, variable.isSecret)"
                     @keyup.enter="($event.target as HTMLInputElement).blur()"
                     :type="variable.isSecret ? 'password' : 'text'"
@@ -391,6 +398,7 @@ const clearSearch = () => {
                     placeholder="Variable value"
                   />
                   <button
+                    v-if="!readOnly"
                     @click="emit('toggle:secret', variable)"
                     :class="[
                       'flex items-center justify-center w-8 h-8 border-none rounded cursor-pointer transition-all duration-fast',
@@ -405,6 +413,7 @@ const clearSearch = () => {
                   </button>
                 </div>
                 <button
+                  v-if="!readOnly"
                   @click="emit('delete:variable', variable.id)"
                   class="flex items-center justify-center w-8 h-8 bg-transparent border-none rounded text-text-muted cursor-pointer transition-all duration-fast hover:bg-bg-hover hover:text-accent-red opacity-0 group-hover:opacity-100"
                   title="Delete variable"
@@ -426,6 +435,7 @@ const clearSearch = () => {
       :show="showVariablesPanel"
       :environment="selectedEnvironment"
       :secret-values="secretValues"
+      :read-only="readOnly"
       @close="closeVariablesPanel"
       @activate="handleActivate"
       @add:variable="emit('add:variable', $event)"
