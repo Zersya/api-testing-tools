@@ -104,33 +104,25 @@ const languages: { value: Language; label: string }[] = [
 ];
 
 const getMockUrl = (originalUrl: string): string => {
-  // Build mock server URL using collection ID
   const collection = props.collectionId || 'default';
+  const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
 
   let path = '';
 
   try {
-    // Try parsing as full URL (works if variables were substituted)
     const urlObj = new URL(originalUrl);
     path = urlObj.pathname + urlObj.search;
   } catch {
-    // URL has unsubstituted variables, extract path by removing all variable patterns
-    // e.g., "{{baseUrl}}/api/{{version}}/users" -> "/api//users"
+    // Strip any remaining unresolved {{variable}} tokens to get a clean path
     const withoutVars = originalUrl.replace(/\{\{[^}]+\}\}/g, '');
-    path = withoutVars.trim();
-
-    // If empty after removing variables, use root path
-    if (!path) {
-      path = '/';
-    }
+    path = withoutVars.trim() || '/';
   }
 
-  // Ensure path starts with /
   if (!path.startsWith('/')) {
     path = '/' + path;
   }
 
-  return `{{URL}}/c/${collection}${path}`;
+  return `${baseUrl}/c/${collection}${path}`;
 };
 
 const getFullUrl = computed(() => {
