@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onMounted, onUnmounted, ref, withDefaults } from 'vue';
 import type { ProxyResponse, ProxyErrorResponse, TabType, RequestDraftSnapshot } from './RequestBuilder.vue';
 
 interface HttpRequest {
@@ -71,9 +72,12 @@ export type PersistedOpenTab = {
 interface Props {
   openTabs: OpenTab[];
   activeTabKey: string | null;
+  allowNewTab?: boolean;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  allowNewTab: true
+});
 
 const emit = defineEmits<{
   selectTab: [key: string];
@@ -82,8 +86,6 @@ const emit = defineEmits<{
   newTab: [];
   reorderTabs: [fromIndex: number, toIndex: number];
 }>();
-
-import { onMounted, onUnmounted, ref } from 'vue';
 
 const draggedIndex = ref<number | null>(null);
 
@@ -264,6 +266,7 @@ onUnmounted(() => {
     </button>
 
     <button
+      v-if="allowNewTab"
       @click="emit('newTab')"
       class="flex items-center justify-center w-8 h-8 rounded hover:bg-bg-tertiary text-text-secondary hover:text-text-primary transition-all duration-fast flex-shrink-0"
       title="New tab"
