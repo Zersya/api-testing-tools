@@ -213,6 +213,14 @@ export async function getWorkspacePermission(userId: string, workspaceId: string
  * Get permissions for multiple workspaces in a single batch query
  * This avoids N+1 queries when fetching workspace tree
  */
+const PERMISSION_RANK: Record<string, number> = { owner: 3, edit: 2, view: 1 };
+
+function higherPermission(a: PermissionLevel, b: PermissionLevel): PermissionLevel {
+  const rankA = a ? (PERMISSION_RANK[a] ?? 0) : 0;
+  const rankB = b ? (PERMISSION_RANK[b] ?? 0) : 0;
+  return rankA >= rankB ? a : b;
+}
+
 export async function getWorkspacePermissionsBatch(
   userId: string, 
   workspaceIds: string[]
@@ -222,20 +230,38 @@ export async function getWorkspacePermissionsBatch(
 
   if (workspaceIds.length === 0) return permissionMap;
 
-  // Get all workspaces to check ownership
+  // 1. Check direct ownership via workspaces.ownerId
   const workspaceOwners = await db
     .select({ id: workspaces.id, ownerId: workspaces.ownerId })
     .from(workspaces)
     .where(inArray(workspaces.id, workspaceIds));
 
-  // Mark owned workspaces
   for (const ws of workspaceOwners) {
     if (ws.ownerId === userId) {
       permissionMap.set(ws.id, 'owner');
     }
   }
 
-  // Get shared access for remaining workspaces
+  // 2. Check workspaceMembers (email invitations / promoted roles)
+  //    Member permission takes precedence over share-link access.
+  const memberAccess = await db
+    .select({ workspaceId: workspaceMembers.workspaceId, permission: workspaceMembers.permission })
+    .from(workspaceMembers)
+    .where(
+      and(
+        eq(workspaceMembers.userId, userId),
+        eq(workspaceMembers.status, 'accepted'),
+        inArray(workspaceMembers.workspaceId, workspaceIds)
+      )
+    );
+
+  for (const member of memberAccess) {
+    const current = permissionMap.get(member.workspaceId) ?? null;
+    const merged = higherPermission(current, member.permission as PermissionLevel);
+    permissionMap.set(member.workspaceId, merged);
+  }
+
+  // 3. Fall back to share-link access for workspaces still unresolved
   const remainingIds = workspaceIds.filter(id => !permissionMap.has(id));
   
   if (remainingIds.length > 0) {
@@ -257,11 +283,8 @@ export async function getWorkspacePermissionsBatch(
       );
 
     for (const access of sharedAccess) {
-      // Check if share is valid
       if (!access.shareIsActive) continue;
       if (access.shareExpiresAt && access.shareExpiresAt < now) continue;
-      
-      // Only set if not already set (first valid share wins)
       if (!permissionMap.has(access.workspaceId)) {
         permissionMap.set(access.workspaceId, access.permission as PermissionLevel);
       }
