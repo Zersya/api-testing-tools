@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { withDefaults } from 'vue';
 interface EnvironmentVariable {
   id: string;
   environmentId: string;
@@ -20,9 +21,12 @@ interface Environment {
 interface Props {
   environment: Environment;
   isSelected?: boolean;
+  readOnly?: boolean;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  readOnly: false
+});
 const emit = defineEmits<{
   click: [environment: Environment];
   activate: [environment: Environment];
@@ -88,7 +92,7 @@ const formatDate = (date: Date): string => {
     </div>
 
     <!-- Actions -->
-    <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" @click.stop>
+    <div v-if="!readOnly" class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" @click.stop>
       <button
         v-if="!environment.isActive && !environment.isMockEnvironment"
         class="flex items-center justify-center w-7 h-7 rounded text-text-muted hover:text-accent-green hover:bg-accent-green/10 transition-all duration-fast"

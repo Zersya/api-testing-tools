@@ -5,6 +5,26 @@ export interface PermissionBadge {
   className: string;
 }
 
+/** Workspace objects from the admin tree include permission + isOwner */
+export interface WorkspaceRoleSource {
+  permission?: 'owner' | 'edit' | 'view' | null;
+  isOwner?: boolean;
+}
+
+/**
+ * Effective role for the current user in a workspace (matches server tree.get logic).
+ */
+export function getEffectiveWorkspaceRole(workspace: WorkspaceRoleSource): 'owner' | 'edit' | 'view' {
+  const p = workspace.permission;
+  if (p === 'owner' || p === 'edit' || p === 'view') {
+    return p;
+  }
+  if (workspace.isOwner) {
+    return 'owner';
+  }
+  return 'view';
+}
+
 /**
  * Get permission badge display info (text and styling class)
  * Centralized logic to ensure consistency across components
@@ -32,6 +52,7 @@ export function usePermissionBadge() {
   };
 
   return {
-    getPermissionBadge
+    getPermissionBadge,
+    getEffectiveWorkspaceRole
   };
 }

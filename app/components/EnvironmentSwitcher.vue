@@ -23,10 +23,13 @@ interface Props {
   environments: Environment[];
   activeEnvironmentId: string | null;
   disabled?: boolean;
+  /** When false, hide create / manage / inline edit (view-only workspace) */
+  canEditEnvironments?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  disabled: false
+  disabled: false,
+  canEditEnvironments: true
 });
 
 const emit = defineEmits<{
@@ -312,6 +315,7 @@ defineExpose({
           <div v-if="safeEnvironments.length === 0" class="px-3 py-3 text-center">
             <p class="text-xs text-text-muted mb-2">No environments created yet</p>
             <button
+              v-if="canEditEnvironments"
               @click="emit('create'); isOpen = false"
               class="btn btn-primary w-full text-xs"
             >
@@ -371,7 +375,7 @@ defineExpose({
             </div>
             <!-- Edit button for non-mock environments -->
             <button
-              v-if="!environment.isMockEnvironment"
+              v-if="canEditEnvironments && !environment.isMockEnvironment"
               @click.stop="openEditModal(environment)"
               class="flex items-center justify-center w-6 h-6 text-text-muted hover:text-accent-blue hover:bg-accent-blue/10 rounded transition-all duration-fast opacity-0 group-hover:opacity-100 ml-auto"
               title="Edit environment"
@@ -385,7 +389,7 @@ defineExpose({
           <div v-if="safeEnvironments.length > 0" class="border-t border-border-default my-1"></div>
 
           <button
-            v-if="safeEnvironments.length > 0"
+            v-if="canEditEnvironments && safeEnvironments.length > 0"
             @click="emit('create'); isOpen = false"
             class="flex items-center gap-2 w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
           >
@@ -406,7 +410,7 @@ defineExpose({
           </button>
 
           <button
-            v-if="safeEnvironments.length > 0"
+            v-if="canEditEnvironments && safeEnvironments.length > 0"
             @click="emit('manage'); isOpen = false"
             class="flex items-center gap-2 w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
           >
