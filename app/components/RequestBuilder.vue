@@ -3017,13 +3017,6 @@ const sendRequest = async () => {
     // Apply path variable substitution
     requestUrl = resolvePathVariables(requestUrl);
 
-    // Pre-resolve environment variables in URL to properly detect localhost URLs
-    // This is needed because {{URL}} might resolve to http://localhost:4000
-    const resolvedUrlForLocalCheck = resolveEnvVars(requestUrl);
-
-    // Check if the resolved URL is a localhost/private URL
-    const isResolvedLocalhost = isLocalUrl(resolvedUrlForLocalCheck);
-
     const authQueryParams = buildAuthQueryParams();
     if (Object.keys(authQueryParams).length > 0) {
       try {
@@ -3036,11 +3029,8 @@ const sendRequest = async () => {
       }
     }
 
-    // Check if resolved URL is localhost/private network
-    // For localhost URLs, use client-side direct request (like Postman)
-    // This requires the local API to have CORS enabled, or user must use CORS extension
-    // If user has enabled "Use Server Proxy" setting, all requests go through proxy
-    const isLocalRequest = isResolvedLocalhost && !useServerProxy.value;
+    // Always use direct browser fetch; server proxy is disabled
+    const isLocalRequest = !useServerProxy.value;
 
     let result: ProxyResponse | ProxyErrorResponse;
 
