@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, nextTick } from 'vue';
 import Modal from './Modal.vue';
 
 interface Variable {
@@ -43,6 +43,9 @@ const emit = defineEmits<{
 
 const isOpen = ref(false);
 const dropdownRef = ref<HTMLDivElement | null>(null);
+const searchQuery = ref('');
+const searchInputRef = ref<HTMLInputElement | null>(null);
+const highlightedIndex = ref(0);
 
 // Edit modal state
 const showEditModal = ref(false);
@@ -145,6 +148,14 @@ const sortedEnvironments = computed(() => {
   });
 });
 
+const filteredEnvironments = computed(() => {
+  const query = searchQuery.value.toLowerCase().trim();
+  if (!query) return sortedEnvironments.value;
+  return sortedEnvironments.value.filter(e =>
+    e.name.toLowerCase().includes(query)
+  );
+});
+
 const getEnvironmentColor = (index: number, isMock?: boolean): string => {
   if (isMock) return '#8b5cf6'; // Purple for CLOUD MOCK
   const colors = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#ec4899'];
@@ -154,12 +165,38 @@ const getEnvironmentColor = (index: number, isMock?: boolean): string => {
 const toggleDropdown = () => {
   if (!props.disabled) {
     isOpen.value = !isOpen.value;
+    if (isOpen.value) {
+      searchQuery.value = '';
+      highlightedIndex.value = 0;
+      nextTick(() => {
+        searchInputRef.value?.focus();
+      });
+    }
   }
 };
 
 const selectEnvironment = (environment: Environment) => {
   emit('update:activeEnvironmentId', environment.id);
   isOpen.value = false;
+};
+
+const handleSearchKeydown = (event: KeyboardEvent) => {
+  const list = filteredEnvironments.value;
+  if (list.length === 0) return;
+
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    highlightedIndex.value = Math.min(highlightedIndex.value + 1, list.length - 1);
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    highlightedIndex.value = Math.max(highlightedIndex.value - 1, 0);
+  } else if (event.key === 'Enter') {
+    event.preventDefault();
+    selectEnvironment(list[highlightedIndex.value]);
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    isOpen.value = false;
+  }
 };
 
 const handleClickOutside = (event: MouseEvent) => {
@@ -309,127 +346,130 @@ defineExpose({
     >
       <div
         v-if="isOpen"
-        class="absolute right-0 top-full mt-1 w-64 bg-bg-secondary border border-border-default rounded-lg shadow-xl z-50 overflow-hidden"
+        class="environment-switcher-dropdown"
       >
-        <div class="py-1">
-          <div v-if="safeEnvironments.length === 0" class="px-3 py-3 text-center">
-            <p class="text-xs text-text-muted mb-2">No environments created yet</p>
-            <button
-              v-if="canEditEnvironments"
-              @click="emit('create'); isOpen = false"
-              class="btn btn-primary w-full text-xs"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-              </svg>
-              Create Environment
-            </button>
-          </div>
+        <!-- Search input -->
+        <div v-if="safeEnvironments.length > 0" class="env-search">
+          <svg class="env-search-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input
+            ref="searchInputRef"
+            v-model="searchQuery"
+            type="text"
+            placeholder="Search environments..."
+            spellcheck="false"
+            @keydown="handleSearchKeydown"
+            @click.stop
+          />
+          <span v-if="filteredEnvironments.length > 0" class="env-result-count">{{ filteredEnvironments.length }}</span>
+        </div>
 
-          <div
-            v-for="environment in sortedEnvironments"
-            :key="environment.id"
-            class="group flex items-center gap-2 px-3 py-2 transition-colors"
-            :class="[
-              activeEnvironmentId === environment.id
-                ? 'bg-bg-hover text-text-primary'
-                : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
-            ]"
-          >
-            <div
-              @click="selectEnvironment(environment)"
-              class="flex items-center gap-2 flex-1 min-w-0 cursor-pointer"
-            >
-              <template v-if="environment.isMockEnvironment">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0">
-                  <path d="M17.5 19c0-1.7-1.3-3-3-3h-11c-1.7 0-3 1.3-3 3 0 1.7 1.3 3 3 3h11c1.7 0 3-1.3 3-3z"/>
-                  <path d="M17.5 19c0-2.5-2-4.5-4.5-4.5h-7c-2.5 0-4.5 2-4.5 4.5s2 4.5 4.5 4.5h7c2.5 0 4.5-2 4.5-4.5z"/>
-                  <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
-                </svg>
-              </template>
-              <template v-else>
-                <span
-                  class="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                  :style="{ backgroundColor: getEnvironmentColor(sortedEnvironments.indexOf(environment)) }"
-                ></span>
-              </template>
-              <span class="flex-1 text-xs font-medium truncate" :class="{ 'text-purple-400': environment.isMockEnvironment }">{{ environment.name }}</span>
-              <span class="text-[10px] text-text-muted">
-                {{ environment.variables?.length || 0 }} vars
-              </span>
-              <svg
-                v-if="activeEnvironmentId === environment.id"
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                class="text-accent-blue"
-              >
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
-            </div>
-            <!-- Edit button for non-mock environments -->
-            <button
-              v-if="canEditEnvironments && !environment.isMockEnvironment"
-              @click.stop="openEditModal(environment)"
-              class="flex items-center justify-center w-6 h-6 text-text-muted hover:text-accent-blue hover:bg-accent-blue/10 rounded transition-all duration-fast opacity-0 group-hover:opacity-100 ml-auto"
-              title="Edit environment"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
-              </svg>
-            </button>
-          </div>
-
-          <div v-if="safeEnvironments.length > 0" class="border-t border-border-default my-1"></div>
-
+        <!-- Empty state -->
+        <div v-if="safeEnvironments.length === 0" class="px-3 py-4 text-center">
+          <p class="text-xs text-text-muted mb-2">No environments created yet</p>
           <button
-            v-if="canEditEnvironments && safeEnvironments.length > 0"
+            v-if="canEditEnvironments"
             @click="emit('create'); isOpen = false"
-            class="flex items-center gap-2 w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+            class="btn btn-primary w-full text-xs"
           >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="12" y1="5" x2="12" y2="19"></line>
               <line x1="5" y1="12" x2="19" y2="12"></line>
             </svg>
-            New Environment
-          </button>
-
-          <button
-            v-if="canEditEnvironments && safeEnvironments.length > 0"
-            @click="emit('manage'); isOpen = false"
-            class="flex items-center gap-2 w-full px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <circle cx="12" cy="12" r="3"></circle>
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-            </svg>
-            Manage Environments
+            Create Environment
           </button>
         </div>
+
+        <!-- No results -->
+        <div v-else-if="filteredEnvironments.length === 0" class="px-3 py-4 text-center">
+          <p class="text-xs text-text-muted">No environments match "{{ searchQuery }}"</p>
+        </div>
+
+        <!-- Environment list -->
+        <template v-else>
+          <div class="env-list">
+            <div
+              v-for="(environment, index) in filteredEnvironments"
+              :key="environment.id"
+              class="env-item group"
+              :class="{
+                'env-item-active': activeEnvironmentId === environment.id,
+                'env-item-highlighted': index === highlightedIndex
+              }"
+              @click="selectEnvironment(environment)"
+              @mouseenter="highlightedIndex = index"
+            >
+              <div class="env-item-main">
+                <template v-if="environment.isMockEnvironment">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="env-indicator-icon">
+                    <path d="M17.5 19c0-1.7-1.3-3-3-3h-11c-1.7 0-3 1.3-3 3 0 1.7 1.3 3 3 3h11c1.7 0 3-1.3 3-3z"/>
+                    <path d="M17.5 19c0-2.5-2-4.5-4.5-4.5h-7c-2.5 0-4.5 2-4.5 4.5s2 4.5 4.5 4.5h7c2.5 0 4.5-2 4.5-4.5z"/>
+                    <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+                  </svg>
+                </template>
+                <template v-else>
+                  <span
+                    class="env-indicator-dot"
+                    :style="{ backgroundColor: getEnvironmentColor(sortedEnvironments.indexOf(environment)) }"
+                  ></span>
+                </template>
+                <span class="env-name" :class="{ 'text-purple-400': environment.isMockEnvironment }">{{ environment.name }}</span>
+                <span class="env-vars-count">{{ environment.variables?.length || 0 }} var{{ (environment.variables?.length || 0) !== 1 ? 's' : '' }}</span>
+                <svg
+                  v-if="activeEnvironmentId === environment.id"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="env-check"
+                >
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              </div>
+              <!-- Edit button -->
+              <button
+                v-if="canEditEnvironments && !environment.isMockEnvironment"
+                @click.stop="openEditModal(environment)"
+                class="env-edit-btn"
+                title="Edit environment"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Footer actions -->
+          <div v-if="canEditEnvironments" class="env-footer">
+            <button
+              @click="emit('create'); isOpen = false"
+              class="env-footer-btn"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              New Environment
+            </button>
+            <button
+              @click="emit('manage'); isOpen = false"
+              class="env-footer-btn"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+              Manage Environments
+            </button>
+          </div>
+        </template>
       </div>
     </Transition>
 
@@ -542,3 +582,224 @@ defineExpose({
     </Modal>
   </div>
 </template>
+
+<style scoped>
+.environment-switcher-dropdown {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  margin-top: 4px;
+  min-width: 280px;
+  max-width: 400px;
+  width: auto;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.25);
+  z-index: 50;
+  overflow: hidden;
+  animation: envDropdownIn 0.12s ease-out;
+}
+
+@keyframes envDropdownIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Search input */
+.env-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+}
+
+.env-search-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.env-search input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  padding: 2px 0;
+}
+
+.env-search input::placeholder {
+  color: var(--text-muted);
+}
+
+.env-result-count {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-hover);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  line-height: 16px;
+}
+
+/* Environment list */
+.env-list {
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.env-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.env-item.env-item-active {
+  background: var(--bg-hover);
+}
+
+.env-item.env-item-highlighted:not(.env-item-active) {
+  background: var(--bg-hover);
+}
+
+.env-item:not(.env-item-active):not(.env-item-highlighted) {
+  color: var(--text-secondary);
+}
+
+.env-item:not(.env-item-active):not(.env-item-highlighted):hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.env-item-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.env-indicator-icon {
+  flex-shrink: 0;
+}
+
+.env-indicator-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.env-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 500;
+  color: inherit;
+}
+
+.env-vars-count {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.env-check {
+  flex-shrink: 0;
+  color: var(--accent-blue);
+}
+
+.env-edit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.env-item:hover .env-edit-btn {
+  opacity: 1;
+}
+
+.env-edit-btn:hover {
+  color: var(--accent-blue);
+  background: rgba(0, 122, 255, 0.1);
+}
+
+/* Footer actions */
+.env-footer {
+  border-top: 1px solid var(--border-color);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.env-footer-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.1s ease;
+  text-align: left;
+}
+
+.env-footer-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* Scrollbar */
+.env-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.env-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.env-list::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+.env-list::-webkit-scrollbar-thumb:hover {
+  background: var(--bg-hover);
+}
+</style>
