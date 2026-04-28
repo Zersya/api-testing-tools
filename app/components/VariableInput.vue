@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, nextTick } from 'vue';
 
 interface Variable {
   id: string;
@@ -33,6 +33,9 @@ const showAutocomplete = ref(false);
 const autocompleteIndex = ref(0);
 const cursorPosition = ref(0);
 const isComposing = ref(false);
+const searchQuery = ref('');
+const dropdownRef = ref<HTMLElement | null>(null);
+const dropdownSearchRef = ref<HTMLInputElement | null>(null);
 
 const VARIABLE_PATTERN = /\{\{([^{}]+)\}\}/g;
 const PATH_VARIABLE_PATTERN = /:(\w+)/g; // Matches :variableName
@@ -138,10 +141,17 @@ const filteredVariables = computed(() => {
   if (lastDoubleBraceIndex === -1) return [];
 
   const currentTyping = beforeCursor.slice(lastDoubleBraceIndex + 2).trim().toLowerCase();
+  const searchLower = searchQuery.value.toLowerCase();
 
-  return props.variables.filter(v => 
-    v.key.toLowerCase().includes(currentTyping)
-  );
+  return props.variables
+    .filter(v => {
+      const key = v.key.toLowerCase();
+      // Filter by both inline typing (after {{) and search query
+      const matchesTyping = key.includes(currentTyping);
+      const matchesSearch = searchLower === '' || key.includes(searchLower);
+      return matchesTyping && matchesSearch;
+    })
+    .sort((a, b) => a.key.localeCompare(b.key));
 });
 
 const saveSelection = () => {
@@ -330,9 +340,46 @@ const selectVariable = (variable: Variable) => {
 
 const closeAutocomplete = () => {
   setTimeout(() => {
+    // Don't close if focus is inside the dropdown (e.g., search input)
+    if (dropdownRef.value && dropdownRef.value.contains(document.activeElement)) {
+      return;
+    }
     showAutocomplete.value = false;
   }, 200);
 };
+
+const handleSearchKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    if (filteredVariables.value.length > 0) {
+      autocompleteIndex.value = Math.min(autocompleteIndex.value + 1, filteredVariables.value.length - 1);
+    }
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    if (autocompleteIndex.value > 0) {
+      autocompleteIndex.value = Math.max(autocompleteIndex.value - 1, 0);
+    }
+  } else if (event.key === 'Enter') {
+    event.preventDefault();
+    if (filteredVariables.value.length > 0) {
+      selectVariable(filteredVariables.value[autocompleteIndex.value]);
+    }
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    showAutocomplete.value = false;
+    editorRef.value?.focus();
+  }
+};
+
+// Reset search and auto-focus search input when dropdown opens
+watch(showAutocomplete, async (open) => {
+  if (open) {
+    searchQuery.value = '';
+    autocompleteIndex.value = 0;
+    await nextTick();
+    dropdownSearchRef.value?.focus();
+  }
+});
 
 watch(() => props.modelValue, (newValue) => {
   if (editorRef.value && getEditorText() !== newValue) {
@@ -362,6 +409,10 @@ onMounted(() => {
   
   document.addEventListener('click', (e) => {
     if (editorRef.value && !editorRef.value.contains(e.target as Node)) {
+      // Don't close if clicking inside the autocomplete dropdown
+      if (dropdownRef.value && dropdownRef.value.contains(e.target as Node)) {
+        return;
+      }
       showAutocomplete.value = false;
     }
   });
@@ -389,31 +440,58 @@ onMounted(() => {
 
     <template v-if="showAutocomplete && filteredVariables.length > 0">
       <Teleport to="body">
-        <div 
-          class="absolute z-[110] w-64 max-h-48 overflow-auto bg-bg-secondary border border-border-default rounded-lg shadow-xl variable-autocomplete"
+        <div
+          ref="dropdownRef"
+          class="variable-autocomplete"
           :style="{
             top: `${editorRef?.getBoundingClientRect?.()?.bottom + 4 || 0}px`,
-            left: `${editorRef?.getBoundingClientRect?.()?.left || 0}px`
+            left: `${Math.max(0, (editorRef?.getBoundingClientRect?.()?.left || 0) - 40)}px`
           }"
         >
-          <div
-            v-for="(variable, index) in filteredVariables"
-            :key="variable.id"
-            @click="selectVariable(variable)"
-            @mouseenter="autocompleteIndex = index"
-            class="px-3 py-2 cursor-pointer transition-colors duration-fast"
-            :class="[
-              index === autocompleteIndex
-                ? 'bg-bg-hover text-text-primary'
-                : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
-            ]"
-          >
-            <div class="flex items-center justify-between">
-              <span class="font-mono text-xs">{{ variable.key }}</span>
-              <span v-if="variable.isSecret" class="text-[10px] text-accent-orange">••••</span>
-            </div>
-            <div v-if="!variable.isSecret" class="text-[10px] text-text-muted truncate">
-              {{ variable.value }}
+          <!-- Search input -->
+          <div class="autocomplete-search">
+            <svg class="search-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input
+              ref="dropdownSearchRef"
+              v-model="searchQuery"
+              type="text"
+              placeholder="Filter variables..."
+              spellcheck="false"
+              @keydown="handleSearchKeydown"
+              @click.stop
+            />
+            <span v-if="filteredVariables.length > 0" class="result-count">{{ filteredVariables.length }}</span>
+          </div>
+
+          <!-- Variable list -->
+          <div class="autocomplete-list">
+            <div
+              v-for="(variable, index) in filteredVariables"
+              :key="variable.id"
+              @click="selectVariable(variable)"
+              @mouseenter="autocompleteIndex = index"
+              class="autocomplete-item"
+              :class="{ highlighted: index === autocompleteIndex }"
+            >
+              <div class="item-key">
+                <svg v-if="variable.isSecret" class="secret-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+                <span>{{ variable.key }}</span>
+              </div>
+              <div class="item-value" :class="{ secret: variable.isSecret }">
+                <template v-if="variable.isSecret">
+                  <span class="secret-dots">••••••••</span>
+                  <span class="secret-badge">secret</span>
+                </template>
+                <template v-else>
+                  <span>{{ variable.value }}</span>
+                </template>
+              </div>
             </div>
           </div>
         </div>
@@ -480,6 +558,176 @@ onMounted(() => {
 }
 
 .variable-autocomplete {
-  max-height: 192px;
+  position: fixed;
+  z-index: 110;
+  min-width: 340px;
+  max-width: 480px;
+  width: auto;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+  animation: autocompleteSlideIn 0.12s ease-out;
+}
+
+@keyframes autocompleteSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Search input area */
+.autocomplete-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+}
+
+.autocomplete-search .search-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.autocomplete-search input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 2px 0;
+}
+
+.autocomplete-search input::placeholder {
+  color: var(--text-muted);
+}
+
+.result-count {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-hover);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  line-height: 16px;
+}
+
+/* Variable list */
+.autocomplete-list {
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.autocomplete-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.autocomplete-item.highlighted {
+  background: var(--bg-hover);
+}
+
+.autocomplete-item:not(.highlighted) {
+  color: var(--text-secondary);
+}
+
+.autocomplete-item:not(.highlighted):hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.item-key {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: inherit;
+}
+
+.item-key span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.secret-icon {
+  flex-shrink: 0;
+  color: var(--accent-yellow);
+  opacity: 0.7;
+}
+
+.item-value {
+  flex-shrink: 0;
+  max-width: 160px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.item-value.secret {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.secret-dots {
+  color: var(--accent-orange);
+  opacity: 0.5;
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+
+.secret-badge {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+  color: var(--accent-orange);
+  opacity: 0.7;
+  font-family: var(--font-sans);
+}
+
+/* Custom scrollbar for the list */
+.autocomplete-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.autocomplete-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.autocomplete-list::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+.autocomplete-list::-webkit-scrollbar-thumb:hover {
+  background: var(--bg-hover);
 }
 </style>
