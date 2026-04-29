@@ -107,6 +107,7 @@ export interface ProxyResponse {
     value: string;
     action: 'set' | 'unset';
   }>;
+  viaProxy?: boolean;
 }
 
 export interface ProxyErrorResponse {
@@ -3029,39 +3030,44 @@ const sendRequest = async () => {
       }
     }
 
-    // Always use direct browser fetch; server proxy is disabled
-    const isLocalRequest = !useServerProxy.value;
-
     let result: ProxyResponse | ProxyErrorResponse;
 
-    if (isLocalRequest) {
-      // Use client-side request for localhost/private URLs
-      const { executeClientRequest } = useClientRequest();
-      result = await executeClientRequest({
-        url: requestUrl,
-        method: form.value.method,
-        headers: requestHeaders,
-        body: requestBody,
-        workspaceId: props.workspaceId,
-        environmentId: props.environmentId,
-        savedRequestId: props.request.id || undefined,
-        signal: abortController.value?.signal
-      });
-    } else {
-      // Use server proxy for remote URLs OR when "Use Server Proxy" setting is enabled
-      result = await $fetch<ProxyResponse | ProxyErrorResponse>('/api/proxy/request', {
-        method: 'POST',
-        body: {
-          url: requestUrl,
-          method: form.value.method,
-          headers: requestHeaders,
-          body: requestBody,
-          workspaceId: props.workspaceId,
-          environmentId: props.environmentId,
-          savedRequestId: props.request.id || undefined
-        },
-        signal: abortController.value?.signal
-      });
+    // Always try direct browser fetch first
+    const { executeClientRequest } = useClientRequest();
+    result = await executeClientRequest({
+      url: requestUrl,
+      method: form.value.method,
+      headers: requestHeaders,
+      body: requestBody,
+      workspaceId: props.workspaceId,
+      environmentId: props.environmentId,
+      savedRequestId: props.request.id || undefined,
+      signal: abortController.value?.signal
+    });
+
+    // If the browser blocked the request due to CORS, automatically retry via server proxy
+    if (!result.success && (result as ProxyErrorResponse).error?.code === 'CORS_ERROR') {
+      try {
+        const proxyResult = await $fetch<ProxyResponse | ProxyErrorResponse>('/api/proxy/request', {
+          method: 'POST',
+          body: {
+            url: requestUrl,
+            method: form.value.method,
+            headers: requestHeaders,
+            body: requestBody,
+            workspaceId: props.workspaceId,
+            environmentId: props.environmentId,
+            savedRequestId: props.request.id || undefined
+          },
+          signal: abortController.value?.signal
+        });
+        if (proxyResult.success) {
+          result = { ...proxyResult, viaProxy: true } as ProxyResponse;
+        }
+        // If proxy also fails, fall through and show the original CORS error
+      } catch {
+        // Proxy call itself failed (network error, server error) — keep original CORS error
+      }
     }
 
     response.value = result;
@@ -4387,6 +4393,19 @@ defineExpose({
                   <span v-else class="py-1 px-2.5 rounded text-[11px] font-semibold uppercase bg-accent-red/15 text-accent-red">
                     Error
                   </span>
+                  <span
+                    v-if="response.success && (response as ProxyResponse).viaProxy"
+                    class="py-1 px-2 rounded text-[11px] font-semibold bg-accent-yellow/15 text-accent-yellow flex items-center gap-1"
+                    title="Direct request was blocked by CORS. This response was fetched via server proxy."
+                  >
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                      <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                      <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                      <line x1="6" y1="18" x2="6.01" y2="18"></line>
+                    </svg>
+                    Proxied
+                  </span>
                   <span v-if="response.timing" class="text-xs text-text-muted font-mono">{{ formatResponseTime(response.timing.durationMs) }}</span>
                   <span class="text-xs text-text-muted">{{ getTotalResponseSize() }} bytes</span>
                 </div>
@@ -4852,6 +4871,19 @@ defineExpose({
                 </span>
                 <span v-else class="py-0.5 px-1.5 rounded text-[10px] font-semibold uppercase bg-accent-red/15 text-accent-red">
                   Error
+                </span>
+                <span
+                  v-if="response.success && (response as ProxyResponse).viaProxy"
+                  class="py-0.5 px-1.5 rounded text-[10px] font-semibold bg-accent-yellow/15 text-accent-yellow flex items-center gap-0.5"
+                  title="Direct request was blocked by CORS. This response was fetched via server proxy."
+                >
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                    <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                    <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                    <line x1="6" y1="18" x2="6.01" y2="18"></line>
+                  </svg>
+                  Proxied
                 </span>
                 <span v-if="response.timing" class="text-[10px] text-text-muted font-mono">{{ formatResponseTime(response.timing.durationMs) }}</span>
               </div>
