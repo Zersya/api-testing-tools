@@ -3134,7 +3134,7 @@ const confirmDeleteCollection = (collection: Collection) => {
 const deleteCollection = async () => {
     if (!collectionToDelete.value) return;
     const wsId = workspaceIdForCollectionId(collectionToDelete.value.id);
-    if (wsId && !canEditWorkspaceById(wsId)) return;
+    if (wsId && !canDeleteWorkspaceById(wsId)) return;
     try {
         await $fetch(`/api/admin/collections/${collectionToDelete.value.id}`, { method: 'DELETE' });
         showDeleteCollectionConfirm.value = false;
@@ -3157,7 +3157,7 @@ const confirmDeleteProject = (project: any) => {
 const deleteProject = async () => {
     if (!projectToDelete.value) return;
     const wsId = workspaceIdForProjectId(projectToDelete.value.id);
-    if (wsId && !canEditWorkspaceById(wsId)) return;
+    if (wsId && !canDeleteWorkspaceById(wsId)) return;
     try {
         await $fetch(`/api/admin/projects/${projectToDelete.value.id}`, { method: 'DELETE' });
         showDeleteProjectConfirm.value = false;

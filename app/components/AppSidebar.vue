@@ -209,6 +209,16 @@ const canEdit = computed(() => {
   return ws.isOwner;
 });
 
+// Destructive operations (delete workspace / collection) are restricted to owners only.
+// Edit-role members can create and modify content but cannot delete containers.
+const canDelete = computed(() => {
+  const ws = currentWorkspace.value;
+  if (!ws) return false;
+  const perm = ws.permission;
+  if (perm) return perm === 'owner';
+  return ws.isOwner;
+});
+
 // Search filter helpers for hierarchy (collections, folders, requests)
 const matchesSearch = (text: string, q: string): boolean => {
   if (!text || !q) return false;
@@ -1776,6 +1786,7 @@ defineExpose({
                 </svg>
               </button>
               <button 
+                v-if="canDelete"
                 class="flex items-center justify-center w-[22px] h-[22px] bg-transparent border-none rounded text-text-secondary cursor-pointer transition-all duration-fast hover:bg-accent-red/15 hover:text-accent-red" 
                 @click="emit('deleteCollection', collection)" 
                 title="Delete Collection"
@@ -1941,7 +1952,7 @@ defineExpose({
               Rename
             </button>
             <button
-              v-if="canEdit"
+              v-if="canDelete"
               class="flex items-center w-full px-3 py-2 text-xs text-accent-red hover:bg-bg-hover transition-colors"
               @click.stop="handleContextAction('delete-project')"
             >
@@ -1998,9 +2009,9 @@ defineExpose({
               </svg>
               Edit Collection
             </button>
-            <div v-if="canEdit" class="border-t border-border-default my-1"></div>
+            <div v-if="canDelete" class="border-t border-border-default my-1"></div>
             <button
-              v-if="canEdit"
+              v-if="canDelete"
               class="flex items-center w-full px-3 py-2 text-xs text-accent-red hover:bg-bg-hover transition-colors"
               @click.stop="handleContextAction('delete-collection')"
             >
