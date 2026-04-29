@@ -192,7 +192,8 @@ let authCheckInterval: ReturnType<typeof setInterval> | null = null;
 
 onMounted(async () => {
   await checkAuth();
-  await checkSuperAdmin();
+  // checkSuperAdmin is handled by the watch on authState.value?.user?.email below;
+  // calling it here too would fire a duplicate request on every authenticated mount.
 
   authCheckInterval = setInterval(() => {
     if (authState.value?.tokenExpiry) {
@@ -225,14 +226,17 @@ onUnmounted(() => {
   document.removeEventListener('click', closeUserMenu);
 });
 
-// Watch auth state and re-check Super Admin status when user changes
+// Watch auth state and re-check Super Admin status when user changes.
+// { immediate: true } covers SSR-pre-populated auth state where the email is
+// already present before onMounted runs, so no separate checkSuperAdmin() call
+// is needed in onMounted.
 watch(() => authState.value?.user?.email, async (newEmail) => {
   if (newEmail) {
     await checkSuperAdmin();
   } else {
     isSuperAdmin.value = false;
   }
-});
+}, { immediate: true });
 
 defineExpose({
   resetEnvironmentSwitcherSaving

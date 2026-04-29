@@ -115,7 +115,7 @@ const WORKSPACE_TABS_STORAGE_KEY = 'workspaceTabs';
 
 const { data: mocks, refresh: refreshMocks, error } = await useFetch<Mock[]>('/api/admin/mocks');
 const { data: collections, refresh: refreshCollections } = await useFetch<Collection[]>('/api/admin/collections');
-const { data: workspaces, refresh: refreshWorkspaces } = await useFetch<any[]>('/api/admin/tree-light');
+const { data: workspaces, refresh: refreshWorkspaces } = await useFetch<any[]>('/api/admin/tree-light', { dedupe: 'defer' });
 const { data: definitions, refresh: refreshDefinitions } = await useFetch<any[]>('/api/definitions');
 
 // Fetch current user info for permission checks
@@ -2093,8 +2093,11 @@ const handleHoverRequest = async (requestId: string) => {
   try {
     const fullRequest = await $fetch<HttpRequest>(`/api/admin/requests/${requestId}`);
     prefetchedRequests.value.set(requestId, fullRequest);
-  } catch (e) {
-    console.warn('[Prefetch] Failed to load request details:', requestId);
+  } catch (e: any) {
+    // 404 means the request was deleted between list render and hover — silently skip it
+    if (e?.status !== 404 && e?.statusCode !== 404) {
+      console.warn('[Prefetch] Failed to load request details:', requestId, e);
+    }
   }
 };
 
