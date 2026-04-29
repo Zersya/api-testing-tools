@@ -682,7 +682,8 @@ export async function executeClientRequest(
     // Log to history
     if (workspaceId) {
       try {
-        const urlObj = new URL(resolvedUrl);
+        const base = typeof window !== 'undefined' ? window.location.origin : undefined;
+        const urlObj = new URL(resolvedUrl, base);
         const queryParams = Object.fromEntries(urlObj.searchParams.entries());
 
         await logToHistory({
