@@ -36,3 +36,5 @@ settings/*
 
 # Implementation docs (contains sensitive configuration details)
 DATADOG_IMPLEMENTATION.md
+
+src-tauri
