@@ -1,7 +1,7 @@
 import { db } from '../../../db';
 import { projects, collections } from '../../../db/schema';
 import { eq } from 'drizzle-orm';
-import { getAccessibleWorkspaceIds } from '../../../utils/permissions';
+import { isWorkspaceOwner, isSuperAdmin } from '../../../utils/permissions';
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id');
@@ -36,12 +36,12 @@ export default defineEventHandler(async (event) => {
       });
     }
 
-    // Check if user has access to this workspace
-    const accessibleIds = await getAccessibleWorkspaceIds(user.id, user.email);
-    if (!accessibleIds.includes(existing.workspaceId)) {
+    // Only the workspace owner or super admin may delete a project
+    const ownerCheck = await isWorkspaceOwner(user.id, existing.workspaceId);
+    if (!ownerCheck && !isSuperAdmin(user.email)) {
       throw createError({
         statusCode: 403,
-        statusMessage: 'You do not have access to this workspace'
+        statusMessage: 'Only the workspace owner or super admin can delete a project'
       });
     }
 

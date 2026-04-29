@@ -1,9 +1,19 @@
 import { db } from '../../../db';
-import { collections, folders } from '../../../db/schema';
+import { collections, folders, projects } from '../../../db/schema';
 import { eq } from 'drizzle-orm';
+import { isWorkspaceOwner, isSuperAdmin } from '../../../utils/permissions';
 
 export default defineEventHandler(async (event) => {
+  const user = event.context.user;
   const id = getRouterParam(event, 'id');
+
+  // Require authentication
+  if (!user?.id || !user?.email) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: 'Unauthorized'
+    });
+  }
 
   if (!id) {
     throw createError({
@@ -27,6 +37,29 @@ export default defineEventHandler(async (event) => {
       });
     }
 
+    // Resolve ownership chain: collection → project → workspace
+    const project = (await db
+      .select({ workspaceId: projects.workspaceId })
+      .from(projects)
+      .where(eq(projects.id, existing.projectId))
+      .limit(1))[0];
+
+    if (!project) {
+      throw createError({
+        statusCode: 404,
+        statusMessage: 'Parent project not found'
+      });
+    }
+
+    // Only the workspace owner or super admin may delete a collection
+    const ownerCheck = await isWorkspaceOwner(user.id, project.workspaceId);
+    if (!ownerCheck && !isSuperAdmin(user.email)) {
+      throw createError({
+        statusCode: 403,
+        statusMessage: 'Only the workspace owner or super admin can delete a collection'
+      });
+    }
+
     // Count folders that will be deleted (for informational purposes)
     const foldersToDelete = await db
       .select()
@@ -34,6 +67,8 @@ export default defineEventHandler(async (event) => {
       .where(eq(folders.collectionId, id));
 
     const folderCount = foldersToDelete.length;
+
+    console.log(`[Collection Delete] User ${user.email} deleting collection "${existing.name}" (${id}) in workspace ${project.workspaceId}`);
 
     // Delete the collection (cascade will handle folders and their children)
     await db.delete(collections)
