@@ -476,6 +476,13 @@ export async function executeClientRequest(
         if (resolvedBody && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
           if (typeof resolvedBody === 'string') {
             resolvedBody = substituteVariables(resolvedBody, variables);
+          } else if (resolvedBody instanceof FormData) {
+            const newFormData = new FormData();
+            for (const [key, value] of resolvedBody.entries()) {
+              const newValue = typeof value === 'string' ? substituteVariables(value, variables) : value;
+              newFormData.append(key, newValue);
+            }
+            resolvedBody = newFormData;
           } else {
             const bodyStr = JSON.stringify(resolvedBody);
             const substitutedBody = substituteVariables(bodyStr, variables);

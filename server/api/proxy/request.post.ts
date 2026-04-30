@@ -613,6 +613,13 @@ export default defineEventHandler(async (event): Promise<ProxyResponse | ProxyEr
         fetchOptions.body = resolvedBody;
       } else if (resolvedBody instanceof FormData) {
         fetchOptions.body = resolvedBody;
+      } else if (resolvedBody?.__formData === true && Array.isArray(resolvedBody.entries)) {
+        const serverFormData = new FormData();
+        for (const entry of resolvedBody.entries) {
+          serverFormData.append(entry.key, entry.value);
+        }
+        fetchOptions.body = serverFormData;
+        delete resolvedHeaders['Content-Type'];
       } else {
         fetchOptions.body = JSON.stringify(resolvedBody);
         if (!resolvedHeaders['Content-Type'] && !resolvedHeaders['content-type']) {

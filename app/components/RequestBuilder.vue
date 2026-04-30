@@ -3048,13 +3048,24 @@ const sendRequest = async () => {
     // If the browser blocked the request due to CORS, automatically retry via server proxy
     if (!result.success && (result as ProxyErrorResponse).error?.code === 'CORS_ERROR') {
       try {
+        let proxyRequestBody = requestBody;
+        if (requestBody instanceof FormData) {
+          proxyRequestBody = {
+            __formData: true,
+            entries: Array.from(requestBody.entries()).map(([key, value]) => ({
+              key,
+              value: typeof value === 'string' ? value : value.toString()
+            }))
+          };
+        }
+
         const proxyResult = await $fetch<ProxyResponse | ProxyErrorResponse>('/api/proxy/request', {
           method: 'POST',
           body: {
             url: requestUrl,
             method: form.value.method,
             headers: requestHeaders,
-            body: requestBody,
+            body: proxyRequestBody,
             workspaceId: props.workspaceId,
             environmentId: props.environmentId,
             savedRequestId: props.request.id || undefined
