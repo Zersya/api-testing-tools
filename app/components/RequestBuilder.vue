@@ -5,6 +5,7 @@ import JsonNode from './JsonNode.vue'
 import VariableInput from './VariableInput.vue'
 import VariableTextarea from './VariableTextarea.vue'
 import RequestExampleManager from './RequestExampleManager.vue'
+import RequestActivityLog from './RequestActivityLog.vue'
 import MockConfiguration from './MockConfiguration.vue'
 import BulkEditPanel from './BulkEditPanel.vue'
 import WebSocketPanel from './WebSocketPanel.vue'
@@ -152,7 +153,7 @@ export interface ProxyErrorResponse {
 }
 
 // TabType without 'response' - response is now in split panel
-export type TabType = 'params' | 'headers' | 'body' | 'auth' | 'preScript' | 'postScript' | 'mock' | 'examples';
+export type TabType = 'params' | 'headers' | 'body' | 'auth' | 'preScript' | 'postScript' | 'mock' | 'examples' | 'activity';
 type BodyFormat = 'none' | 'json' | 'form-data' | 'urlencoded' | 'raw' | 'binary';
 type ResponseViewType = 'pretty' | 'preview' | 'raw' | 'headers' | 'cookies' | 'imagePreview' | 'console';
 
@@ -255,12 +256,12 @@ const isWebSocket = computed(() => form.value.protocol === 'websocket');
 const availableTabs = computed((): TabType[] => {
   if (isWebSocket.value) {
     return props.readOnly
-      ? ['params', 'headers', 'auth', 'examples']
-      : ['params', 'headers', 'auth', 'preScript', 'postScript', 'examples'];
+      ? ['params', 'headers', 'auth', 'examples', 'activity']
+      : ['params', 'headers', 'auth', 'preScript', 'postScript', 'examples', 'activity'];
   }
   return props.readOnly
-    ? ['params', 'headers', 'body', 'auth', 'examples']
-    : ['params', 'headers', 'body', 'auth', 'preScript', 'postScript', 'mock', 'examples'];
+    ? ['params', 'headers', 'body', 'auth', 'examples', 'activity']
+    : ['params', 'headers', 'body', 'auth', 'preScript', 'postScript', 'mock', 'examples', 'activity'];
 });
 
 const handleProtocolChange = (newProtocol: typeof REQUEST_PROTOCOLS[number]) => {
@@ -3934,7 +3935,7 @@ defineExpose({
               class="absolute bottom-0 left-0 right-0 h-0.5 bg-accent-blue animate-slide-up"
             />
             <span class="relative z-10 transition-transform duration-fast group-hover:scale-105">
-              {{ tab === 'preScript' ? 'Pre-Script' : tab === 'postScript' ? 'Post-Script' : tab }}
+              {{ tab === 'preScript' ? 'Pre-Script' : tab === 'postScript' ? 'Post-Script' : tab === 'activity' ? 'Activity' : tab }}
             </span>
           </button>
         </div>
@@ -5018,6 +5019,14 @@ defineExpose({
             ref="exampleManagerRef"
             :request-id="props.request.id"
             :read-only="readOnly"
+            :refresh-token="examplesRefreshToken"
+          />
+        </div>
+
+        <!-- Activity Tab -->
+        <div v-else-if="activeTab === 'activity'" :class="tabPanelClass">
+          <RequestActivityLog
+            :request-id="props.request.id"
             :refresh-token="examplesRefreshToken"
           />
         </div>
