@@ -377,6 +377,10 @@ const isResponseCollapsed = ref(false);
 const isDragging = ref(false);
 const showMobileTabs = ref(false); // For mobile fallback
 
+// Request routing preference
+// When true, all requests route through the server proxy
+// When false (default), direct browser fetch is used with CORS auto-fallback to proxy
+const PROXY_STORAGE_KEY = 'mock-service:useServerProxy';
 const useServerProxy = ref(false);
 
 let panelResizeObserver: ResizeObserver | null = null;
@@ -392,6 +396,12 @@ onMounted(() => {
     } catch {
       // Use defaults
     }
+  }
+  
+  // Load proxy preference
+  const savedProxy = localStorage.getItem(PROXY_STORAGE_KEY);
+  if (savedProxy !== null) {
+    useServerProxy.value = savedProxy === 'true';
   }
   
   checkMobile();
@@ -426,6 +436,11 @@ watch([requestPanelRatio, isResponseCollapsed], () => {
     collapsed: isResponseCollapsed.value
   }));
 }, { deep: true });
+
+// Save proxy preference whenever it changes
+watch(useServerProxy, (value) => {
+  localStorage.setItem(PROXY_STORAGE_KEY, String(value));
+});
 
 // Mobile detection
 const checkMobile = () => {
@@ -3565,55 +3580,60 @@ const sendRequest = async () => {
       });
     };
 
-    // Always try direct browser fetch first
-    const { executeClientRequest } = useClientRequest();
-    result = await executeClientRequest({
-      url: requestUrl,
-      method: form.value.method,
-      headers: requestHeaders,
-      body: requestBody,
-      workspaceId: props.workspaceId,
-      environmentId: props.environmentId,
-      shareToken: props.isSharedWorkspace ? props.shareToken : undefined,
-      savedRequestId: props.request.id || undefined,
-      signal: abortController.value?.signal,
-      preScript: preScript.value,
-      postScript: postScript.value
-    });
+    if (useServerProxy.value) {
+      // Proxy mode: route all requests through the server proxy
+      result = await executeProxyRequest();
+    } else {
+      // Direct mode: try direct browser fetch first
+      const { executeClientRequest } = useClientRequest();
+      result = await executeClientRequest({
+        url: requestUrl,
+        method: form.value.method,
+        headers: requestHeaders,
+        body: requestBody,
+        workspaceId: props.workspaceId,
+        environmentId: props.environmentId,
+        shareToken: props.isSharedWorkspace ? props.shareToken : undefined,
+        savedRequestId: props.request.id || undefined,
+        signal: abortController.value?.signal,
+        preScript: preScript.value,
+        postScript: postScript.value
+      });
 
-    // If the browser blocked the request due to CORS, automatically retry via server proxy
-    if (!result.success && (result as ProxyErrorResponse).error?.code === 'CORS_ERROR') {
-      try {
-        const proxyResult = await executeProxyRequest();
-        if (proxyResult.success) {
-          result = { ...proxyResult, viaProxy: true } as ProxyResponse;
+      // If the browser blocked the request due to CORS, automatically retry via server proxy
+      if (!result.success && (result as ProxyErrorResponse).error?.code === 'CORS_ERROR') {
+        try {
+          const proxyResult = await executeProxyRequest();
+          if (proxyResult.success) {
+            result = { ...proxyResult, viaProxy: true } as ProxyResponse;
+          }
+          // If proxy also fails, fall through and show the original CORS error
+        } catch {
+          // Proxy call itself failed (network error, server error) — keep original CORS error
         }
-        // If proxy also fails, fall through and show the original CORS error
-      } catch {
-        // Proxy call itself failed (network error, server error) — keep original CORS error
-      }
-    } else if (
-      result.success
-      && binaryResponseMissingFilename(result.body, result.headers)
-    ) {
-      // Browser fetch hides Content-Disposition unless the API exposes it via CORS.
-      // Re-run through the server proxy to recover the upstream filename (Postman behavior).
-      try {
-        const proxyResult = await executeProxyRequest();
-        if (proxyResult.success) {
-          const proxyFilename = typeof proxyResult.body?.filename === 'string'
-            ? proxyResult.body.filename
-            : extractDownloadFilenameFromHeaders(proxyResult.headers);
+      } else if (
+        result.success
+        && binaryResponseMissingFilename(result.body, result.headers)
+      ) {
+        // Browser fetch hides Content-Disposition unless the API exposes it via CORS.
+        // Re-run through the server proxy to recover the upstream filename (Postman behavior).
+        try {
+          const proxyResult = await executeProxyRequest();
+          if (proxyResult.success) {
+            const proxyFilename = typeof proxyResult.body?.filename === 'string'
+              ? proxyResult.body.filename
+              : extractDownloadFilenameFromHeaders(proxyResult.headers);
 
-          if (proxyFilename) {
-            result.headers = { ...result.headers, ...proxyResult.headers };
-            if (result.body && typeof result.body === 'object') {
-              result.body.filename = proxyFilename;
+            if (proxyFilename) {
+              result.headers = { ...result.headers, ...proxyResult.headers };
+              if (result.body && typeof result.body === 'object') {
+                result.body.filename = proxyFilename;
+              }
             }
           }
+        } catch {
+          // Keep the direct response if proxy filename recovery fails
         }
-      } catch {
-        // Keep the direct response if proxy filename recovery fails
       }
     }
 
@@ -3916,6 +3936,25 @@ defineExpose({
               <polygon points="5 3 19 12 5 21 5 3"></polygon>
             </svg>
             {{ isLoading ? 'Cancel' : (inheritFromParent && collectionAuthLoading) ? 'Loading Auth...' : 'Send' }}
+          </button>
+          <button
+            v-if="!readOnly && !isWebSocket"
+            @click="useServerProxy = !useServerProxy"
+            :class="[
+              'shrink-0 py-2.5 px-3 font-medium rounded-md border cursor-pointer transition-all duration-fast flex items-center gap-1.5 text-xs',
+              useServerProxy
+                ? 'bg-accent-purple/15 text-accent-purple border-accent-purple/30 hover:bg-accent-purple/25'
+                : 'bg-bg-input text-text-muted border-border-default hover:text-text-secondary'
+            ]"
+            :title="useServerProxy ? 'Server Proxy ON: All requests route through server' : 'Server Proxy OFF: Direct browser fetch with CORS auto-fallback'"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+              <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+              <line x1="6" y1="6" x2="6.01" y2="6"></line>
+              <line x1="6" y1="18" x2="6.01" y2="18"></line>
+            </svg>
+            {{ useServerProxy ? 'Proxy' : 'Direct' }}
           </button>
         </div>
       </div>
