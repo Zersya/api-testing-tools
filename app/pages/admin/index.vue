@@ -607,6 +607,21 @@ const findFolderIdByRequestId = (requestId: string): string | null => {
   return null;
 };
 
+// Helper to find collection ID by request ID (checks root-level requests)
+const findCollectionIdByRequestId = (requestId: string): string | null => {
+  if (!workspaces.value) return null;
+  for (const workspace of workspaces.value) {
+    for (const project of workspace.projects) {
+      for (const collection of project.collections) {
+        if (collection.requests?.some((r: any) => r.id === requestId)) {
+          return collection.id;
+        }
+      }
+    }
+  }
+  return null;
+};
+
 // State
 const previewContent = ref('');
 const selectedMock = ref<any>(null);
@@ -2840,7 +2855,9 @@ const executeSave = async (request: any) => {
       saveDialogDefaultFolderId.value = '';
     }
   } else {
-    saveDialogDefaultCollectionId.value = '';
+    // Request is at collection root (no folder) — pre-select its collection
+    const collectionId = request.collectionId || (request.id ? findCollectionIdByRequestId(request.id) : null);
+    saveDialogDefaultCollectionId.value = collectionId || '';
     saveDialogDefaultFolderId.value = '';
   }
   
@@ -2866,7 +2883,9 @@ const handleSaveAsRequest = (request: any) => {
       saveDialogDefaultFolderId.value = '';
     }
   } else {
-    saveDialogDefaultCollectionId.value = '';
+    // Request is at collection root (no folder) — pre-select its collection
+    const collectionId = request.collectionId || (request.id ? findCollectionIdByRequestId(request.id) : null);
+    saveDialogDefaultCollectionId.value = collectionId || '';
     saveDialogDefaultFolderId.value = '';
   }
   
@@ -2937,6 +2956,7 @@ const handleSave = async (data: any) => {
             headers: requestToSave.value.headers,
             body: requestToSave.value.body,
             auth: requestToSave.value.auth,
+            inheritAuth: requestToSave.value.inheritAuth,
             mockConfig: requestToSave.value.mockConfig,
             socketConfig: requestToSave.value.socketConfig,
             preScript: requestToSave.value.preScript,
@@ -3078,12 +3098,18 @@ const handleSaveAs = async (data: any) => {
         method: 'POST',
         body: {
           name: data.name,
+          protocol: originalRequest.protocol || 'http',
           method: originalRequest.method,
           url: originalRequest.url,
           headers: originalRequest.headers,
           body: originalRequest.body,
           auth: originalRequest.auth,
           inheritAuth: originalRequest.inheritAuth,
+          mockConfig: originalRequest.mockConfig,
+          socketConfig: originalRequest.socketConfig,
+          preScript: originalRequest.preScript,
+          postScript: originalRequest.postScript,
+          pathVariables: originalRequest.pathVariables,
           queryParams: originalRequest.queryParams
         }
       });
@@ -3093,12 +3119,18 @@ const handleSaveAs = async (data: any) => {
         method: 'POST',
         body: {
           name: data.name,
+          protocol: originalRequest.protocol || 'http',
           method: originalRequest.method,
           url: originalRequest.url,
           headers: originalRequest.headers,
           body: originalRequest.body,
           auth: originalRequest.auth,
           inheritAuth: originalRequest.inheritAuth,
+          mockConfig: originalRequest.mockConfig,
+          socketConfig: originalRequest.socketConfig,
+          preScript: originalRequest.preScript,
+          postScript: originalRequest.postScript,
+          pathVariables: originalRequest.pathVariables,
           queryParams: originalRequest.queryParams
         }
       });

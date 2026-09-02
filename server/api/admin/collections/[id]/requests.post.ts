@@ -1,5 +1,5 @@
 import { db } from '../../../../db';
-import { collections, savedRequests, folders, type HttpMethod, type RequestHeaders, type RequestBody, type RequestAuth, type RequestPathVariables, type RequestParamNotes, type RequestProtocol, type SocketConfig } from '../../../../db/schema';
+import { collections, savedRequests, folders, type HttpMethod, type RequestHeaders, type RequestBody, type RequestAuth, type RequestPathVariables, type RequestParamNotes, type RequestProtocol, type SocketConfig, type MockConfig } from '../../../../db/schema';
 import { eq, and, isNull } from 'drizzle-orm';
 import { cache, CacheKeys } from '../../../../utils/cache';
 import { resolveRequestProtocol, validateRequestMethod, validateRequestUrl } from '../../../../utils/request-protocol';
@@ -19,8 +19,9 @@ interface CreateRequestBody {
   pathVariables?: RequestPathVariables;
   paramNotes?: RequestParamNotes;
   queryParams?: Array<{ key: string; value: string; enabled: boolean; note?: string }>;
-  order?: number;
   socketConfig?: SocketConfig;
+  mockConfig?: MockConfig;
+  inheritAuth?: number;
 }
 
 export default defineEventHandler(async (event) => {
@@ -150,6 +151,8 @@ export default defineEventHandler(async (event) => {
         headers: body.headers || null,
         body: body.body || null,
         auth: body.auth || null,
+        inheritAuth: body.inheritAuth ? 1 : 0,
+        mockConfig: body.mockConfig || null,
         preScript: body.preScript || null,
         postScript: body.postScript || null,
         pathVariables: body.pathVariables || null,
@@ -161,7 +164,6 @@ export default defineEventHandler(async (event) => {
       .returning())[0];
 
     // Invalidate cache for the user
-    const user = event.context.user;
     if (user?.id) {
       cache.delete(CacheKeys.workspaceTree(user.id));
     }
@@ -176,7 +178,7 @@ export default defineEventHandler(async (event) => {
     console.error('Error creating request at collection root:', error);
     throw createError({
       statusCode: 500,
-      statusMessage: 'Failed to create request'
+      statusMessage: 'Failed to create request: ' + (error.message || 'Unknown error')
     });
   }
 });

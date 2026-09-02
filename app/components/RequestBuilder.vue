@@ -85,6 +85,7 @@ interface PathVariable {
 interface HttpRequest {
   id: string;
   folderId: string;
+  collectionId?: string | null;
   name: string;
   protocol?: import('../../server/db/schema/savedRequest').RequestProtocol;
   method: string;
@@ -3229,7 +3230,10 @@ const openSaveAsDialog = () => {
   emit('saveAsRequest', {
     id: props.request.id,
     folderId: props.request.folderId,
+    collectionId: props.request.collectionId,
     name: requestName.value,
+    protocol: form.value.protocol,
+    socketConfig: socketConfig.value,
     method: form.value.method,
     url: form.value.url,
     headers: buildHeadersRecord(),

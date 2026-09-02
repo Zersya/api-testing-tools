@@ -1,5 +1,5 @@
 import { db } from '../../../../db';
-import { folders, savedRequests, type HttpMethod, type RequestHeaders, type RequestBody, type RequestAuth, type RequestPathVariables, type RequestParamNotes, type RequestProtocol, type SocketConfig } from '../../../../db/schema';
+import { folders, savedRequests, type HttpMethod, type RequestHeaders, type RequestBody, type RequestAuth, type RequestPathVariables, type RequestParamNotes, type RequestProtocol, type SocketConfig, type MockConfig } from '../../../../db/schema';
 import { eq } from 'drizzle-orm';
 import { trackResourceAction } from '../../../../services/usageTracking';
 import { resolveRequestProtocol, validateRequestMethod, validateRequestUrl } from '../../../../utils/request-protocol';
@@ -20,6 +20,8 @@ interface CreateRequestBody {
   queryParams?: Array<{ key: string; value: string; enabled: boolean; note?: string }>;
   order?: number;
   socketConfig?: SocketConfig;
+  mockConfig?: MockConfig;
+  inheritAuth?: number;
 }
 
 export default defineEventHandler(async (event) => {
@@ -115,6 +117,8 @@ export default defineEventHandler(async (event) => {
         headers: body.headers || null,
         body: body.body || null,
         auth: body.auth || null,
+        inheritAuth: body.inheritAuth ? 1 : 0,
+        mockConfig: body.mockConfig || null,
         preScript: body.preScript || null,
         postScript: body.postScript || null,
         pathVariables: body.pathVariables || null,
@@ -148,7 +152,7 @@ export default defineEventHandler(async (event) => {
     console.error('Error creating request:', error);
     throw createError({
       statusCode: 500,
-      statusMessage: 'Failed to create request'
+      statusMessage: 'Failed to create request: ' + (error.message || 'Unknown error')
     });
   }
 });
