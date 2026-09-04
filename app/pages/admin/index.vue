@@ -921,31 +921,31 @@ const renameEnvironmentFromSettings = async () => {
 
 // Handler for quick edit from dropdown (update name and variables)
 const updateEnvironmentFromDropdown = async (environment: any, name: string, variables: any[], secretValues: Record<string, string> = {}) => {
-  if (!name.trim()) return;
-  const wsId = workspaceIdForProjectId(environment?.projectId);
-  if (wsId && !canEditWorkspaceById(wsId)) return;
+  try {
+    isEnvironmentSettingsLoading.value = true;
 
-  let partialUpdate = false;
-  const errors: string[] = [];
-  
-  // Fetch actual secret values for masked variables
-  const resolvedSecretValues: Record<string, string> = { ...secretValues };
-  for (const variable of variables) {
-    if (variable.isSecret && variable.id && !variable.id.startsWith('var_')) {
-      if (!resolvedSecretValues[variable.id] || resolvedSecretValues[variable.id] === '') {
-        try {
-          const actualValue = await $fetch<{ value: string }>(`/api/admin/variables/${variable.id}/value`);
-          resolvedSecretValues[variable.id] = actualValue.value;
-        } catch (e) {
-          console.error('Failed to fetch secret value for', variable.key, e);
+    if (!name.trim()) return;
+    const wsId = workspaceIdForProjectId(environment?.projectId);
+    if (wsId && !canEditWorkspaceById(wsId)) return;
+
+    let partialUpdate = false;
+    const errors: string[] = [];
+
+    // Fetch actual secret values for masked variables
+    const resolvedSecretValues: Record<string, string> = { ...secretValues };
+    for (const variable of variables) {
+      if (variable.isSecret && variable.id && !variable.id.startsWith('var_')) {
+        if (!resolvedSecretValues[variable.id] || resolvedSecretValues[variable.id] === '') {
+          try {
+            const actualValue = await $fetch<{ value: string }>(`/api/admin/variables/${variable.id}/value`);
+            resolvedSecretValues[variable.id] = actualValue.value;
+          } catch (e) {
+            console.error('Failed to fetch secret value for', variable.key, e);
+          }
         }
       }
     }
-  }
 
-  try {
-    isEnvironmentSettingsLoading.value = true;
-    
     // Update environment name
     try {
       await $fetch(`/api/admin/environments/${environment.id}`, {
@@ -4203,7 +4203,7 @@ const { isHelpVisible, showHelp, hideHelp } = useKeyboardShortcuts({
 const shellHeaderProps = computed(() => ({
   environments: safeEnvironments.value,
   activeEnvironmentId: activeEnvironment.value?.id || null,
-  currentProjectId: currentProjectId.value || null,
+  isEnvironmentSaving: isEnvironmentSettingsLoading.value,
 }));
 
 const shellSidebarProps = computed(() => ({

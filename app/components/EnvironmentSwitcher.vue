@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, nextTick } from 'vue';
+import { computed, onMounted, onUnmounted, ref, nextTick, watch } from 'vue';
 import Modal from './Modal.vue';
 
 interface Variable {
@@ -25,11 +25,14 @@ interface Props {
   disabled?: boolean;
   /** When false, hide create / manage / inline edit (view-only workspace) */
   canEditEnvironments?: boolean;
+  /** Parent-controlled saving state — reactively resets loading when parent finishes */
+  isExternallySaving?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   disabled: false,
-  canEditEnvironments: true
+  canEditEnvironments: true,
+  isExternallySaving: false
 });
 
 const emit = defineEmits<{
@@ -53,7 +56,8 @@ const environmentToEdit = ref<Environment | null>(null);
 const editName = ref('');
 const editVariables = ref<Variable[]>([]);
 const editSecretValues = ref<Record<string, string>>({});
-const isSaving = ref(false);
+const localSaving = ref(false);
+const isSaving = computed(() => localSaving.value || props.isExternallySaving);
 const validationError = ref('');
 
 // Variable key format regex (matches API validation)
@@ -226,7 +230,7 @@ const closeEditModal = () => {
   editName.value = '';
   editVariables.value = [];
   editSecretValues.value = {};
-  isSaving.value = false;
+  localSaving.value = false;
   validationError.value = '';
 };
 
@@ -246,7 +250,7 @@ const saveEdit = () => {
   const validVariables = editVariables.value.filter(v => v.key.trim() !== '' || v.value.trim() !== '');
   
 // Emit update with the full environment data including variables and secret values
-  isSaving.value = true;
+  localSaving.value = true;
   emit('update:environment', [
     { ...environmentToEdit.value, name: editName.value.trim(), variables: validVariables },
     editName.value.trim(),
@@ -267,7 +271,15 @@ onUnmounted(() => {
 
 defineExpose({
   closeEditModal,
-  resetSaving: () => { isSaving.value = false; }
+  resetSaving: () => { localSaving.value = false; }
+});
+
+// When parent finishes saving (isExternallySaving goes false), reset local saving state.
+// This is the primary reset mechanism — the ref-chain fallback may not always reach us.
+watch(() => props.isExternallySaving, (newVal, oldVal) => {
+  if (oldVal === true && newVal === false) {
+    localSaving.value = false;
+  }
 });
 </script>
 

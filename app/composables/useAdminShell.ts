@@ -363,6 +363,7 @@ function createAdminShellState() {
     isMockSidebarActive: isMockSidebarActive.value,
     isMobile: isMobile.value,
     isSidebarCollapsed: isSidebarCollapsed.value,
+    isEnvironmentSaving: false,
   }));
 
   const mergedHeaderProps = computed(() => ({

@@ -44,7 +44,8 @@ interface Props {
   hideSidebarChrome?: boolean;
   /** Destination for the header back button on sidebar-less pages */
   backTo?: string;
-  backLabel?: string;
+  /** Saving state passed down to EnvironmentSwitcher to reset its loading */
+  isEnvironmentSaving?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -62,7 +63,7 @@ const props = withDefaults(defineProps<Props>(), {
   isSidebarCollapsed: false,
   hideSidebarChrome: false,
   backTo: '/admin',
-  backLabel: 'Back',
+  isEnvironmentSaving: false,
 });
 
 const emit = defineEmits<{
@@ -301,7 +302,7 @@ defineExpose({
         v-if="!hideSidebarChrome && !isEnvironmentsPage && !isMockSidebarActive"
         :environments="environments"
         :active-environment-id="activeEnvironmentId"
-        :can-edit-environments="canEditWorkspace"
+        :is-externally-saving="isEnvironmentSaving"
         @update:active-environment-id="emit('activateEnvironment', $event)"
         @manage="emit('manageEnvironments')"
         @create="emit('createEnvironment')"
