@@ -1,9 +1,9 @@
 import { db } from '../db';
-import { workspaces, workspaceShares, workspaceAccess, workspaceMembers, collectionMembers, collections, projects } from '../db/schema';
+import { workspaces, workspaceShares, workspaceShareEnvironments, workspaceAccess, workspaceMembers, collectionMembers, collectionMemberEnvironments, collections, projects } from '../db/schema';
 import { eq, and, or, gt, isNull, isNotNull, inArray } from 'drizzle-orm';
 import type { ShareEnvironmentAccess, SharePermission } from '../db/schema/workspaceShare';
 import type { MemberPermission } from '../db/schema/workspaceMember';
-import type { CollectionMemberPermission } from '../db/schema/collectionMember';
+import type { CollectionMemberPermission, CollectionMemberEnvironmentAccess } from '../db/schema/collectionMember';
 import { getUserEmailOrFallback } from './userMapping';
 import { cache, CacheKeys } from './cache';
 
@@ -1000,7 +1000,8 @@ export async function recordSharedAccess(shareId: string, userId: string, permis
       workspaceId: workspaceShares.workspaceId,
       createdBy: workspaceShares.createdBy,
       collectionId: workspaceShares.collectionId,
-      folderId: workspaceShares.folderId
+      folderId: workspaceShares.folderId,
+      environmentAccess: workspaceShares.environmentAccess
     })
     .from(workspaceShares)
     .where(eq(workspaceShares.id, shareId))
@@ -1011,7 +1012,7 @@ export async function recordSharedAccess(shareId: string, userId: string, permis
     return;
   }
 
-  const { workspaceId, createdBy, collectionId, folderId } = shareRecord[0];
+  const { workspaceId, createdBy, collectionId, folderId, environmentAccess } = shareRecord[0];
 
   if (folderId) {
     invalidateUserTreeCache(userId);
@@ -1031,7 +1032,10 @@ export async function recordSharedAccess(shareId: string, userId: string, permis
       .limit(1);
 
     if (!existingCollectionMember.length) {
-      await db
+      // Copy environment access from the share link into the collection member record
+      const memberEnvAccess = (environmentAccess || 'all') as CollectionMemberEnvironmentAccess;
+
+      const [newMember] = await db
         .insert(collectionMembers)
         .values({
           collectionId,
@@ -1040,8 +1044,29 @@ export async function recordSharedAccess(shareId: string, userId: string, permis
           permission,
           invitedBy: createdBy,
           status: 'accepted',
+          environmentAccess: memberEnvAccess,
           acceptedAt: now
-        });
+        })
+        .returning({ id: collectionMembers.id });
+
+      // If the share link restricted environments, copy the allowlist to the member
+      if (memberEnvAccess === 'allowlist' && newMember) {
+        const shareEnvRows = await db
+          .select({ environmentId: workspaceShareEnvironments.environmentId })
+          .from(workspaceShareEnvironments)
+          .where(eq(workspaceShareEnvironments.shareId, shareId));
+
+        if (shareEnvRows.length > 0) {
+          await db
+            .insert(collectionMemberEnvironments)
+            .values(
+              shareEnvRows.map((row) => ({
+                collectionMemberId: newMember.id,
+                environmentId: row.environmentId
+              }))
+            );
+        }
+      }
     }
 
     invalidateUserTreeCache(userId);
@@ -1193,7 +1218,48 @@ export async function getAccessibleWorkspaceIds(userId: string, userEmail?: stri
       )
     );
 
-  const collectionWorkspaceIds = collectionMemberWorkspaces.map((row) => row.workspaceId);
+  let collectionWorkspaceIds = collectionMemberWorkspaces.map((row) => row.workspaceId);
+
+  // Auto-accept pending collection member invitations by email (mirrors workspace member logic above)
+  if (userEmail) {
+    const normalizedEmail = userEmail.toLowerCase().trim();
+
+    const pendingCollectionInvitations = await db
+      .select({
+        id: collectionMembers.id,
+        collectionId: collectionMembers.collectionId
+      })
+      .from(collectionMembers)
+      .where(
+        and(
+          eq(collectionMembers.email, normalizedEmail),
+          eq(collectionMembers.status, 'pending')
+        )
+      );
+
+    if (pendingCollectionInvitations.length > 0) {
+      const invitationIds = pendingCollectionInvitations.map((i) => i.id);
+
+      await db
+        .update(collectionMembers)
+        .set({
+          userId,
+          status: 'accepted',
+          acceptedAt: new Date()
+        })
+        .where(inArray(collectionMembers.id, invitationIds));
+
+      const pendingCollectionIds = pendingCollectionInvitations.map((i) => i.collectionId);
+      const pendingWorkspaces = await db
+        .select({ workspaceId: projects.workspaceId })
+        .from(collections)
+        .innerJoin(projects, eq(collections.projectId, projects.id))
+        .where(inArray(collections.id, pendingCollectionIds));
+
+      collectionWorkspaceIds.push(...pendingWorkspaces.map((w) => w.workspaceId));
+    }
+  }
+
   console.log('[Permissions] Collection-only workspace IDs:', collectionWorkspaceIds);
 
   // SECURITY FIX: Removed auto-inclusion of all shared workspaces
@@ -1208,6 +1274,62 @@ export async function getAccessibleWorkspaceIds(userId: string, userEmail?: stri
   console.log('[Permissions] Final accessible workspace IDs:', result);
 
   return result;
+}
+
+/**
+ * Get allowed environment IDs for a user in a workspace based on their collection member records.
+ * Returns null if all environments are allowed (full workspace access or any collection member
+ * with environmentAccess='all'). Returns a string[] of allowed environment IDs if restricted.
+ *
+ * Conflict resolution: if the user has multiple collection member records for the same workspace
+ * (e.g. email invitation with 'all' + share link with 'allowlist'), the most permissive wins.
+ */
+export async function getCollectionMemberAllowedEnvIds(
+  userId: string,
+  workspaceId: string,
+  userEmail?: string
+): Promise<string[] | null> {
+  // If user has full workspace access, all environments are allowed
+  const hasFullAccess = await hasFullWorkspaceAccess(userId, workspaceId, userEmail);
+  if (hasFullAccess) {
+    return null;
+  }
+
+  // Get all accepted collection member records for this user in this workspace
+  const memberRows = await db
+    .select({
+      id: collectionMembers.id,
+      environmentAccess: collectionMembers.environmentAccess
+    })
+    .from(collectionMembers)
+    .innerJoin(collections, eq(collectionMembers.collectionId, collections.id))
+    .innerJoin(projects, eq(collections.projectId, projects.id))
+    .where(
+      and(
+        eq(collectionMembers.userId, userId),
+        eq(collectionMembers.status, 'accepted'),
+        eq(projects.workspaceId, workspaceId)
+      )
+    );
+
+  if (memberRows.length === 0) {
+    return null;
+  }
+
+  // If any member record has 'all' access, user sees all environments
+  if (memberRows.some((m) => m.environmentAccess === 'all')) {
+    return null;
+  }
+
+  // All records are 'allowlist' — union the allowed environment IDs
+  const memberIds = memberRows.map((m) => m.id);
+  const envRows = await db
+    .select({ environmentId: collectionMemberEnvironments.environmentId })
+    .from(collectionMemberEnvironments)
+    .where(inArray(collectionMemberEnvironments.collectionMemberId, memberIds));
+
+  const allowedIds = [...new Set(envRows.map((r) => r.environmentId))];
+  return allowedIds;
 }
 
 /**

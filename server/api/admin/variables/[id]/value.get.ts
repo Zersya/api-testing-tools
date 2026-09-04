@@ -1,7 +1,7 @@
 import { db } from '../../../../db';
 import { environmentVariables, environments, projects } from '../../../../db/schema';
 import { eq } from 'drizzle-orm';
-import { getAccessibleWorkspaceIds } from '../../../../utils/permissions';
+import { getAccessibleWorkspaceIds, getCollectionMemberAllowedEnvIds } from '../../../../utils/permissions';
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id');
@@ -69,6 +69,15 @@ export default defineEventHandler(async (event) => {
       throw createError({
         statusCode: 403,
         statusMessage: 'You do not have access to this workspace'
+      });
+    }
+
+    // For collection-only users, verify this environment is in the allowed list
+    const allowedEnvIds = await getCollectionMemberAllowedEnvIds(user.id, project.workspaceId, user.email);
+    if (allowedEnvIds && !allowedEnvIds.includes(environment.id)) {
+      throw createError({
+        statusCode: 403,
+        statusMessage: 'You do not have access to this environment'
       });
     }
 

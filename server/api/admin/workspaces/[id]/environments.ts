@@ -1,7 +1,7 @@
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '../../../../db';
 import { environments, projects, environmentVariables } from '../../../../db/schema';
-import { getAccessibleWorkspaceIds } from '../../../../utils/permissions';
+import { getAccessibleWorkspaceIds, getCollectionMemberAllowedEnvIds } from '../../../../utils/permissions';
 
 export default defineEventHandler(async (event) => {
   const workspaceId = getRouterParam(event, 'id');
@@ -48,7 +48,17 @@ export default defineEventHandler(async (event) => {
     return { environments: [], activeEnvironmentId: null };
   }
 
-  const environmentIds = environmentsWithProjects.map(e => e.id);
+  // Filter environments for collection-only users (share link env restrictions)
+  const allowedEnvIds = await getCollectionMemberAllowedEnvIds(user.id, workspaceId, user.email);
+  const filteredEnvironments = allowedEnvIds
+    ? environmentsWithProjects.filter((e) => allowedEnvIds.includes(e.id))
+    : environmentsWithProjects;
+
+  if (filteredEnvironments.length === 0) {
+    return { environments: [], activeEnvironmentId: null };
+  }
+
+  const environmentIds = filteredEnvironments.map(e => e.id);
 
   const allVariables = await db.query.environmentVariables.findMany({
     where: (environmentVariables, { inArray }) => inArray(environmentVariables.environmentId, environmentIds),
@@ -69,7 +79,7 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const environmentsWithVariables = environmentsWithProjects.map(env => ({
+  const environmentsWithVariables = filteredEnvironments.map(env => ({
     ...env,
     variables: variablesByEnvironment.get(env.id) || []
   }));
